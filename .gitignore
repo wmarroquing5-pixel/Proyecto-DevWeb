@@ -1,0 +1,47 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+[Tt]est[Rr]esults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# IDE and user-specific files
+.vs/
+.vscode/
+.idea/
+_ReSharper*/
+*.DotSettings.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.log
+*~
+
+# Local configuration and credentials
+.env
+.env.*
+**/secrets.json
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+**/appsettings.*.local.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.publishsettings
+*.pubxml
+*.pubxml.user
+.agents/
+AGENTS.md
+API-Clinica.Tests/
