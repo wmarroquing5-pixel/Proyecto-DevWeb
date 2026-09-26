@@ -1,4 +1,5 @@
 using API_Clinica.Models.Entities;
+using API_Clinica.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 
@@ -6,6 +7,26 @@ namespace API_Clinica.Data;
 
 public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbContext(options)
 {
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+        SaveChangesAsync(true, cancellationToken);
+
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        await MedicoRegistroValidator.ValidarAsync(this, cancellationToken);
+        await VentaDetalleMedicamentoValidator.ValidarAsync(this, cancellationToken);
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    public override int SaveChanges() => SaveChanges(true);
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        MedicoRegistroValidator.Validar(this);
+        VentaDetalleMedicamentoValidator.Validar(this);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
     public DbSet<Sucursal> Sucursales => Set<Sucursal>();
     public DbSet<Especialidad> Especialidades => Set<Especialidad>();
     public DbSet<Empleado> Empleados => Set<Empleado>();
@@ -80,7 +101,7 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasColumnType("bit")
                 .IsRequired(true)
                 .HasDefaultValue(true);
-            entity.HasAlternateKey(e => e.Nombre);
+            entity.HasIndex(e => e.Nombre).IsUnique();
         });
 
         modelBuilder.Entity<Empleado>(entity =>

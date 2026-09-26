@@ -7,8 +7,16 @@ using Microsoft.IdentityModel.Tokens;
 namespace API_Clinica.Services;
 
 public sealed class ConfigureJwtBearerOptions(IOptions<JwtOptions> jwtOptions)
-    : IConfigureOptions<JwtBearerOptions>
+    : IConfigureNamedOptions<JwtBearerOptions>
 {
+    public void Configure(string? name, JwtBearerOptions options)
+    {
+        if (name == JwtBearerDefaults.AuthenticationScheme)
+        {
+            Configure(options);
+        }
+    }
+
     public void Configure(JwtBearerOptions options)
     {
         var jwt = jwtOptions.Value;
@@ -22,6 +30,16 @@ public sealed class ConfigureJwtBearerOptions(IOptions<JwtOptions> jwtOptions)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.Request.Path.Equals("/hubs/habitaciones", StringComparison.OrdinalIgnoreCase) &&
+                    context.Request.Query.TryGetValue("access_token", out var token))
+                    context.Token = token;
+                return Task.CompletedTask;
+            }
         };
     }
 }

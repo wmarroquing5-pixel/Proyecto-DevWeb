@@ -2,15 +2,13 @@ using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
-using API_Clinica.Models.Entities;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace API_Clinica.Services;
 
 public sealed class AuthService(
     ClinicaDbContext context,
-    IPasswordHasher<Usuario> passwordHasher,
+    IPasswordVerificationService passwordVerificationService,
     IJwtTokenService tokenService) : IAuthService
 {
     private const string InvalidCredentialsMessage = "Credenciales inválidas.";
@@ -25,7 +23,9 @@ public sealed class AuthService(
         var usuario = await context.Usuarios.AsNoTracking()
             .SingleOrDefaultAsync(u => u.Username == request.Username, cancellationToken);
 
-        if (usuario is null || !usuario.Activo)
+        var validPassword = passwordVerificationService.Verify(usuario, request.Password);
+
+        if (usuario is null || !usuario.Activo || !validPassword)
         {
             throw new UnauthorizedException(InvalidCredentialsMessage);
         }
@@ -41,14 +41,6 @@ public sealed class AuthService(
         if (usuario.IdEmpleado is int idEmpleado &&
             !await context.Empleados.AsNoTracking()
                 .AnyAsync(e => e.IdEmpleado == idEmpleado, cancellationToken))
-        {
-            throw new UnauthorizedException(InvalidCredentialsMessage);
-        }
-
-        var passwordResult = passwordHasher.VerifyHashedPassword(
-            usuario, usuario.PasswordHash, request.Password);
-
-        if (passwordResult == PasswordVerificationResult.Failed)
         {
             throw new UnauthorizedException(InvalidCredentialsMessage);
         }
