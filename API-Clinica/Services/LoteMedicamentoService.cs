@@ -68,7 +68,11 @@ public sealed class LoteMedicamentoService(
         lot.FechaIngreso = request.FechaIngreso;
         lot.FechaVencimiento = request.FechaVencimiento;
         lot.CantidadDisponible = request.CantidadDisponible;
-        await context.SaveChangesAsync(cancellationToken);
+        try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("El lote cambió durante la operación. Intente nuevamente.");
+        }
         return ToResponse(lot);
     }
 
@@ -83,6 +87,10 @@ public sealed class LoteMedicamentoService(
 
         context.LoteMedicamentos.Remove(lot);
         try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("El lote cambió durante la operación. Intente nuevamente.");
+        }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException sql && sql.Number == 547)
         {
             throw new ConflictException("No se puede eliminar un lote utilizado en ventas.");

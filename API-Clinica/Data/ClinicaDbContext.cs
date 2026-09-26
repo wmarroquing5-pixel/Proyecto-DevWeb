@@ -548,7 +548,8 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
             entity.Property(e => e.CantidadDisponible)
                 .HasColumnName("CantidadDisponible")
                 .HasColumnType("int")
-                .IsRequired(true);
+                .IsRequired(true)
+                .IsConcurrencyToken();
             entity.HasOne<Medicamento>()
                 .WithMany()
                 .HasForeignKey(e => e.IdMedicamento)
