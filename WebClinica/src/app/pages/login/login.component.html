@@ -1,0 +1,166 @@
+<div class="login-page">
+
+  <div class="login-container">
+
+    <!-- Panel izquierdo -->
+    <div class="welcome-section">
+
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="bi bi-heart-pulse-fill"></i>
+        </div>
+
+        <span>Clínica Salud</span>
+      </div>
+
+      <div class="welcome-content">
+        <h1>Tu salud,<br>nuestra prioridad.</h1>
+
+        <p>
+          Bienvenido al sistema de gestión de nuestra clínica.
+          Administra tus citas,consulta la información de tus pacientes
+          y busca medicamentos de manera sencilla y segura.
+        </p>
+      </div>
+
+      <div class="medical-decoration">
+        <i class="bi bi-heart-pulse"></i>
+      </div>
+
+    </div>
+
+
+    <!-- Panel derecho -->
+    <div class="login-section">
+
+      <div class="login-card">
+
+        <div class="mobile-logo">
+          <div class="brand-icon">
+            <i class="bi bi-heart-pulse-fill"></i>
+          </div>
+        </div>
+
+        <h2>Bienvenido</h2>
+
+        <p class="login-description">
+          Ingresa tus credenciales para continuar
+        </p>
+
+
+        <!-- Usuario -->
+        <div class="form-group">
+
+          <label for="usuario">
+            Usuario
+          </label>
+
+          <div class="input-wrapper">
+
+            <i class="bi bi-person"></i>
+
+            <input
+              type="text"
+              id="usuario"
+              class="form-control"
+              placeholder="Ingresa tu usuario"
+              [(ngModel)]="usuario"
+            >
+
+          </div>
+
+        </div>
+
+
+        <!-- Contraseña -->
+        <div class="form-group">
+
+          <div class="password-label">
+
+            <label for="password">
+              Contraseña
+            </label>
+
+            <a href="#">
+              ¿Olvidaste tu contraseña?
+            </a>
+
+          </div>
+
+          <div class="input-wrapper">
+
+            <i class="bi bi-lock"></i>
+
+            <input
+              [type]="mostrarPassword ? 'text' : 'password'"
+              id="password"
+              class="form-control"
+              placeholder="Ingresa tu contraseña"
+              [(ngModel)]="password"
+            >
+
+            <button
+              type="button"
+              class="password-button"
+              (click)="mostrarPassword = !mostrarPassword"
+            >
+
+              <i
+                [class]="mostrarPassword
+                  ? 'bi bi-eye-slash'
+                  : 'bi bi-eye'"
+              ></i>
+
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <!-- Recordarme -->
+        <div class="remember">
+
+          <label>
+            <input
+              type="checkbox"
+              [(ngModel)]="recordarme"
+            >
+
+            <span>Recordarme</span>
+          </label>
+
+        </div>
+
+
+        <!-- Botón -->
+        <button
+          type="button"
+          class="login-button"
+          (click)="iniciarSesion()"
+        >
+
+          <span>Iniciar sesión</span>
+
+          <i class="bi bi-arrow-right"></i>
+
+        </button>
+
+
+        <div class="security-message">
+
+          <i class="bi bi-shield-check"></i>
+
+          <span>
+            Acceso seguro al sistema
+          </span>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
