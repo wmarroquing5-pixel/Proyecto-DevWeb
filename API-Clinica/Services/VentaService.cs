@@ -12,7 +12,8 @@ namespace API_Clinica.Services;
 
 public sealed class VentaService(
     ClinicaDbContext context,
-    IAccesoActualService accesoActual) : IVentaService
+    IAccesoActualService accesoActual,
+    ILogger<VentaService> logger) : IVentaService
 {
     private const decimal MaxSqlMoney = 9_999_999_999_999_999.99m;
 
@@ -20,28 +21,33 @@ public sealed class VentaService(
         CrearVentaRequest request, ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
-        if (request.IdSucursal <= 0)
-            throw FarmaciaValidation.Invalid("IdSucursal", "La sucursal debe ser válida.");
-        var quantities = PrepararCantidades(request.Items);
-        var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(now);
-
         if (!context.Database.IsSqlServer())
         {
             if (context.Database.IsRelational())
                 throw new NotSupportedException("La venta transaccional requiere SQL Server.");
-            return await CrearCoreAsync(request.IdSucursal, quantities, principal,
-                now, today, cancellationToken);
+            // EF InMemory se utiliza exclusivamente en pruebas y no admite transacciones.
+            return await CrearCoreAsync(request, principal, cancellationToken);
         }
 
         try
         {
             await using var transaction = await context.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable, cancellationToken);
-            var response = await CrearCoreAsync(request.IdSucursal, quantities, principal,
-                now, today, cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return response;
+            try
+            {
+                var response = await CrearCoreAsync(request, principal, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return response;
+            }
+            catch
+            {
+                try { await transaction.RollbackAsync(CancellationToken.None); }
+                catch (Exception rollbackError)
+                {
+                    logger.LogError(rollbackError, "No se pudo confirmar el rollback de la venta.");
+                }
+                throw;
+            }
         }
         catch (SqlException ex) when (ex.Number is 1205 or 1222)
         {
@@ -59,18 +65,21 @@ public sealed class VentaService(
     }
 
     private async Task<VentaResponse> CrearCoreAsync(
-        int idSucursal, SortedDictionary<int, int> quantities,
-        ClaimsPrincipal principal, DateTime now, DateOnly today,
+        CrearVentaRequest request, ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
+        if (request.IdSucursal <= 0)
+            throw FarmaciaValidation.Invalid("IdSucursal", "La sucursal debe ser válida.");
+        var quantities = PrepararCantidades(request.Items);
+        var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
         var usuario = await accesoActual.ObtenerUsuarioActivoAsync(principal, cancellationToken)
             ?? throw new ForbiddenException("Acceso denegado.");
         if (!await context.Sucursales.AsNoTracking()
-            .AnyAsync(s => s.IdSucursal == idSucursal && s.Activa, cancellationToken))
+            .AnyAsync(s => s.IdSucursal == request.IdSucursal && s.Activa, cancellationToken))
             throw FarmaciaValidation.Invalid("IdSucursal", "La sucursal debe existir y estar activa.");
 
-        var allocations = new List<Allocation>();
-        decimal total = 0;
+        var products = new List<ProductStock>();
         // El orden por IdMedicamento mantiene un orden estable de bloqueo entre ventas concurrentes.
         foreach (var (idMedicamento, requested) in quantities)
         {
@@ -83,47 +92,50 @@ public sealed class VentaService(
             var available = lots.Sum(l => (long)l.CantidadDisponible);
             if (available < requested)
                 throw new ConflictException($"Stock insuficiente para el medicamento {idMedicamento}.");
-
-            var remaining = requested;
-            foreach (var lot in lots)
-            {
-                if (remaining == 0) break;
-                var amount = Math.Min(remaining, lot.CantidadDisponible);
-                var subtotal = price * amount;
-                if (subtotal > MaxSqlMoney || total > MaxSqlMoney - subtotal)
-                    throw FarmaciaValidation.Invalid("Items", "El importe excede el límite de decimal(18,2).");
-
-                allocations.Add(new Allocation(lot, idMedicamento, amount, price, subtotal));
-                total += subtotal;
-                remaining -= amount;
-            }
+            products.Add(new ProductStock(idMedicamento, requested, price, lots));
         }
 
         var sale = new Venta
         {
             IdUsuario = usuario.IdUsuario,
-            IdSucursal = idSucursal,
-            FechaVenta = now,
-            Total = total
+            IdSucursal = request.IdSucursal,
+            FechaVenta = now
         };
         context.Ventas.Add(sale);
-        await context.SaveChangesAsync(cancellationToken);
 
         var details = new List<(VentaDetalle Detail, int IdMedicamento)>();
-        foreach (var allocation in allocations)
+        decimal total = 0;
+        foreach (var product in products)
         {
-            allocation.Lot.CantidadDisponible -= allocation.Amount;
-            var detail = new VentaDetalle
+            var remaining = product.Requested;
+            foreach (var lot in product.Lots)
             {
-                IdVenta = sale.IdVenta,
-                IdLote = allocation.Lot.IdLote,
-                Cantidad = allocation.Amount,
-                PrecioUnitario = allocation.Price,
-                Subtotal = allocation.Subtotal
-            };
-            context.VentaDetalles.Add(detail);
-            details.Add((detail, allocation.IdMedicamento));
+                if (remaining == 0) break;
+                var amount = Math.Min(remaining, lot.CantidadDisponible);
+                if (amount <= 0 || lot.CantidadDisponible < amount)
+                    throw new ConflictException("El stock del lote cambió durante la venta.");
+                var subtotal = product.Price * amount;
+                if (subtotal > MaxSqlMoney || total > MaxSqlMoney - subtotal)
+                    throw FarmaciaValidation.Invalid("Items", "El importe excede el límite de decimal(18,2).");
+
+                lot.CantidadDisponible -= amount;
+                var detail = new VentaDetalle
+                {
+                    Venta = sale,
+                    IdLote = lot.IdLote,
+                    Cantidad = amount,
+                    PrecioUnitario = product.Price,
+                    Subtotal = subtotal
+                };
+                context.VentaDetalles.Add(detail);
+                details.Add((detail, product.IdMedicamento));
+                total += subtotal;
+                remaining -= amount;
+            }
+            if (remaining != 0)
+                throw new ConflictException("El stock cambió durante la venta.");
         }
+        sale.Total = total;
         await context.SaveChangesAsync(cancellationToken);
 
         return new VentaResponse(sale.IdVenta, sale.IdUsuario, sale.IdSucursal,
@@ -181,7 +193,7 @@ public sealed class VentaService(
         return quantities;
     }
 
-    private sealed record Allocation(
-        LoteMedicamento Lot, int IdMedicamento, int Amount,
-        decimal Price, decimal Subtotal);
+    private sealed record ProductStock(
+        int IdMedicamento, int Requested, decimal Price,
+        IReadOnlyList<LoteMedicamento> Lots);
 }

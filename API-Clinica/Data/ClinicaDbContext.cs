@@ -632,7 +632,7 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasColumnName("Subtotal")
                 .HasColumnType("decimal(18,2)")
                 .IsRequired(true);
-            entity.HasOne<Venta>()
+            entity.HasOne(e => e.Venta)
                 .WithMany()
                 .HasForeignKey(e => e.IdVenta)
                 .OnDelete(DeleteBehavior.NoAction)

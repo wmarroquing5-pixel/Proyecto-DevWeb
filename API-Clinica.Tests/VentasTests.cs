@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -38,6 +39,73 @@ public sealed class VentasTests
     }
 
     [Fact]
+    public async Task VentaSimpleDescuentaUnLoteYCalculaTotal()
+    {
+        using var factory = new VentaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var created = await client.PostAsJsonAsync("/api/ventas", Request(1, (1, 2)));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var sale = await created.Content.ReadFromJsonAsync<VentaResponse>();
+        Assert.NotNull(sale);
+        Assert.Equal(25m, sale.Total);
+        var detail = Assert.Single(sale.Detalles);
+        Assert.Equal(2, detail.IdLote);
+        Assert.Equal(2, detail.Cantidad);
+        Assert.Equal(12.50m, detail.PrecioUnitario);
+        Assert.Equal(25m, detail.Subtotal);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+        Assert.Single(await db.Ventas.ToListAsync());
+        Assert.Single(await db.VentaDetalles.ToListAsync());
+        Assert.Equal(3, (await db.LoteMedicamentos.SingleAsync(l => l.IdLote == 2)).CantidadDisponible);
+    }
+
+    [Fact(Skip = "Pendiente SQL Server aislado: EF InMemory no reproduce los bloqueos transaccionales de ventas.")]
+    public async Task DosVentasSimultaneasNoDescuentanMasQueLaExistencia()
+    {
+        using var factory = new VentaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync();
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await LoginAsync(firstClient, password);
+        await LoginAsync(secondClient, password);
+
+        var responses = await Task.WhenAll(
+            firstClient.PostAsJsonAsync("/api/ventas", Request(1, (2, 2))),
+            secondClient.PostAsJsonAsync("/api/ventas", Request(1, (2, 2))));
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+        Assert.Single(await db.Ventas.ToListAsync());
+        Assert.Equal(1, (await db.LoteMedicamentos.SingleAsync(l => l.IdLote == 8)).CantidadDisponible);
+    }
+
+    [Fact]
+    public async Task FalloAlGuardarNoConfirmaVentaNiDescuentoEnProveedorDePruebas()
+    {
+        using var factory = new VentaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        factory.FailNextSaleSave();
+
+        var response = await client.PostAsJsonAsync("/api/ventas", Request(1, (1, 2)));
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+        Assert.Empty(await db.Ventas.ToListAsync());
+        Assert.Empty(await db.VentaDetalles.ToListAsync());
+        Assert.Equal(5, (await db.LoteMedicamentos.SingleAsync(l => l.IdLote == 2)).CantidadDisponible);
+    }
+
+    [Fact]
     public async Task DistribuyePorFefoYCalculaValoresDesdeLaBaseDeDatos()
     {
         using var factory = new VentaApiFactory();
@@ -45,6 +113,7 @@ public sealed class VentasTests
         await factory.GrantAsync();
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
+        var savesBefore = factory.SaveCount;
 
         var forgedRequest = new
         {
@@ -60,6 +129,7 @@ public sealed class VentasTests
         };
         var created = await client.PostAsJsonAsync("/api/ventas", forgedRequest);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(savesBefore + 1, factory.SaveCount);
         var sale = await created.Content.ReadFromJsonAsync<VentaResponse>();
         Assert.NotNull(sale);
         Assert.Equal(1, sale.IdUsuario);
@@ -76,7 +146,9 @@ public sealed class VentasTests
         var persisted = await db.Ventas.SingleAsync();
         Assert.Equal(1, persisted.IdUsuario);
         Assert.Equal(177.00m, persisted.Total);
-        Assert.Equal(5, await db.VentaDetalles.CountAsync());
+        var persistedDetails = await db.VentaDetalles.ToListAsync();
+        Assert.Equal(5, persistedDetails.Count);
+        Assert.All(persistedDetails, detail => Assert.Equal(sale.IdVenta, detail.IdVenta));
         var stocks = await db.LoteMedicamentos.AsNoTracking()
             .OrderBy(l => l.IdLote).Select(l => l.CantidadDisponible).ToListAsync();
         Assert.Equal(new[] { 100, 0, 0, 0, 3, 100, 0, 1 }, stocks);
@@ -222,6 +294,9 @@ public sealed class VentasTests
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
         private readonly string signingKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        private readonly SaveCounter saveCounter = new();
+        public int SaveCount => saveCounter.Count;
+        public void FailNextSaleSave() => saveCounter.FailNextSale();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -242,7 +317,7 @@ public sealed class VentasTests
                 services.RemoveAll<DbContextOptions<ClinicaDbContext>>();
                 services.RemoveAll<ClinicaDbContext>();
                 services.AddSingleton(new DbContextOptionsBuilder<ClinicaDbContext>()
-                    .UseInMemoryDatabase(databaseName).Options);
+                    .UseInMemoryDatabase(databaseName).AddInterceptors(saveCounter).Options);
                 services.AddScoped<ClinicaDbContext>();
             });
         }
@@ -304,5 +379,25 @@ public sealed class VentasTests
             FechaIngreso = ingreso, FechaVencimiento = vencimiento,
             CantidadDisponible = quantity
         };
+    }
+
+    private sealed class SaveCounter : SaveChangesInterceptor
+    {
+        private int count;
+        private int failNextSale;
+        public int Count => Volatile.Read(ref count);
+        public void FailNextSale() => Interlocked.Exchange(ref failNextSale, 1);
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<Venta>()
+                    .Any(e => e.State == EntityState.Added) == true &&
+                Interlocked.Exchange(ref failNextSale, 0) == 1)
+                throw new InvalidOperationException("Fallo simulado antes de confirmar la venta.");
+            Interlocked.Increment(ref count);
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 }

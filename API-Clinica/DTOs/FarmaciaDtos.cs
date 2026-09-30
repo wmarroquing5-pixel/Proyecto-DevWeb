@@ -43,6 +43,11 @@ public sealed record MedicamentoResponse(
     string Nombre, string? Descripcion, decimal PrecioVenta,
     string? ImagenURL, bool Activo);
 
+public sealed record CatalogoMedicamentoResponse(
+    int IdMedicamento, string Codigo, string Nombre, decimal PrecioVenta,
+    string Marca, string Categoria, string? Descripcion, string? ImagenURL,
+    long ExistenciaTotal);
+
 public sealed class GuardarLoteMedicamentoRequest
 {
     [Range(1, int.MaxValue)]

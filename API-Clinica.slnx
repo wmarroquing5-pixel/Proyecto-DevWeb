@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="API-Clinica.Tests/API-Clinica.Tests.csproj" />
+  <Project Path="API-Clinica/API-Clinica.csproj" />
+</Solution>

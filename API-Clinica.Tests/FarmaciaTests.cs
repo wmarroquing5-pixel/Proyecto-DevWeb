@@ -38,6 +38,120 @@ public sealed class FarmaciaTests
     }
 
     [Fact]
+    public async Task CatalogoFiltraMedicamentosYCalculaSoloExistenciaVigente()
+    {
+        using var factory = new FarmaciaApiFactory();
+        var password = await factory.SeedAsync();
+        using var client = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/medicamentos/catalogo")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/medicamentos/catalogo/1")).StatusCode);
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/medicamentos/catalogo")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/medicamentos/catalogo/1")).StatusCode);
+        await factory.GrantAllAsync();
+
+        var category = await CreateCategoryAsync(client);
+        var brand = await CreateBrandAsync(client);
+        var anotherCategory = await client.PostAsJsonAsync("/api/categorias",
+            new GuardarCatalogoFarmaciaRequest { Nombre = "Antibióticos" });
+        var anotherBrand = await client.PostAsJsonAsync("/api/marcas",
+            new GuardarCatalogoFarmaciaRequest { Nombre = "Otra marca" });
+        Assert.Equal(HttpStatusCode.Created, anotherCategory.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, anotherBrand.StatusCode);
+        var category2 = await anotherCategory.Content.ReadFromJsonAsync<CategoriaResponse>();
+        var brand2 = await anotherBrand.Content.ReadFromJsonAsync<MarcaResponse>();
+        Assert.NotNull(category2);
+        Assert.NotNull(brand2);
+
+        var medicineResponse = await client.PostAsJsonAsync("/api/medicamentos",
+            new GuardarMedicamentoRequest
+            {
+                IdCategoria = category.IdCategoria, IdMarca = brand.IdMarca,
+                Codigo = "MED-CAT-1", Nombre = "Paracetamol",
+                Descripcion = "Tabletas", ImagenURL = "https://example.test/med.png",
+                PrecioVenta = 12.50m
+            });
+        var otherResponse = await client.PostAsJsonAsync("/api/medicamentos",
+            new GuardarMedicamentoRequest
+            {
+                IdCategoria = category2.IdCategoria, IdMarca = brand2.IdMarca,
+                Codigo = "MED-CAT-2", Nombre = "Amoxicilina", PrecioVenta = 20m
+            });
+        var inactiveResponse = await client.PostAsJsonAsync("/api/medicamentos",
+            new GuardarMedicamentoRequest
+            {
+                IdCategoria = category.IdCategoria, IdMarca = brand.IdMarca,
+                Codigo = "MED-CAT-3", Nombre = "Inactivo", PrecioVenta = 10m,
+                Activo = false
+            });
+        Assert.Equal(HttpStatusCode.Created, medicineResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, otherResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, inactiveResponse.StatusCode);
+        var medicine = await medicineResponse.Content.ReadFromJsonAsync<MedicamentoResponse>();
+        var inactive = await inactiveResponse.Content.ReadFromJsonAsync<MedicamentoResponse>();
+        Assert.NotNull(medicine);
+        Assert.NotNull(inactive);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var lots = new[]
+        {
+            Lot(medicine.IdMedicamento, 5, "CAT-1"),
+            Lot(medicine.IdMedicamento, 2, "CAT-2"),
+            Lot(medicine.IdMedicamento, 0, "CAT-3"),
+            Lot(medicine.IdMedicamento, 4, "CAT-4", today.AddDays(-10), today.AddDays(-1)),
+            Lot(medicine.IdMedicamento, 3, "CAT-5", today.AddDays(-1), today)
+        };
+        foreach (var lot in lots)
+            Assert.Equal(HttpStatusCode.Created,
+                (await client.PostAsJsonAsync("/api/lotes-medicamento", lot)).StatusCode);
+
+        var catalog = await client.GetFromJsonAsync<PagedResponse<CatalogoMedicamentoResponse>>(
+            "/api/medicamentos/catalogo?page=1&pageSize=1");
+        Assert.NotNull(catalog);
+        Assert.Equal(2, catalog.TotalCount);
+        var item = Assert.Single(catalog.Items);
+        Assert.Equal(medicine.IdMedicamento, item.IdMedicamento);
+        Assert.Equal("MED-CAT-1", item.Codigo);
+        Assert.Equal("Paracetamol", item.Nombre);
+        Assert.Equal(12.50m, item.PrecioVenta);
+        Assert.Equal("Laboratorio", item.Marca);
+        Assert.Equal("Analgésicos", item.Categoria);
+        Assert.Equal("Tabletas", item.Descripcion);
+        Assert.Equal("https://example.test/med.png", item.ImagenURL);
+        Assert.Equal(7, item.ExistenciaTotal);
+        var secondPage = await client.GetFromJsonAsync<PagedResponse<CatalogoMedicamentoResponse>>(
+            "/api/medicamentos/catalogo?page=2&pageSize=1");
+        Assert.NotNull(secondPage);
+        Assert.Equal(2, secondPage.TotalCount);
+        Assert.Equal(0, Assert.Single(secondPage.Items).ExistenciaTotal);
+
+        var filtered = await client.GetFromJsonAsync<PagedResponse<CatalogoMedicamentoResponse>>(
+            $"/api/medicamentos/catalogo?nombre=PARA&categoriaId={category.IdCategoria}&marcaId={brand.IdMarca}");
+        Assert.NotNull(filtered);
+        Assert.Equal(1, filtered.TotalCount);
+        Assert.Equal(medicine.IdMedicamento, Assert.Single(filtered.Items).IdMedicamento);
+        var none = await client.GetFromJsonAsync<PagedResponse<CatalogoMedicamentoResponse>>(
+            $"/api/medicamentos/catalogo?categoriaId={category2.IdCategoria}&marcaId={brand.IdMarca}");
+        Assert.NotNull(none);
+        Assert.Empty(none.Items);
+
+        var detail = await client.GetFromJsonAsync<CatalogoMedicamentoResponse>(
+            $"/api/medicamentos/catalogo/{medicine.IdMedicamento}");
+        Assert.NotNull(detail);
+        Assert.Equal(7, detail.ExistenciaTotal);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync($"/api/medicamentos/catalogo/{inactive.IdMedicamento}")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/medicamentos/catalogo?page=0")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/medicamentos/catalogo?categoriaId=0")).StatusCode);
+    }
+
+    [Fact]
     public async Task CrudMantieneRelacionesYAplicaBajasLogicas()
     {
         using var factory = new FarmaciaApiFactory();

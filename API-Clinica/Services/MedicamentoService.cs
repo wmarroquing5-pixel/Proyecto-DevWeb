@@ -11,6 +11,63 @@ namespace API_Clinica.Services;
 public sealed class MedicamentoService(
     ClinicaDbContext context, ICommonParameterValidator parameterValidator) : IMedicamentoService
 {
+    public async Task<PagedResponse<CatalogoMedicamentoResponse>> ListarCatalogoAsync(
+        string? nombre, int? categoriaId, int? marcaId,
+        int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var pagination = parameterValidator.ValidatePagination(page, pageSize);
+        if (categoriaId is <= 0)
+            throw FarmaciaValidation.Invalid("categoriaId", "Debe ser mayor que cero.");
+        if (marcaId is <= 0)
+            throw FarmaciaValidation.Invalid("marcaId", "Debe ser mayor que cero.");
+
+        var nombreFiltrado = FarmaciaValidation.OptionalText(nombre, "nombre", 150);
+        var medicamentos = context.Medicamentos.AsNoTracking().Where(m => m.Activo);
+        if (nombreFiltrado is not null)
+        {
+            var nombreNormalizado = nombreFiltrado.ToLowerInvariant();
+            medicamentos = medicamentos.Where(m => m.Nombre.ToLower().Contains(nombreNormalizado));
+        }
+        if (categoriaId.HasValue)
+            medicamentos = medicamentos.Where(m => m.IdCategoria == categoriaId.Value);
+        if (marcaId.HasValue)
+            medicamentos = medicamentos.Where(m => m.IdMarca == marcaId.Value);
+
+        var total = await medicamentos.LongCountAsync(cancellationToken);
+        var fechaActual = DateOnly.FromDateTime(DateTime.UtcNow);
+        var pagina = medicamentos.OrderBy(m => m.IdMedicamento)
+            .Skip(pagination.Skip).Take(pagination.PageSize);
+        var items = await ConsultaCatalogo(pagina, fechaActual).ToListAsync(cancellationToken);
+        return new(items, page, pageSize, total);
+    }
+
+    public async Task<CatalogoMedicamentoResponse> ObtenerCatalogoAsync(
+        int id, CancellationToken cancellationToken)
+    {
+        var fechaActual = DateOnly.FromDateTime(DateTime.UtcNow);
+        var medicamentos = context.Medicamentos.AsNoTracking()
+            .Where(m => m.IdMedicamento == id && m.Activo);
+        return await ConsultaCatalogo(medicamentos, fechaActual)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException("Medicamento no encontrado en el catálogo.");
+    }
+
+    private IQueryable<CatalogoMedicamentoResponse> ConsultaCatalogo(
+        IQueryable<Medicamento> medicamentos, DateOnly fechaActual) =>
+        from medicamento in medicamentos
+        join categoria in context.Categorias.AsNoTracking()
+            on medicamento.IdCategoria equals categoria.IdCategoria
+        join marca in context.Marcas.AsNoTracking()
+            on medicamento.IdMarca equals marca.IdMarca
+        select new CatalogoMedicamentoResponse(
+            medicamento.IdMedicamento, medicamento.Codigo, medicamento.Nombre,
+            medicamento.PrecioVenta, marca.Nombre, categoria.Nombre,
+            medicamento.Descripcion, medicamento.ImagenURL,
+            context.LoteMedicamentos.AsNoTracking()
+                .Where(lote => lote.IdMedicamento == medicamento.IdMedicamento &&
+                    lote.FechaVencimiento > fechaActual && lote.CantidadDisponible > 0)
+                .Sum(lote => (long?)lote.CantidadDisponible) ?? 0L);
+
     public async Task<PagedResponse<MedicamentoResponse>> ListarAsync(
         int page, int pageSize, CancellationToken cancellationToken)
     {

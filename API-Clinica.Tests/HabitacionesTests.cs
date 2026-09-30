@@ -212,6 +212,46 @@ public sealed class HabitacionesTests
         Assert.Empty(await db.AsignacionesHabitacion.Where(a => a.FechaEgreso == null).ToListAsync());
     }
 
+    [Fact(Skip = "Pendiente SQL Server aislado: EF InMemory no reproduce los bloqueos transaccionales de habitaciones.")]
+    public async Task DosSolicitudesSimultaneasNoDejanDosAsignacionesActivas()
+    {
+        using var factory = new RoomApiFactory();
+        var password = await factory.SeedAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Pacientes.Add(new Paciente
+            {
+                IdPaciente = 2, Nombres = "Segundo", Apellidos = "Paciente",
+                FechaNacimiento = new DateOnly(2000, 1, 1),
+                FechaRegistro = DateTime.UtcNow, Activo = true
+            });
+            await db.SaveChangesAsync();
+        }
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await LoginAsync(firstClient, password);
+        await LoginAsync(secondClient, password);
+        var created = await firstClient.PostAsJsonAsync("/api/habitaciones",
+            new CrearHabitacionRequest { IdSucursal = 1, NumeroHabitacion = "Concurrente" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var room = await created.Content.ReadFromJsonAsync<HabitacionResponse>();
+        Assert.NotNull(room);
+
+        var responses = await Task.WhenAll(
+            firstClient.PostAsJsonAsync("/api/asignaciones-habitacion",
+                new CrearAsignacionHabitacionRequest { IdHabitacion = room.IdHabitacion, IdPaciente = 1 }),
+            secondClient.PostAsJsonAsync("/api/asignaciones-habitacion",
+                new CrearAsignacionHabitacionRequest { IdHabitacion = room.IdHabitacion, IdPaciente = 2 }));
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        using var verifyScope = factory.Services.CreateScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+        Assert.Single(await verify.AsignacionesHabitacion
+            .Where(a => a.IdHabitacion == room.IdHabitacion && a.FechaEgreso == null).ToListAsync());
+        Assert.Equal("Ocupada", (await verify.Habitaciones.SingleAsync()).Estado);
+    }
+
     [Fact]
     public async Task AsignacionRechazaPacienteInactivoYEstadoForzado()
     {

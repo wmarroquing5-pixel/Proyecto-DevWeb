@@ -6,6 +6,8 @@ public class VentaDetalle
 
     public int IdVenta { get; set; }
 
+    public Venta Venta { get; set; } = null!;
+
     public int IdLote { get; set; }
 
     public int Cantidad { get; set; }

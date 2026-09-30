@@ -41,6 +41,71 @@ public sealed class CatalogosTests
     }
 
     [Fact]
+    public async Task CadaOperacionExigeSuPermisoActualYDenegacionNoEscribe()
+    {
+        using var factory = new CatalogApiFactory();
+        var password = await factory.SeedUserAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var request = new GuardarSucursalRequest { Nombre = "Permisos" };
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Sucursales", PuedeConsultar = true });
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/sucursales")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/sucursales", request)).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            Assert.Empty(await db.Sucursales.ToListAsync());
+            (await db.Permisos.SingleAsync()).PuedeCrear = true;
+            await db.SaveChangesAsync();
+        }
+
+        var created = await client.PostAsJsonAsync("/api/sucursales", request);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var sucursal = await created.Content.ReadFromJsonAsync<SucursalResponse>();
+        Assert.NotNull(sucursal);
+        var updatedRequest = new GuardarSucursalRequest { Nombre = "Modificada" };
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PutAsJsonAsync($"/api/sucursales/{sucursal.IdSucursal}", updatedRequest)).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            Assert.Equal("Permisos", (await db.Sucursales.SingleAsync()).Nombre);
+            (await db.Permisos.SingleAsync()).PuedeModificar = true;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PutAsJsonAsync($"/api/sucursales/{sucursal.IdSucursal}", updatedRequest)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.DeleteAsync($"/api/sucursales/{sucursal.IdSucursal}")).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            Assert.True((await db.Sucursales.SingleAsync()).Activa);
+            (await db.Permisos.SingleAsync()).PuedeEliminar = true;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.DeleteAsync($"/api/sucursales/{sucursal.IdSucursal}")).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            Assert.False((await db.Sucursales.SingleAsync()).Activa);
+            (await db.Permisos.SingleAsync()).PuedeConsultar = false;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/sucursales")).StatusCode);
+    }
+
+    [Fact]
     public async Task SucursalCrudKeepsRowOnDeleteAndValidatesInput()
     {
         using var factory = new CatalogApiFactory();
