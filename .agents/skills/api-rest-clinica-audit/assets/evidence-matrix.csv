@@ -1,7 +1,0 @@
-TestId,Requirement,Category,EndpointOrComponent,Preconditions,Expected,Actual,HttpStatus,Evidence,Status,Severity,Notes
-ARC-001,RQ-ARCH-01,Architecture,,,,,,,,,
-AUTH-001,RQ-AUTH-01,Authentication,,,,,,,,,
-PERM-011,RQ-AUTH-05,Authorization,,,,,,,,,
-SALE-005,RQ-SALE-04/RQ-BR-01,BusinessRule,,,,,,,,,
-ROOM-004,RQ-BR-04,BusinessRule,,,,,,,,,
-SIG-003,RQ-ROOM-03,Realtime,,,,,,,,,
