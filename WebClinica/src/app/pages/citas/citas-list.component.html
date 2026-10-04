@@ -1,0 +1,388 @@
+<!--
+  Módulo Citas — agenda diaria + programación + estados en tiempo real (SignalR).
+  Sin arrow functions ni lógica de fechas en la plantilla (reglas del linter de templates):
+  todo se resuelve con métodos del componente.
+-->
+<div class="container-fluid py-3">
+
+  <!-- ================= cabecera ================= -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h4 class="mb-1"><i class="bi bi-calendar-check me-2 text-primary"></i>Citas médicas</h4>
+      <p class="text-muted small mb-0">{{ fechaLegible(fechaDia) }}</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge rounded-pill"
+            [class]="conexion() === 'conectado' ? 'text-bg-success' : (conexion() === 'error' ? 'text-bg-danger' : 'text-bg-secondary')">
+        <i class="bi bi-broadcast me-1"></i>{{ conexion() }}
+      </span>
+      <button class="btn btn-primary btn-sm" type="button" (click)="abrirNueva()">
+        <i class="bi bi-plus-lg me-1"></i>Nueva cita
+      </button>
+    </div>
+  </div>
+
+  <!-- avisos -->
+  @if (aviso) {
+    <div class="alert alert-success alert-dismissible py-2 small" role="alert">
+      {{ aviso }}
+      <button type="button" class="btn-close btn-sm" (click)="aviso = ''" aria-label="Cerrar"></button>
+    </div>
+  }
+  @if (error) {
+    <div class="alert alert-danger alert-dismissible py-2 small" role="alert">
+      {{ error }}
+      <button type="button" class="btn-close btn-sm" (click)="error = ''" aria-label="Cerrar"></button>
+    </div>
+  }
+
+  <!-- ================= KPIs del día ================= -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-2">
+      <div class="card kpi-card h-100">
+        <div class="card-body py-2 text-center">
+          <div class="fs-3 fw-bold">{{ resumen()?.totalHoy ?? 0 }}</div>
+          <div class="small text-muted">Total del día</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <button class="card kpi-card kpi-warning h-100 border-0 text-start" type="button" (click)="setFiltroEstado('Programada')">
+        <div class="card-body py-2 text-center">
+          <div class="fs-3 fw-bold">{{ resumen()?.programadas ?? 0 }}</div>
+          <div class="small text-muted">Programadas</div>
+        </div>
+      </button>
+    </div>
+    <div class="col-6 col-md-2">
+      <button class="card kpi-card kpi-primary h-100 border-0 text-start" type="button" (click)="setFiltroEstado('Confirmada')">
+        <div class="card-body py-2 text-center">
+          <div class="fs-3 fw-bold">{{ resumen()?.confirmadas ?? 0 }}</div>
+          <div class="small text-muted">Confirmadas</div>
+        </div>
+      </button>
+    </div>
+    <div class="col-6 col-md-2">
+      <button class="card kpi-card kpi-success h-100 border-0 text-start" type="button" (click)="setFiltroEstado('Atendida')">
+        <div class="card-body py-2 text-center">
+          <div class="fs-3 fw-bold">{{ resumen()?.atendidas ?? 0 }}</div>
+          <div class="small text-muted">Atendidas</div>
+        </div>
+      </button>
+    </div>
+    <div class="col-6 col-md-2">
+      <button class="card kpi-card kpi-danger h-100 border-0 text-start" type="button" (click)="setFiltroEstado('Cancelada')">
+        <div class="card-body py-2 text-center">
+          <div class="fs-3 fw-bold">{{ resumen()?.canceladas ?? 0 }}</div>
+          <div class="small text-muted">Canceladas</div>
+        </div>
+      </button>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card kpi-card h-100">
+        <div class="card-body py-2 text-center">
+          <div class="fs-3 fw-bold">{{ resumen()?.ocupacionPct ?? 0 }}%</div>
+          <div class="small text-muted">Ocupación</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- ================= columna izquierda: agenda + filtros ================= -->
+    <div class="col-lg-8">
+
+      <!-- navegación de fecha -->
+      <div class="card mb-3 shadow-sm">
+        <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+          <button class="btn btn-outline-secondary btn-sm" type="button" (click)="cambiarDia(-1)" title="Día anterior">
+            <i class="bi bi-chevron-left"></i>
+          </button>
+          <input class="form-control form-control-sm w-auto" type="date" [(ngModel)]="fechaDia" (change)="onFechaChange()" />
+          <button class="btn btn-outline-secondary btn-sm" type="button" (click)="cambiarDia(1)" title="Día siguiente">
+            <i class="bi bi-chevron-right"></i>
+          </button>
+          @if (!esHoy()) {
+            <button class="btn btn-link btn-sm" type="button" (click)="fechaDia = hoy(); onFechaChange()">Hoy</button>
+          }
+          <span class="ms-auto small text-muted">Filtrar:</span>
+          <button class="btn btn-sm" type="button"
+                  [class]="filtroEstado === '' ? 'btn-dark' : 'btn-outline-secondary'"
+                  (click)="setFiltroEstado('')">Todas</button>
+          @for (e of estados; track e) {
+            <button class="btn btn-sm" type="button"
+                    [class]="filtroEstado === e ? 'btn-dark' : 'btn-outline-secondary'"
+                    (click)="setFiltroEstado(e)">{{ estadoLabel[e] }}</button>
+          }
+        </div>
+      </div>
+
+      <!-- disponibilidad por franjas del médico seleccionado -->
+      <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-white py-2 d-flex flex-wrap align-items-center gap-2">
+          <i class="bi bi-calendar-week text-primary"></i>
+          <strong class="small">Disponibilidad por franjas</strong>
+          <select class="form-select form-select-sm ms-auto w-auto" [(ngModel)]="medicoSel" (change)="cargarAgenda()">
+            @for (m of medicos(); track m.idEmpleado) {
+              <option [ngValue]="m.idEmpleado">{{ m.nombre }} — {{ m.especialidad }}</option>
+            }
+          </select>
+        </div>
+        <div class="card-body py-3">
+          <div class="d-flex flex-wrap gap-2">
+            @for (f of agenda(); track f.hora) {
+              @if (f.disponible) {
+                <button class="btn btn-sm franja-libre" type="button" (click)="abrirNueva(f.hora)"
+                        title="Franja libre — clic para agendar">
+                  <i class="bi bi-plus-circle me-1"></i>{{ f.hora }}
+                </button>
+              } @else {
+                <span class="badge franja-ocupada align-self-center"
+                      [title]="f.cita ? f.cita.pacienteNombre : ''">
+                  {{ f.hora }} · {{ f.cita ? f.cita.pacienteNombre : '' }}
+                </span>
+              }
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- listado de citas del día -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-white py-2 d-flex align-items-center">
+          <i class="bi bi-list-check text-primary me-2"></i>
+          <strong class="small">Citas del día ({{ citasOrdenadas.length }})</strong>
+          @if (cargando) {
+            <span class="spinner-border spinner-border-sm ms-auto" role="status" aria-label="Cargando"></span>
+          }
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 70px;">Hora</th>
+                <th>Paciente</th>
+                <th>Médico / Especialidad</th>
+                <th>Sucursal</th>
+                <th style="width: 90px;">Duración</th>
+                <th style="width: 120px;">Estado</th>
+                <th class="text-end" style="width: 260px;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of citasOrdenadas; track c.idCita) {
+                <tr [class]="filaClase(c)">
+                  <td class="fw-semibold">{{ horaDe(c) }}</td>
+                  <td>
+                    {{ c.pacienteNombre }}
+                    @if (c.motivo) {
+                      <div class="small text-muted text-truncate" style="max-width: 260px;">{{ c.motivo }}</div>
+                    }
+                  </td>
+                  <td>
+                    {{ c.medicoNombre }}
+                    <div class="small text-muted">{{ c.especialidad }}</div>
+                  </td>
+                  <td class="small">{{ c.sucursalNombre }}</td>
+                  <td class="small">{{ c.duracionMin }} min</td>
+                  <td>
+                    <span class="badge" [class]="estadoClase[c.estado]">
+                      <i [class]="iconoEstado(c.estado) + ' me-1'"></i>{{ estadoLabel[c.estado] }}
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    @for (acc of accionesDe(c); track acc) {
+                      <button class="btn btn-sm btn-outline-secondary me-1" type="button"
+                              (click)="cambiarEstado(c, acc)"
+                              [title]="estadoLabel[acc]">
+                        {{ estadoLabel[acc] }}
+                      </button>
+                    }
+                    @if (c.estado !== 'Atendida' && c.estado !== 'Cancelada') {
+                      <button class="btn btn-sm btn-outline-primary" type="button"
+                              (click)="abrirReprogramar(c)" title="Reprogramar fecha/hora">
+                        <i class="bi bi-arrow-repeat"></i>
+                      </button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-4">
+                    <i class="bi bi-calendar-x d-block fs-3 mb-1"></i>
+                    No hay citas para el día seleccionado.
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= columna derecha: feed SignalR ================= -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm live-card">
+        <div class="card-header bg-white py-2">
+          <i class="bi bi-broadcast text-success me-1"></i>
+          <strong class="small">Actividad en vivo</strong>
+          <span class="small text-muted ms-1">(CitasHub · SignalR)</span>
+        </div>
+        <div class="card-body p-0">
+          <ul class="list-group list-group-flush feed">
+            @for (e of eventos(); track $index) {
+              <li class="list-group-item py-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge" [class]="accionClase(e.accion)">{{ e.accion }}</span>
+                  <span class="small text-muted">{{ horaEvento(e) }}</span>
+                </div>
+                <div class="small mt-1">
+                  <strong>{{ e.pacienteNombre }}</strong> · {{ e.medicoNombre }}
+                </div>
+                <div class="small text-muted">
+                  {{ e.estadoAnterior ? e.estadoAnterior + ' → ' + e.estadoNuevo : 'Nueva cita: ' + e.estadoNuevo }}
+                  · por {{ e.usuario }}
+                </div>
+              </li>
+            } @empty {
+              <li class="list-group-item text-center text-muted small py-4">
+                Esperando eventos del hub… los cambios de otros usuarios aparecen aquí al instante.
+              </li>
+            }
+          </ul>
+        </div>
+      </div>
+
+      <div class="card mt-3 shadow-sm">
+        <div class="card-body small text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          La agenda valida contra <code>UQ_Cita_Medico_Horario</code>: un médico no puede tener
+          dos citas en la misma franja. Estados posibles: Programada → Confirmada → Atendida,
+          o Cancelada (reprogramable). Al conectar el backend, estos cambios llegan por el canal
+          <code>"CitaActualizada"</code> de <code>/hubs/citas</code>.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= modal: programar cita ================= -->
+@if (modalAbierto) {
+  <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,.5);" (click)="modalAbierto = false">
+    <div class="modal-dialog modal-dialog-centered" (click)="$event.stopPropagation()">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title"><i class="bi bi-calendar-plus me-1 text-primary"></i>Programar cita</h6>
+          <button type="button" class="btn-close" (click)="modalAbierto = false" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <form #f="ngForm" (ngSubmit)="guardar()">
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1">Paciente *</label>
+                <select class="form-select form-select-sm" name="paciente"
+                        [(ngModel)]="form.idPaciente" required>
+                  <option [ngValue]="null">— Seleccione paciente —</option>
+                  @for (p of pacientes(); track p.idPaciente) {
+                    <option [ngValue]="p.idPaciente">{{ p.nombre }}</option>
+                  }
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label small mb-1">Médico *</label>
+                <select class="form-select form-select-sm" name="medico"
+                        [(ngModel)]="form.idMedico" (change)="onMedicoChange()" required>
+                  <option [ngValue]="null">— Seleccione médico —</option>
+                  @for (m of medicos(); track m.idEmpleado) {
+                    <option [ngValue]="m.idEmpleado">{{ m.nombre }} — {{ m.especialidad }}</option>
+                  }
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1">Fecha *</label>
+                <input class="form-control form-control-sm" type="date" name="fecha"
+                       [(ngModel)]="form.fecha" required />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1">Hora *</label>
+                <select class="form-select form-select-sm" name="hora" [(ngModel)]="form.hora" required>
+                  <option value="">— Franja —</option>
+                  @for (h of horas; track h) {
+                    <option [value]="h">{{ h }}</option>
+                  }
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1">Duración (min) *</label>
+                <input class="form-control form-control-sm" type="number" name="duracion"
+                       [(ngModel)]="form.duracionMin" min="15" step="15" required />
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1">Sucursal</label>
+                <input class="form-control form-control-sm" type="text" readonly
+                       [value]="form.idSucursal ? ('Sucursal #' + form.idSucursal) : 'Se asigna con el médico'" />
+              </div>
+              <div class="col-12">
+                <label class="form-label small mb-1">Motivo</label>
+                <textarea class="form-control form-control-sm" name="motivo" rows="2"
+                          [(ngModel)]="form.motivo" placeholder="Motivo de la consulta"></textarea>
+              </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="modalAbierto = false">Cancelar</button>
+              <button type="submit" class="btn btn-sm btn-primary" [disabled]="f.invalid || guardando">
+                @if (guardando) {
+                  <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Programar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ================= modal: reprogramar ================= -->
+@if (modalReprog && reprogTarget) {
+  <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,.5);" (click)="cerrarModalReprog()">
+    <div class="modal-dialog modal-dialog-centered" (click)="$event.stopPropagation()">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title">
+            <i class="bi bi-arrow-repeat me-1 text-primary"></i>Reprogramar cita — {{ reprogTarget.pacienteNombre }}
+          </h6>
+          <button type="button" class="btn-close" (click)="cerrarModalReprog()" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small mb-1">Nueva fecha *</label>
+              <input class="form-control form-control-sm" type="date" [(ngModel)]="reprogForm.fecha" />
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1">Nueva hora *</label>
+              <select class="form-select form-select-sm" [(ngModel)]="reprogForm.hora">
+                @for (h of horas; track h) {
+                  <option [value]="h">{{ h }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label small mb-1">Motivo / notas</label>
+              <textarea class="form-control form-control-sm" rows="2" [(ngModel)]="reprogForm.motivo"></textarea>
+            </div>
+          </div>
+          <div class="small text-muted mt-2">
+            Médico: {{ reprogTarget.medicoNombre }} · Estado actual: {{ estadoLabel[reprogTarget.estado] }}
+          </div>
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="cerrarModalReprog()">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-primary" (click)="confirmarReprogramar()">Guardar cambio</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}

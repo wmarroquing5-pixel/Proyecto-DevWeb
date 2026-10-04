@@ -1,0 +1,59 @@
+/* Módulo Citas — agenda diaria */
+
+.kpi-card {
+  border: 1px solid var(--bs-border-color);
+  cursor: default;
+}
+button.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .08);
+}
+.kpi-warning .fs-3 { color: #b8860b; }
+.kpi-primary .fs-3 { color: var(--bs-primary); }
+.kpi-success .fs-3 { color: var(--bs-success-text-emphasis); }
+.kpi-danger  .fs-3 { color: var(--bs-danger-text-emphasis); }
+
+/* Franjas horarias */
+.franja-libre {
+  border: 1px dashed var(--bs-success-border-subtle);
+  background: var(--bs-success-bg-subtle);
+  color: var(--bs-success-text-emphasis);
+  font-variant-numeric: tabular-nums;
+}
+.franja-libre:hover {
+  border-style: solid;
+  background: var(--bs-success);
+  color: #fff;
+}
+.franja-ocupada {
+  background: var(--bs-secondary-bg);
+  color: var(--bs-body-color);
+  font-weight: 500;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Filas por estado */
+.fila-programada td { background: rgba(255, 193, 7, .07); }
+.fila-confirmada td { background: rgba(13, 110, 253, .06); }
+.fila-atendida   td { background: rgba(25, 135, 84, .07); }
+.fila-cancelada  td { background: rgba(220, 53, 69, .06); }
+.fila-cancelada td:nth-child(2) { text-decoration: line-through; opacity: .65; }
+
+/* Flash cuando llega un evento del hub */
+.fila-flash td {
+  animation: flash-cita 1.6s ease-out;
+}
+@keyframes flash-cita {
+  0%   { background-color: rgba(13, 202, 24, .35); }
+  100% { background-color: transparent; }
+}
+
+/* Feed en vivo con scroll */
+.live-card .feed {
+  max-height: 420px;
+  overflow-y: auto;
+}

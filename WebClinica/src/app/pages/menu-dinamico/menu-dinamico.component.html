@@ -1,0 +1,75 @@
+<div class="page">
+
+  <header class="page-header">
+    <h1><i class="bi bi-list-nested"></i> Menú Dinámico por Rol</h1>
+    <p>
+      Demo de diseño sin backend: selecciona un perfil y observa cómo
+      <strong>{{ menuService.menu().length }}</strong> ítems quedan visibles
+      para el rol <code>{{ perfilActivo.roles.join(', ') }}</code>.
+    </p>
+  </header>
+
+  <!-- Selector de perfil simulado -->
+  <section class="profile-bar">
+    @for (p of perfiles; track p.nombre) {
+      <button type="button"
+              class="profile-chip"
+              [class.active]="p.nombre === perfilActivo.nombre"
+              (click)="cambiarPerfil(p)">
+        <i class="bi bi-person-badge"></i> {{ p.nombre }}
+      </button>
+    }
+  </section>
+
+  <!-- Renderizado del menú filtrado (recursivo hasta 2 niveles) -->
+  <section class="menu-card">
+    <ul class="menu">
+      @for (item of menuService.menu(); track item.label) {
+        <li class="menu-item">
+
+          @if (hasChildren(item)) {
+            <button type="button" class="menu-link submenu-toggle"
+                    (click)="toggle(item.label)">
+              <i [class]="item.icon ?? 'bi bi-folder'"></i>
+              <span>{{ item.label }}</span>
+              <i class="bi bi-chevron-down chevron"
+                 [class.rotated]="open[item.label]"></i>
+            </button>
+
+            @if (open[item.label]) {
+              <ul class="submenu">
+                @for (child of item.children; track child.label) {
+                  <li>
+                    <a [routerLink]="child.route" routerLinkActive="active"
+                       class="menu-link child">
+                      <i [class]="child.icon ?? 'bi bi-dot'"></i>
+                      <span>{{ child.label }}</span>
+                    </a>
+                  </li>
+                }
+              </ul>
+            }
+          } @else {
+            <a [routerLink]="item.route" routerLinkActive="active"
+               class="menu-link">
+              <i [class]="item.icon ?? 'bi bi-circle'"></i>
+              <span>{{ item.label }}</span>
+            </a>
+          }
+
+        </li>
+      } @empty {
+        <li class="menu-empty">
+          <i class="bi bi-shield-lock"></i> Este rol no tiene módulos habilitados
+        </li>
+      }
+    </ul>
+  </section>
+
+  <!-- Vista JSON: contrato exacto que debe devolver GET /api/menu -->
+  <details class="json-view">
+    <summary><i class="bi bi-braces"></i> Ver JSON del menú (contrato de la API)</summary>
+    <pre>{{ menuJson() }}</pre>
+  </details>
+
+</div>

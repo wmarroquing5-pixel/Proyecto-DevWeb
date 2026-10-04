@@ -1,0 +1,327 @@
+<div class="page">
+  <!-- Encabezado + indicador de conexión SignalR (inciso ii) -->
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h4 class="mb-1"><i class="bi bi-door-closed me-2"></i>Habitaciones disponibles</h4>
+      <p class="text-muted small mb-0">
+        Registro y control de estado · Pacientes por habitación · Asignación con fechas de ingreso y egreso.
+      </p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge conexion" [ngClass]="'c-' + conexion()" title="SignalR · HabitacionesHub">
+        <span class="dot"></span>{{ conexionLabel[conexion()] }}
+      </span>
+      <button class="btn btn-primary btn-sm" (click)="abrirNueva()">
+        <i class="bi bi-plus-lg me-1"></i>Nueva habitación
+      </button>
+    </div>
+  </div>
+
+  @if (error()) { <div class="alert alert-danger py-2 small">{{ error() }}</div> }
+  @if (aviso()) { <div class="alert alert-success py-2 small">{{ aviso() }}</div> }
+
+  <!-- KPIs clicables: semáforo de ocupación -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <button class="kpi k-total w-100" (click)="setFiltroEstado('')">
+        <span class="num">{{ resumen()?.total ?? '—' }}</span>
+        <span class="lbl">Habitaciones activas</span>
+      </button>
+    </div>
+    <div class="col-6 col-md-3">
+      <button class="kpi k-libre w-100" [class.on]="filtroEstado === 'Libre'" (click)="setFiltroEstado('Libre')">
+        <span class="num">{{ resumen()?.libres ?? '—' }}</span>
+        <span class="lbl">Libres</span>
+      </button>
+    </div>
+    <div class="col-6 col-md-3">
+      <button class="kpi k-ocupada w-100" [class.on]="filtroEstado === 'Ocupada'" (click)="setFiltroEstado('Ocupada')">
+        <span class="num">{{ resumen()?.ocupadas ?? '—' }}</span>
+        <span class="lbl">Ocupadas</span>
+      </button>
+    </div>
+    <div class="col-6 col-md-3">
+      <button class="kpi k-limpieza w-100" [class.on]="filtroEstado === 'En limpieza'" (click)="setFiltroEstado('En limpieza')">
+        <span class="num">{{ resumen()?.enLimpieza ?? '—' }}</span>
+        <span class="lbl">En limpieza</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Columna principal: tablero de tarjetas -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <strong class="small">Tablero de habitaciones</strong>
+          <select class="form-select form-select-sm w-auto" [(ngModel)]="idSucursalFiltro" (change)="onSucursalChange()">
+            <option [ngValue]="0">Todas las sucursales</option>
+            @for (s of sucursales; track s.idSucursal) {
+              <option [ngValue]="s.idSucursal">{{ s.nombre }}</option>
+            }
+          </select>
+        </div>
+        <div class="card-body">
+          @if (cargando()) {
+            <div class="text-center py-5 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando…</div>
+          } @else if (visibles.length === 0) {
+            <div class="text-center py-5 text-muted">No hay habitaciones con los filtros aplicados.</div>
+          } @else {
+            <div class="board">
+              @for (h of visibles; track h.idHabitacion) {
+                <div class="hab" [class]="estadoUI[h.estado].css" [class.flash]="resaltadas.has(h.idHabitacion)"
+                     (click)="seleccionar(h)">
+                  <div class="hab-top">
+                    <span class="numero"><i class="bi me-1" [ngClass]="estadoUI[h.estado].icono"></i>{{ h.numeroHabitacion }}</span>
+                    <span class="estado-chip">{{ h.estado }}</span>
+                  </div>
+                  <div class="hab-sub small text-muted">{{ h.tipoHabitacion || 'Sin tipo' }} · {{ h.sucursalNombre }}</div>
+                  @if (h.estado === 'Ocupada') {
+                    <div class="paciente mt-2">
+                      <i class="bi bi-person-heart me-1"></i>{{ h.pacienteNombre }}
+                      <div class="small text-muted mt-1">
+                        Ingreso: {{ fmtFecha(h.fechaIngreso) }} · {{ diasDe(h) }} día(s)
+                      </div>
+                    </div>
+                  } @else {
+                    <div class="vacio mt-2"><i class="bi bi-inbox"></i> Sin paciente asignado</div>
+                  }
+                  <div class="hab-actions mt-2" (click)="$event.stopPropagation()">
+                    @if (h.estado === 'Libre') {
+                      <button class="btn btn-sm btn-success" (click)="abrirAsignacion(h)">
+                        <i class="bi bi-person-plus me-1"></i>Asignar paciente
+                      </button>
+                      <button class="btn btn-sm btn-outline-secondary" (click)="cambiarEstado(h, 'En limpieza')" title="Enviar a limpieza">
+                        <i class="bi bi-bucket"></i>
+                      </button>
+                    } @else if (h.estado === 'Ocupada') {
+                      <button class="btn btn-sm btn-warning" (click)="abrirEgreso(h)">
+                        <i class="bi bi-box-arrow-right me-1"></i>Registrar egreso
+                      </button>
+                    } @else {
+                      <button class="btn btn-sm btn-outline-success" (click)="cambiarEstado(h, 'Libre')">
+                        <i class="bi bi-check-circle me-1"></i>Limpieza finalizada
+                      </button>
+                    }
+                    <button class="btn btn-sm btn-outline-primary" (click)="abrirEditar(h)" title="Editar">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    @if (h.estado !== 'Ocupada') {
+                      <button class="btn btn-sm btn-outline-danger" (click)="desactivar(h)" title="Dar de baja">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- iii. pacientes por habitación: historial de la tarjeta seleccionada -->
+      @if (seleccionada) {
+        <div class="card shadow-sm mt-3">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <strong class="small">
+              <i class="bi bi-people me-1"></i>Pacientes — Habitación {{ seleccionada.numeroHabitacion }}
+              ({{ seleccionada.sucursalNombre }}) · Estado actual: {{ seleccionada.estado }}
+            </strong>
+            <button class="btn-close" (click)="cerrarDetalle()"></button>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr class="small">
+                  <th>Paciente</th><th>Ingreso</th><th>Egreso</th><th>Días</th><th>Observaciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (a of historialSeleccion(); track a.idAsignacion) {
+                  <tr [class.table-success]="!a.fechaEgreso">
+                    <td class="small fw-semibold">{{ a.pacienteNombre }}</td>
+                    <td class="small">{{ fmtFecha(a.fechaIngreso) }}</td>
+                    <td class="small">{{ a.fechaEgreso ? fmtFecha(a.fechaEgreso) : 'Interno' }}</td>
+                    <td class="small">{{ a.diasEstancia }}</td>
+                    <td class="small text-muted">{{ a.observaciones || '—' }}</td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="5" class="text-center text-muted small py-3">Sin historial de asignaciones.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Columna lateral: feed en tiempo real (inciso ii) -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm rt-card">
+        <div class="card-header bg-white d-flex align-items-center justify-content-between">
+          <strong class="small"><i class="bi bi-broadcast me-1"></i>Tiempo real (SignalR)</strong>
+          <span class="badge text-bg-secondary">{{ eventos().length }}</span>
+        </div>
+        <div class="card-body feed">
+          @for (e of eventos(); track $index) {
+            <div class="evento">
+              <div class="small">
+                <span class="badge me-1" [ngClass]="{
+                  'text-bg-success': e.estadoNuevo === 'Libre',
+                  'text-bg-danger': e.estadoNuevo === 'Ocupada',
+                  'text-bg-warning': e.estadoNuevo === 'En limpieza' }">{{ e.habitacionNumero }}</span>
+                {{ e.mensaje }}
+              </div>
+              <div class="tiny text-muted mt-1">
+                {{ e.sucursalNombre }} · {{ e.usuarioOrigen }} · {{ horaEvento(e.fechaHora) }}
+                <span class="ms-1" [hidden]="!e.estadoAnterior">({{ e.estadoAnterior }} → {{ e.estadoNuevo }})</span>
+              </div>
+            </div>
+          } @empty {
+            <div class="text-muted small py-4 text-center">
+              Esperando eventos del hub <code>/hubs/habitaciones</code>…<br />
+              Los cambios de otros usuarios aparecerán aquí al instante.
+            </div>
+          }
+        </div>
+      </div>
+      <p class="tiny text-muted mt-2 mb-0">
+        <i class="bi bi-info-circle me-1"></i>Comunicación bidireccional cliente-servidor: el backend .NET 10
+        transmite <code>HabitacionActualizada</code> a los grupos de sucursal; las acciones locales se
+        reflejan optimistamente y todo cambio se persiste en <code>Habitacion.Estado</code> y
+        <code>AsignacionHabitacion</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL i: registro / edición ================= -->
+@if (modalAbierto) {
+  <div class="modal-backdrop show" (click)="modalAbierto = false"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content"><div class="modal-body p-4">
+      <h5 class="mb-3">
+        <i class="bi bi-hospital me-1"></i>{{ editando ? 'Editar habitación' : 'Registrar habitación' }}
+      </h5>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Sucursal *</label>
+          <select class="form-select form-select-sm" [(ngModel)]="form.idSucursal">
+            <option [ngValue]="null">— Seleccione —</option>
+            @for (s of sucursales; track s.idSucursal) {
+              <option [ngValue]="s.idSucursal">{{ s.nombre }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Número de habitación *</label>
+          <input class="form-control form-control-sm" [(ngModel)]="form.numeroHabitacion" maxlength="20" placeholder="Ej. 101, UTI-2" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Tipo</label>
+          <input class="form-control form-control-sm" [(ngModel)]="form.tipoHabitacion" list="tiposHab" maxlength="50" placeholder="Individual, Doble, Suite, UTI…" />
+          <datalist id="tiposHab">
+            <option value="Individual"></option><option value="Doble"></option>
+            <option value="Suite"></option><option value="UTI"></option><option value="Maternidad"></option>
+          </datalist>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Estado</label>
+          <select class="form-select form-select-sm" [(ngModel)]="form.estado">
+            @for (e of estadosEditables; track e) {
+              <option [value]="e">{{ e }}</option>
+            }
+          </select>
+          <div class="tiny text-muted mt-1">«Ocupada» solo se establece asignando un paciente (CHK cerrado).</div>
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button class="btn btn-sm btn-outline-secondary" (click)="modalAbierto = false">Cancelar</button>
+        <button class="btn btn-sm btn-primary" [disabled]="guardando" (click)="guardar()">
+          <span class="spinner-border spinner-border-sm me-1" [hidden]="!guardando"></span>Guardar
+        </button>
+      </div>
+      </div></div>
+    </div>
+  </div>
+
+<!-- ================= MODAL iv: asignar paciente ================= -->
+@if (modalAsig) {
+  <div class="modal-backdrop show" (click)="modalAsig = false"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content"><div class="modal-body p-4">
+      <h5 class="mb-1"><i class="bi bi-person-plus me-1"></i>Asignar paciente</h5>
+      <p class="small text-muted mb-3">
+        Habitación {{ habTarget?.numeroHabitacion }} · {{ habTarget?.sucursalNombre }} — pasará a estado «Ocupada».
+      </p>
+      <label class="form-label small fw-semibold">Paciente *</label>
+      <select class="form-select form-select-sm mb-3" [(ngModel)]="asigForm.idPaciente">
+        <option [ngValue]="0">— Seleccione paciente —</option>
+        @for (p of pacientes(); track p.idPaciente) {
+          <option [ngValue]="p.idPaciente" [disabled]="!!p.habitacionActual">
+            {{ p.nombres }} {{ p.apellidos }} (DPI {{ p.dpi || 's/d' }}){{ p.habitacionActual ? ' — ya en Hab. ' + p.habitacionActual : '' }}
+          </option>
+        }
+      </select>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Fecha y hora de ingreso *</label>
+          <input type="datetime-local" class="form-control form-control-sm" [(ngModel)]="asigForm.fechaIngreso" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Observaciones</label>
+          <input class="form-control form-control-sm" [(ngModel)]="asigForm.observaciones" maxlength="200" placeholder="Motivo de internamiento…" />
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-sm btn-outline-secondary" (click)="modalAsig = false">Cancelar</button>
+        <button class="btn btn-sm btn-success" [disabled]="guardando" (click)="confirmarAsignacion()">
+          <span class="spinner-border spinner-border-sm me-1" [hidden]="!guardando"></span>Asignar y registrar ingreso
+        </button>
+      </div>
+      </div></div>
+    </div>
+  </div>
+
+<!-- ================= MODAL v: registrar egreso ================= -->
+@if (modalEgreso) {
+  <div class="modal-backdrop show" (click)="modalEgreso = false"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content"><div class="modal-body p-4">
+      <h5 class="mb-1"><i class="bi bi-box-arrow-right me-1"></i>Registrar egreso</h5>
+      <p class="small text-muted mb-3">
+        Habitación {{ egresoTarget?.numeroHabitacion }} · Paciente: <strong>{{ egresoTarget?.pacienteNombre }}</strong><br />
+        Ingreso: {{ fmtFecha(egresoTarget?.fechaIngreso ?? null) }} · Lleva {{ diasDe(egresoTarget!) }} día(s)
+      </p>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Fecha y hora de egreso *</label>
+          <input type="datetime-local" class="form-control form-control-sm" [(ngModel)]="egresoForm.fechaEgreso" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Estado posterior</label>
+          <select class="form-select form-select-sm" [(ngModel)]="egresoForm.destino">
+            <option value="En limpieza">En limpieza (recomendado)</option>
+            <option value="Libre">Libre (directo)</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Observaciones de egreso</label>
+          <input class="form-control form-control-sm" [(ngModel)]="egresoForm.obs" maxlength="200" placeholder="Alta médica, traslado, etc." />
+        </div>
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-sm btn-outline-secondary" (click)="modalEgreso = false">Cancelar</button>
+        <button class="btn btn-sm btn-warning" [disabled]="guardando" (click)="confirmarEgreso()">
+          <span class="spinner-border spinner-border-sm me-1" [hidden]="!guardando"></span>Confirmar egreso
+        </button>
+      </div>
+      </div></div>
+    </div>
+  </div>
+}
+}
+}

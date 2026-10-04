@@ -1,0 +1,454 @@
+<div class="page">
+
+  <!-- Encabezado -->
+  <header class="page-head">
+    <div>
+      <h1><i class="bi bi-person-badge"></i> Empleados</h1>
+      <p class="sub">Recursos humanos · Registro de doctores, enfermeras y personal administrativo,
+        con asignación de especialidades y roles dentro del sistema</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-secondary" (click)="abrirCatalogoEsp()">
+        <i class="bi bi-stars"></i> Especialidades
+      </button>
+      <button type="button" class="btn btn-primary" (click)="nuevo()">
+        <i class="bi bi-person-plus"></i> Nuevo empleado
+      </button>
+    </div>
+  </header>
+
+  @if (aviso()) {
+    <div class="alert alert-info alert-dismissible">{{ aviso() }}
+      <button type="button" class="btn-close" (click)="aviso.set('')"></button>
+    </div>
+  }
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <!-- KPIs por tipo de empleado (CHK_Empleado_Tipo) -->
+  @if (resumen(); as r) {
+    <div class="row g-2 mb-3 kpis">
+      <div class="col-6 col-md-3">
+        <button class="kpi" [class.active]="tipoFiltro === ''" (click)="cambiarTipo('')">
+          <span class="num">{{ r.total }}</span>
+          <span class="lbl"><i class="bi bi-people"></i> Total empleados</span>
+        </button>
+      </div>
+      <div class="col-6 col-md-3">
+        <button class="kpi" [class.active]="tipoFiltro === 'Medico'" (click)="cambiarTipo('Medico')">
+          <span class="num text-primary">{{ r.medicos }}</span>
+          <span class="lbl"><i class="bi bi-capsule"></i> Doctores</span>
+        </button>
+      </div>
+      <div class="col-6 col-md-3">
+        <button class="kpi" [class.active]="tipoFiltro === 'Enfermera'" (click)="cambiarTipo('Enfermera')">
+          <span class="num text-success">{{ r.enfermeras }}</span>
+          <span class="lbl"><i class="bi bi-bandaid"></i> Enfermería</span>
+        </button>
+      </div>
+      <div class="col-6 col-md-3">
+        <button class="kpi" [class.active]="tipoFiltro === 'Administrativo'" (click)="cambiarTipo('Administrativo')">
+          <span class="num text-secondary">{{ r.administrativos }}</span>
+          <span class="lbl"><i class="bi bi-briefcase"></i> Administrativos</span>
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Barra de búsqueda / filtros -->
+  <div class="card toolbar">
+    <form class="row g-2 align-items-center" (ngSubmit)="buscar()">
+      <div class="col-md-4">
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" placeholder="Buscar por nombre, DPI, sucursal o especialidad…"
+                 [(ngModel)]="filtro" name="filtro" />
+        </div>
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="tipo" [(ngModel)]="tipoFiltro" (ngModelChange)="buscar()">
+          <option value="">Todos los tipos</option>
+          @for (t of tipos; track t) {
+            <option [value]="t">{{ tipoLabel[t] }} ({{ t }})</option>
+          }
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+      </div>
+      <div class="col-auto">
+        <button type="button" class="btn btn-link" (click)="limpiarFiltro()">Limpiar</button>
+      </div>
+      <div class="col text-end d-flex align-items-center justify-content-end gap-3">
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="chkInact"
+                 [checked]="mostrarInactivos" (change)="toggleInactivos()" />
+          <label class="form-check-label small" for="chkInact">Mostrar inactivos</label>
+        </div>
+        <span class="text-muted small">{{ visibles().length }} registro(s)</span>
+      </div>
+    </form>
+  </div>
+
+  <!-- Tabla -->
+  <div class="card table-card">
+    @if (cargando()) {
+      <div class="p-4 text-center text-muted">
+        <span class="spinner-border spinner-border-sm me-2"></span>Cargando empleados…
+      </div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Empleado</th>
+              <th>Tipo</th>
+              <th>Especialidad</th>
+              <th>Sucursal</th>
+              <th>DPI</th>
+              <th>Contacto</th>
+              <th>Roles del sistema</th>
+              <th>Antigüedad</th>
+              <th>Estado</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of visibles(); track e.idEmpleado) {
+              <tr [class.inactive]="!e.activo">
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="avatar" [class.av-esp]="e.tipoEmpleado !== 'Administrativo'">{{ iniciales(e) }}</span>
+                    <div>
+                      <div class="fw-semibold">{{ nombreCompleto(e) }}</div>
+                      <div class="small text-muted">ID&nbsp;{{ e.idEmpleado }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="badge {{ badgeTipo(e.tipoEmpleado) }}">{{ tipoLabel[e.tipoEmpleado] }}</span></td>
+                <td>
+                  @if (e.especialidadNombre) {
+                    <span><i class="bi bi-stars me-1 text-warning"></i>{{ e.especialidadNombre }}</span>
+                  } @else {
+                    <span class="text-muted">—</span>
+                  }
+                </td>
+                <td class="small">{{ e.sucursalNombre }}</td>
+                <td class="small">{{ e.dpi }}</td>
+                <td class="small">
+                  <div><i class="bi bi-telephone"></i> {{ e.telefono ?? '—' }}</div>
+                  <div><i class="bi bi-envelope"></i> {{ e.correo ?? '—' }}</div>
+                </td>
+                <td>
+                  @for (rl of e.roles; track rl) {
+                    <span class="badge role-pill me-1">{{ rl }}</span>
+                  } @empty {
+                    <span class="badge text-bg-warning">Sin rol</span>
+                  }
+                </td>
+                <td class="small text-muted">{{ antiguedad(e) }}</td>
+                <td>
+                  @if (e.activo) {
+                    <span class="badge text-bg-success">Activo</span>
+                  } @else {
+                    <span class="badge text-bg-secondary">Inactivo</span>
+                  }
+                </td>
+                <td class="text-end actions">
+                  <button type="button" class="btn btn-sm btn-outline-info" title="Asignar especialidad y roles"
+                          (click)="abrirAsignacion(e)">
+                    <i class="bi bi-person-gear"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" title="Editar datos"
+                          (click)="editar(e)">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  @if (e.activo) {
+                    <button type="button" class="btn btn-sm btn-outline-danger" title="Desactivar (baja lógica)"
+                            (click)="desactivar(e)">
+                      <i class="bi bi-person-x"></i>
+                    </button>
+                  } @else {
+                    <button type="button" class="btn btn-sm btn-outline-success" title="Reactivar"
+                            (click)="reactivar(e)">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="10" class="text-center text-muted py-4">
+                  No se encontraron empleados con ese criterio.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- ==================== MODAL: REGISTRO / EDICIÓN ==================== -->
+@if (modalAbierto) {
+  <div class="modal-backdrop show" (click)="cerrar()"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <form #f="ngForm" (ngSubmit)="guardar(f)">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi bi-person-vcard"></i> {{ tituloModal }}</h5>
+            <button type="button" class="btn-close" (click)="cerrar()"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Nombres <span class="req">*</span></label>
+                <input type="text" class="form-control" name="nombres" maxlength="100" required
+                       [(ngModel)]="form.nombres" #nom="ngModel"
+                       [class.is-invalid]="nom.invalid && nom.touched" />
+                <div class="invalid-feedback">Los nombres son obligatorios (NOT NULL).</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Apellidos <span class="req">*</span></label>
+                <input type="text" class="form-control" name="apellidos" maxlength="100" required
+                       [(ngModel)]="form.apellidos" #ape="ngModel"
+                       [class.is-invalid]="ape.invalid && ape.touched" />
+                <div class="invalid-feedback">Los apellidos son obligatorios (NOT NULL).</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">DPI <span class="req">*</span></label>
+                <input type="text" class="form-control" name="dpi" maxlength="20" required
+                       inputmode="numeric" placeholder="13 dígitos, único"
+                       [(ngModel)]="form.dpi" #dpi="ngModel"
+                       [class.is-invalid]="dpi.invalid && dpi.touched" />
+                <div class="invalid-feedback">El DPI es obligatorio (NOT NULL / UNIQUE).</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Tipo de empleado <span class="req">*</span></label>
+                <select class="form-select" name="tipoEmpleado" required
+                        [(ngModel)]="form.tipoEmpleado" (ngModelChange)="onTipoCambio()" #tip="ngModel"
+                        [class.is-invalid]="tip.invalid && tip.touched">
+                  <option value="">— Seleccionar —</option>
+                  @for (t of tipos; track t) {
+                    <option [value]="t">{{ tipoLabel[t] }} ({{ t }})</option>
+                  }
+                </select>
+                <div class="form-text">CHECK: Medico · Enfermera · Administrativo</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Sucursal <span class="req">*</span></label>
+                <select class="form-select" name="idSucursal" required
+                        [(ngModel)]="form.idSucursal" #suc="ngModel"
+                        [class.is-invalid]="suc.invalid && suc.touched">
+                  <option [ngValue]="''">— Seleccionar —</option>
+                  @for (s of sucursales(); track s.idSucursal) {
+                    <option [ngValue]="s.idSucursal">{{ s.nombre }}</option>
+                  }
+                </select>
+                <div class="invalid-feedback">La sucursal es obligatoria (FK NOT NULL).</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">
+                  Especialidad
+                  @if (especialidadObligatoria) { <span class="req">*</span> }
+                </label>
+                <select class="form-select" name="idEspecialidad"
+                        [disabled]="form.tipoEmpleado === 'Administrativo'"
+                        [(ngModel)]="form.idEspecialidad">
+                  <option [ngValue]="''">— Sin especialidad —</option>
+                  @for (sp of especialidades(); track sp.idEspecialidad) {
+                    <option [ngValue]="sp.idEspecialidad">{{ sp.nombre }}</option>
+                  }
+                </select>
+                <div class="form-text">
+                  @if (form.tipoEmpleado === 'Administrativo') {
+                    No aplica para personal administrativo.
+                  } @else if (form.tipoEmpleado === 'Enfermera') {
+                    Opcional para enfermería (área de desempeño).
+                  } @else {
+                    Obligatoria para médicos (FK Empleado.IdEspecialidad).
+                  }
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Fecha de ingreso</label>
+                <input type="date" class="form-control" name="fechaIngreso"
+                       [max]="todayIso" [(ngModel)]="form.fechaIngreso" />
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Teléfono</label>
+                <input type="tel" class="form-control" name="telefono" maxlength="20"
+                       [(ngModel)]="form.telefono" />
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Correo electrónico</label>
+                <input type="email" class="form-control" name="correo" maxlength="100"
+                       [(ngModel)]="form.correo" />
+              </div>
+
+              <!-- ii. Asignación de roles dentro del sistema -->
+              <div class="col-12">
+                <label class="form-label d-block">Roles dentro del sistema <span class="req">*</span></label>
+                <div class="d-flex flex-wrap gap-2">
+                  @for (r of roles(); track r.idRol) {
+                    <div class="form-check role-check">
+                      <input class="form-check-input" type="checkbox" [id]="'rol' + r.idRol"
+                             [checked]="form.rolesIds.includes(r.idRol)"
+                             (change)="toggleFormRol(r.idRol)" />
+                      <label class="form-check-label" [for]="'rol' + r.idRol">
+                        {{ r.nombre }} <span class="text-muted small">— {{ r.descripcion }}</span>
+                      </label>
+                    </div>
+                  }
+                </div>
+                <div class="form-text">Se reflejan en la tabla Usuario (IdRol) al crear las credenciales.</div>
+              </div>
+
+              @if (editando) {
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="chkActivo" name="activo" [(ngModel)]="form.activo" />
+                    <label class="form-check-label" for="chkActivo">Empleado activo</label>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" (click)="cerrar()">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="guardando">
+              @if (guardando) {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+              } @else {
+                <i class="bi bi-save"></i>
+              }
+              Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ MODAL: ASIGNACIÓN DE ESPECIALIDAD Y ROLES ============ -->
+@if (modalAsig && asigEmpleado) {
+  <div class="modal-backdrop show" (click)="cerrarAsignacion()"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-person-gear"></i> Asignación ·
+            {{ nombreCompleto(asigEmpleado) }}
+          </h5>
+          <button type="button" class="btn-close" (click)="cerrarAsignacion()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <span class="badge {{ badgeTipo(asigEmpleado.tipoEmpleado) }}">
+              {{ tipoLabel[asigEmpleado.tipoEmpleado] }}
+            </span>
+            <span class="text-muted small ms-2">{{ asigEmpleado.sucursalNombre }}</span>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Especialidad</label>
+            <select class="form-select" [(ngModel)]="asigEspecialidad"
+                    [disabled]="asigEmpleado.tipoEmpleado === 'Administrativo'">
+              <option [ngValue]="''">— Sin especialidad —</option>
+              @for (sp of especialidades(); track sp.idEspecialidad) {
+                <option [ngValue]="sp.idEspecialidad">{{ sp.nombre }}</option>
+              }
+            </select>
+          </div>
+
+          <label class="form-label d-block">Roles dentro del sistema</label>
+          <div class="d-flex flex-wrap gap-2">
+            @for (r of roles(); track r.idRol) {
+              <div class="form-check role-check">
+                <input class="form-check-input" type="checkbox" [id]="'asig-rol' + r.idRol"
+                       [checked]="asigRolesIds.includes(r.idRol)" (change)="toggleRol(r.idRol)" />
+                <label class="form-check-label" [for]="'asig-rol' + r.idRol">
+                  {{ r.nombre }} <span class="text-muted small">— {{ r.descripcion }}</span>
+                </label>
+              </div>
+            }
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" (click)="cerrarAsignacion()">Cancelar</button>
+          <button type="button" class="btn btn-info text-white" [disabled]="guardandoAsig"
+                  (click)="guardarAsignacion()">
+            @if (guardandoAsig) {
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            } @else {
+              <i class="bi bi-check2"></i>
+            }
+            Guardar asignación
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- =============== MODAL: CATÁLOGO DE ESPECIALIDADES =============== -->
+@if (modalEsp) {
+  <div class="modal-backdrop show" (click)="modalEsp = false"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-stars"></i> Catálogo de especialidades</h5>
+          <button type="button" class="btn-close" (click)="modalEsp = false"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Registrar nueva especialidad</label>
+            <div class="input-group">
+              <input type="text" class="form-control" maxlength="100" placeholder="Ej.: Dermatología"
+                     [(ngModel)]="nuevaEsp" (keyup.enter)="guardarEspecialidad()" />
+              <button class="btn btn-primary" [disabled]="guardandoEsp" (click)="guardarEspecialidad()">
+                <i class="bi bi-plus-lg"></i> Agregar
+              </button>
+            </div>
+            <div class="form-text">Restricción UNIQUE sobre Especialidad.Nombre.</div>
+          </div>
+
+          <ul class="list-group list-group-flush">
+            @for (sp of especialidades(); track sp.idEspecialidad) {
+              <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                <span><i class="bi bi-star-fill text-warning me-2"></i>{{ sp.nombre }}</span>
+                @if (sp.activa) {
+                  <span class="badge text-bg-success">Activa</span>
+                } @else {
+                  <span class="badge text-bg-secondary">Inactiva</span>
+                }
+              </li>
+            } @empty {
+              <li class="list-group-item px-0 text-muted">Sin especialidades registradas.</li>
+            }
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" (click)="modalEsp = false">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

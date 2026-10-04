@@ -1,0 +1,42 @@
+.vt-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  background: #fff;
+}
+
+.lotes-table {
+  font-size: .8rem;
+}
+
+.lotes-table th {
+  background: #f8fafc;
+  font-size: .68rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.text-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .8rem;
+}
+
+.tiny {
+  font-size: .68rem;
+  color: #94a3b8;
+}
+
+.vt-ticket {
+  border-left: 4px solid #198754;
+}
+
+.kpi-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.detalle-compra {
+  background: #f8fafc;
+}

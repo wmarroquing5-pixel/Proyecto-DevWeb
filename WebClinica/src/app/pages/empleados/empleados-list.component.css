@@ -1,0 +1,132 @@
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.page-head h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.page-head .sub {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: .875rem;
+  max-width: 640px;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+.toolbar {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: #fff;
+}
+
+.table-card {
+  overflow: hidden;
+  background: #fff;
+}
+
+thead th {
+  background: #f8fafc;
+  font-size: .72rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #475569;
+  white-space: nowrap;
+}
+
+tr.inactive td {
+  opacity: .55;
+}
+
+/* KPIs clicables por tipo de empleado */
+.kpis .kpi {
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.kpis .kpi:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .08);
+}
+
+.kpis .kpi.active {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, .15);
+}
+
+.kpis .num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #0f172a;
+}
+
+.kpis .lbl {
+  font-size: .78rem;
+  color: #64748b;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #64748b, #94a3b8);
+  flex: none;
+}
+
+.avatar.av-esp {
+  background: linear-gradient(135deg, #0d6efd, #20c997);
+}
+
+.role-pill {
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #e0e7ff;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.role-check {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 220px;
+}
+
+.actions .btn {
+  margin-left: 4px;
+}
+
+.req {
+  color: #dc3545;
+}
+
+.modal-backdrop.show {
+  opacity: .5;
+}

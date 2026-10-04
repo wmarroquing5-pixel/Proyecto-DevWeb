@@ -1,0 +1,285 @@
+<div class="container-fluid py-4">
+
+  <!-- Encabezado -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h4 class="mb-1"><i class="bi bi-box-seam me-2 text-primary"></i>Inventario de Medicamentos</h4>
+      <small class="text-muted">Registro de medicamentos y lotes · Control de entradas y salidas por venta o uso clínico</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a routerLink="/dashboard/inventario/movimientos" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left-right me-1"></i>Entradas / Salidas
+      </a>
+      <button class="btn btn-primary btn-sm" (click)="nuevoMedicamento()">
+        <i class="bi bi-plus-lg me-1"></i>Nuevo medicamento
+      </button>
+    </div>
+  </div>
+
+  @if (aviso()) {
+    <div class="alert alert-info alert-dismissible py-2">{{ aviso() }}
+      <button type="button" class="btn-close btn-sm" (click)="aviso.set('')"></button>
+    </div>
+  }
+  @if (error()) {
+    <div class="alert alert-danger py-2">{{ error() }}</div>
+  }
+
+  <!-- Barra de búsqueda -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <div class="input-group input-group-sm" style="max-width: 380px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" class="form-control" placeholder="Buscar por código, nombre, categoría o marca…"
+               [(ngModel)]="filtro" (keyup.enter)="buscar()" />
+        <button class="btn btn-outline-primary" (click)="buscar()">Buscar</button>
+        <button class="btn btn-outline-secondary" (click)="limpiarFiltro()">Limpiar</button>
+      </div>
+      <div class="form-check form-switch ms-auto">
+        <input class="form-check-input" type="checkbox" id="chkInactivos" [checked]="mostrarInactivos" (change)="toggleInactivos()" />
+        <label class="form-check-label small" for="chkInactivos">Mostrar inactivos</label>
+      </div>
+      <span class="badge text-bg-light border">Alerta de stock ≤ {{ stockAlerta }} unidades</span>
+    </div>
+  </div>
+
+  @if (cargando()) {
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+  }
+
+  <!-- Listado de medicamentos con sus lotes -->
+  <div class="row g-3">
+    @for (m of medicamentos(); track m.idMedicamento) {
+      <div class="col-12">
+        <div class="card shadow-sm inv-card" [class.inv-inactivo]="!m.activo">
+          <div class="card-body">
+            <div class="row align-items-center g-3">
+              <!-- Info principal -->
+              <div class="col-md-4">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="fw-semibold text-mono">{{ m.codigo }}</span>
+                  @if (!m.activo) { <span class="badge bg-secondary">Inactivo</span> }
+                  @if (m.stockMinimoAlerta) {
+                    <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Stock bajo</span>
+                  }
+                </div>
+                <h6 class="mb-1">{{ m.nombre }}</h6>
+                <div class="small text-muted">
+                  <i class="bi bi-tag me-1"></i>{{ m.categoriaNombre }} ·
+                  <i class="bi bi-building me-1"></i>{{ m.marcaNombre }}
+                </div>
+                @if (m.descripcion) { <div class="small text-muted text-truncate" style="max-width: 320px;">{{ m.descripcion }}</div> }
+              </div>
+
+              <!-- Precio y stock -->
+              <div class="col-md-2 text-center border-start">
+                <div class="small text-muted">Precio venta</div>
+                <div class="fs-5 fw-bold text-success">{{ fmtMoneda(m.precioVenta) }}</div>
+                <div class="small text-muted mt-1">Stock total (no vencido)</div>
+                <div class="fs-4 fw-bold" [class.text-danger]="m.stockMinimoAlerta">{{ m.stockTotal }}</div>
+              </div>
+
+              <!-- Lotes -->
+              <div class="col-md-4">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="small fw-semibold"><i class="bi bi-layers me-1"></i>Lotes (orden FEFO)</span>
+                  <button class="btn btn-sm btn-outline-success py-0" (click)="abrirLote(m)" [disabled]="!m.activo">
+                    <i class="bi bi-plus-circle me-1"></i>Registrar lote
+                  </button>
+                </div>
+                @if (m.lotes.length === 0) {
+                  <div class="small text-muted fst-italic">Sin lotes registrados.</div>
+                } @else {
+                  <table class="table table-sm mb-0 lotes-table">
+                    <thead>
+                      <tr class="small text-muted">
+                        <th>Lote</th><th>Ingreso</th><th>Vence</th><th class="text-end">Cant.</th><th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (l of m.lotes; track l.idLote) {
+                        <tr>
+                          <td class="text-mono small">{{ l.numeroLote }}</td>
+                          <td class="small">{{ fmtFecha(l.fechaIngreso) }}</td>
+                          <td class="small">
+                            {{ fmtFecha(l.fechaVencimiento) }}
+                            <div class="tiny" [class.text-danger]="diasRestantes(l.fechaVencimiento) <= 0">
+                              {{ diasRestantes(l.fechaVencimiento) > 0 ? '+' + diasRestantes(l.fechaVencimiento) + ' días' : 'vencido' }}
+                            </div>
+                          </td>
+                          <td class="small text-end fw-semibold">{{ l.cantidadDisponible }}</td>
+                          <td><span [class]="clasesEstado(l)">{{ estadoLoteDe(l) }}</span></td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                }
+              </div>
+
+              <!-- Acciones -->
+              <div class="col-md-2 d-grid gap-1">
+                <a [routerLink]="['/dashboard/inventario/movimientos']" [queryParams]="{ idMedicamento: m.idMedicamento }"
+                   class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-list-ul me-1"></i>Movimientos
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" (click)="editarMedicamento(m)">
+                  <i class="bi bi-pencil me-1"></i>Editar
+                </button>
+                @if (m.activo) {
+                  <button class="btn btn-sm btn-outline-danger" (click)="desactivar(m)">
+                    <i class="bi bi-trash me-1"></i>Desactivar
+                  </button>
+                } @else {
+                  <button class="btn btn-sm btn-outline-success" (click)="reactivar(m)">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivar
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    } @empty {
+      @if (!cargando()) {
+        <div class="col-12 text-center text-muted py-5">
+          <i class="bi bi-inboxes fs-1 d-block mb-2"></i>No hay medicamentos que coincidan con la búsqueda.
+        </div>
+      }
+    }
+  </div>
+</div>
+
+<!-- =================== MODAL i: Medicamento =================== -->
+@if (modalMed) {
+<div class="modal-backdrop show" (click)="cerrarMed()"></div>
+<div class="modal d-block show" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-capsule me-2"></i>{{ tituloModalMed }}</h5>
+        <button type="button" class="btn-close" (click)="cerrarMed()"></button>
+      </div>
+      <form #fMed="ngForm" (ngSubmit)="guardarMedicamento(fMed)">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small">Categoría *</label>
+              <select class="form-select form-select-sm" name="categoria" required [(ngModel)]="formMed.idCategoria">
+                <option [ngValue]="null" disabled>Seleccione…</option>
+                @for (c of categorias(); track c.idCategoria) {
+                  <option [ngValue]="c.idCategoria">{{ c.nombre }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Marca *</label>
+              <select class="form-select form-select-sm" name="marca" required [(ngModel)]="formMed.idMarca">
+                <option [ngValue]="null" disabled>Seleccione…</option>
+                @for (mk of marcas(); track mk.idMarca) {
+                  <option [ngValue]="mk.idMarca">{{ mk.nombre }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Código * <span class="text-muted">(UNIQUE)</span></label>
+              <input type="text" class="form-control form-control-sm" name="codigo" required maxlength="50"
+                     placeholder="MED-000" [(ngModel)]="formMed.codigo" />
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small">Nombre *</label>
+              <input type="text" class="form-control form-control-sm" name="nombre" required maxlength="150"
+                     placeholder="Ej. Acetaminofén 500 mg" [(ngModel)]="formMed.nombre" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Precio de venta * <span class="text-muted">(&gt; 0)</span></label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">Q</span>
+                <input type="number" class="form-control" name="precio" required min="0.01" step="0.01"
+                       [(ngModel)]="formMed.precioVenta" />
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small">Imagen URL (opcional)</label>
+              <input type="url" class="form-control form-control-sm" name="imagen" maxlength="500"
+                     placeholder="https://…" [(ngModel)]="formMed.imagenUrl" />
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Descripción (opcional)</label>
+              <textarea class="form-control form-control-sm" name="descripcion" rows="2" maxlength="500"
+                        [(ngModel)]="formMed.descripcion"></textarea>
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="chkActivoMed" [(ngModel)]="formMed.activo" name="activo" />
+                <label class="form-check-label small" for="chkActivoMed">Activo (Activa = 1)</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" (click)="cerrarMed()">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm" [disabled]="guardandoMed">
+            @if (guardandoMed) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-save me-1"></i>Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+}
+
+<!-- =================== MODAL ii: Lote =================== -->
+@if (modalLote) {
+<div class="modal-backdrop show" (click)="cerrarLote()"></div>
+<div class="modal d-block show" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-layers me-2"></i>Registrar lote</h5>
+        <button type="button" class="btn-close" (click)="cerrarLote()"></button>
+      </div>
+      <form #fLote="ngForm" (ngSubmit)="guardarLote(fLote)">
+        <div class="modal-body">
+          <div class="alert alert-light border py-2 small mb-3">
+            <b>Medicamento:</b> {{ medParaLote?.codigo }} — {{ medParaLote?.nombre }}
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small">Número de lote *</label>
+              <input type="text" class="form-control form-control-sm" name="numeroLote" required maxlength="50"
+                     placeholder="Ej. ACF-2503" [(ngModel)]="formLote.numeroLote" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Cantidad disponible * <span class="text-muted">(≥ 0)</span></label>
+              <input type="number" class="form-control form-control-sm" name="cantidad" required min="0" step="1"
+                     placeholder="Unidades recibidas" [(ngModel)]="formLote.cantidadDisponible" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Fecha de ingreso *</label>
+              <input type="date" class="form-control form-control-sm" name="fechaIngreso" required
+                     [max]="todayIso" [(ngModel)]="formLote.fechaIngreso" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Fecha de vencimiento *</label>
+              <input type="date" class="form-control form-control-sm" name="fechaVencimiento" required
+                     [min]="formLote.fechaIngreso || todayIso" [(ngModel)]="formLote.fechaVencimiento" />
+            </div>
+          </div>
+          <div class="small text-muted mt-2">
+            <i class="bi bi-info-circle me-1"></i>El registro del lote genera automáticamente una
+            <b>entrada</b> en el historial de movimientos con la cantidad indicada.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" (click)="cerrarLote()">Cancelar</button>
+          <button type="submit" class="btn btn-success btn-sm" [disabled]="guardandoLote">
+            @if (guardandoLote) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-save me-1"></i>Registrar lote
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+}

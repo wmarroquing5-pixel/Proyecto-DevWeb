@@ -1,0 +1,707 @@
+<div class="page">
+
+  <nav class="crumbs">
+    <a routerLink="/dashboard/pacientes"><i class="bi bi-arrow-left"></i> Volver al listado</a>
+  </nav>
+
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+  @if (aviso()) {
+    <div class="alert alert-info">{{ aviso() }}</div>
+  }
+
+  @if (cargando() && !ficha()) {
+    <div class="card p-4 text-center text-muted">
+      <span class="spinner-border spinner-border-sm me-2"></span>Cargando historial…
+    </div>
+  }
+
+  @if (ficha(); as h) {
+
+    <!-- ===== Ficha del paciente (datos generales) ===== -->
+    <section class="card ficha">
+      <div class="ficha-main">
+        <span class="avatar-lg">{{ iniciales(h.paciente) }}</span>
+        <div>
+          <h2>{{ h.paciente.nombres }} {{ h.paciente.apellidos }}</h2>
+          <p class="meta">
+            <span><i class="bi bi-upc-scan"></i> DPI: {{ h.paciente.dpi ?? 'sin DPI' }}</span>
+            <span><i class="bi bi-cake2"></i> {{ fmtFecha(h.paciente.fechaNacimiento) }}</span>
+            <span><i class="bi bi-gender-ambiguous"></i> {{ h.paciente.sexo ?? '—' }}</span>
+            <span><i class="bi bi-telephone"></i> {{ h.paciente.telefono ?? '—' }}</span>
+            <span><i class="bi bi-envelope"></i> {{ h.paciente.correo ?? '—' }}</span>
+          </p>
+        </div>
+      </div>
+      <div class="ficha-side">
+        @if (h.paciente.activo) {
+          <span class="badge text-bg-success">Paciente activo</span>
+        } @else {
+          <span class="badge text-bg-secondary">Inactivo</span>
+        }
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <button type="button" class="btn btn-primary" (click)="abrirConsulta()">
+            <i class="bi bi-stethoscope"></i> Registrar consulta
+          </button>
+          <button type="button" class="btn btn-outline-info" (click)="abrirExamen()">
+            <i class="bi bi-microscope"></i> Examen
+          </button>
+          <button type="button" class="btn btn-outline-warning" (click)="abrirEvolucion()">
+            <i class="bi bi-activity"></i> Evolución
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== KPIs ===== -->
+    <section class="kpis">
+      <div class="kpi">
+        <span class="num">{{ h.consultas.length }}</span>
+        <span class="lbl">Consultas</span>
+      </div>
+      <div class="kpi">
+        <span class="num">{{ h.diagnosticos.length }}</span>
+        <span class="lbl">Diagnósticos</span>
+      </div>
+      <div class="kpi">
+        <span class="num">{{ tratamientosVigentes() }}</span>
+        <span class="lbl">Tratamientos vigentes</span>
+      </div>
+      <div class="kpi">
+        <span class="num">{{ h.examenes.length }}</span>
+        <span class="lbl">Exámenes</span>
+      </div>
+      <div class="kpi">
+        <span class="num">{{ h.evoluciones.length }}</span>
+        <span class="lbl">Evoluciones</span>
+      </div>
+      <div class="kpi">
+        <span class="num">{{ h.habitaciones.length }}</span>
+        <span class="lbl">Habitaciones</span>
+      </div>
+    </section>
+
+    <!-- ===== Pestañas ===== -->
+    <ul class="nav nav-tabs">
+      <li class="nav-item">
+        <button type="button" class="nav-link" [class.active]="tab === 'resumen'"
+                (click)="cambiarTab('resumen')">
+          <i class="bi bi-list-ul"></i> Línea de tiempo
+        </button>
+      </li>
+      <li class="nav-item">
+        <button type="button" class="nav-link" [class.active]="tab === 'consultas'"
+                (click)="cambiarTab('consultas')">
+          <i class="bi bi-calendar2-heart"></i> Consultas y tratamientos
+        </button>
+      </li>
+      <li class="nav-item">
+        <button type="button" class="nav-link" [class.active]="tab === 'examenes'"
+                (click)="cambiarTab('examenes')">
+          <i class="bi bi-microscope"></i> Exámenes
+        </button>
+      </li>
+      <li class="nav-item">
+        <button type="button" class="nav-link" [class.active]="tab === 'tratamientos'"
+                (click)="cambiarTab('tratamientos')">
+          <i class="bi bi-capsule"></i> Tratamientos
+        </button>
+      </li>
+      <li class="nav-item">
+        <button type="button" class="nav-link" [class.active]="tab === 'evoluciones'"
+                (click)="cambiarTab('evoluciones')">
+          <i class="bi bi-activity"></i> Evolución
+        </button>
+      </li>
+    </ul>
+
+    <!-- ---------- TAB: RESUMEN / LÍNEA DE TIEMPO ---------- -->
+    @if (tab === 'resumen') {
+      <section class="card panel">
+        @if (totalRegistros() === 0) {
+          <p class="empty">Este paciente aún no tiene registros clínicos. Use «Registrar consulta».</p>
+        } @else {
+          <ol class="timeline">
+            @for (c of h.consultas; track c.idConsulta) {
+              <li class="tl-item">
+                <span class="tl-dot consult"></span>
+                <div class="tl-body">
+                  <header>
+                    <strong>Consulta #{{ c.idConsulta }}</strong>
+                    <span class="date">{{ fmtFechaHora(c.fechaConsulta) }}</span>
+                  </header>
+                  <p class="who">
+                    <i class="bi bi-person-badge"></i> {{ c.medicoNombre }}
+                    <span class="pill" [hidden]="!c.especialidad">{{ c.especialidad }}</span>
+                    <span class="pill ghost"><i class="bi bi-geo-alt"></i> {{ c.sucursalNombre }}</span>
+                  </p>
+                  <p class="line" [hidden]="!c.motivoConsulta"><b>Motivo:</b> {{ c.motivoConsulta }}</p>
+                  <p class="line" [hidden]="!c.sintomas"><b>Síntomas:</b> {{ c.sintomas }}</p>
+                  @if (diagnosticosDe(c.idConsulta).length) {
+                    <p class="line"><b>Diagnóstico(s):</b>
+                      @for (d of diagnosticosDe(c.idConsulta); track d.idDiagnostico) {
+                        <span class="dx">{{ d.descripcion }}</span>
+                      }
+                    </p>
+                  }
+                  @if (tratamientosDe(c.idConsulta).length) {
+                    <p class="line"><b>Tratamiento(s):</b>
+                      @for (t of tratamientosDe(c.idConsulta); track t.idTratamiento) {
+                        <span class="tx">{{ t.descripcion }}</span>
+                      }
+                    </p>
+                  }
+                  @if (examenesDe(c.idConsulta).length) {
+                    <p class="line"><b>Exámenes:</b>
+                      @for (e of examenesDe(c.idConsulta); track e.idExamen) {
+                        <span class="pill ghost">
+                          <i class="bi bi-microscope"></i> {{ e.nombreExamen }}
+                          @if (examenPendiente(e)) { — pendiente }
+                        </span>
+                      }
+                    </p>
+                  }
+                  @if (evolucionesDe(c.idConsulta).length) {
+                    <p class="line"><b>Evolución:</b>
+                      @for (ev of evolucionesDe(c.idConsulta); track ev.idEvolucion) {
+                        <span class="pill ghost">
+                          <i class="bi bi-activity"></i> {{ fmtFecha(ev.fechaEvolucion) }} — {{ ev.descripcion }}
+                        </span>
+                      }
+                    </p>
+                  }
+                </div>
+              </li>
+            }
+
+            <!-- Exámenes/evoluciones no vinculados a una consulta también aparecen en la línea -->
+            @for (ev of evolucionesSueltas(); track ev.idEvolucion) {
+              <li class="tl-item">
+                <span class="tl-dot evol"></span>
+                <div class="tl-body">
+                  <header>
+                    <strong>Evolución (seguimiento)</strong>
+                    <span class="date">{{ fmtFechaHora(ev.fechaEvolucion) }}</span>
+                  </header>
+                  <p class="who"><i class="bi bi-person-badge"></i> {{ ev.medicoNombre }}</p>
+                  <p class="line">{{ ev.descripcion }}</p>
+                </div>
+              </li>
+            }
+            @for (e of examenesSueltos(); track e.idExamen) {
+              <li class="tl-item">
+                <span class="tl-dot exam"></span>
+                <div class="tl-body">
+                  <header>
+                    <strong>Examen: {{ e.nombreExamen }}</strong>
+                    <span class="date">{{ fmtFechaHora(e.fechaExamen) }}</span>
+                  </header>
+                  <p class="who"><i class="bi bi-person-badge"></i> {{ e.medicoNombre }}</p>
+                  <p class="line">
+                    <b>Resultado:</b>
+                    @if (examenPendiente(e)) { <span class="badge text-bg-warning">Pendiente</span> }
+                    @else { {{ e.resultado }} }
+                  </p>
+                </div>
+              </li>
+            }
+          </ol>
+        }
+      </section>
+    }
+
+    <!-- ---------- TAB: CONSULTAS ---------- -->
+    @if (tab === 'consultas') {
+      <section class="card panel">
+        @for (c of h.consultas; track c.idConsulta) {
+          <article class="consulta">
+            <header class="consulta-head">
+              <div>
+                <h3>Consulta #{{ c.idConsulta }} — {{ fmtFechaHora(c.fechaConsulta) }}</h3>
+                <p class="small text-muted mb-0">
+                  {{ c.medicoNombre }}{{ c.especialidad ? " · " + c.especialidad : "" }} · {{ c.sucursalNombre }}
+                </p>
+              </div>
+              <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-primary" (click)="abrirDiagnostico(c)">
+                  <i class="bi bi-clipboard-plus"></i> Diagnóstico
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success" (click)="abrirTratamiento(c)">
+                  <i class="bi bi-capsule"></i> Tratamiento
+                </button>
+              </div>
+            </header>
+
+            <dl class="grid-dl">
+              <dt>Motivo</dt><dd>{{ c.motivoConsulta ?? '—' }}</dd>
+              <dt>Síntomas</dt><dd>{{ c.sintomas ?? '—' }}</dd>
+              <dt>Observaciones</dt><dd>{{ c.observaciones ?? '—' }}</dd>
+            </dl>
+
+            @if (diagnosticosDe(c.idConsulta).length || tratamientosDe(c.idConsulta).length) {
+              <div class="vinculados">
+                <div class="vcol">
+                  <h6><i class="bi bi-clipboard2-pulse"></i> Diagnósticos asignados</h6>
+                  @for (d of diagnosticosDe(c.idConsulta); track d.idDiagnostico) {
+                    <div class="vitem dx-item">
+                      @if (editandoDx === d.idDiagnostico) {
+                        <!-- iii. Corrección del diagnóstico asignado por el médico -->
+                        <textarea class="form-control form-control-sm mb-1" rows="2"
+                                  [(ngModel)]="formEditDx.descripcion"></textarea>
+                        <div class="d-flex gap-1">
+                          <button type="button" class="btn btn-sm btn-primary"
+                                  [disabled]="guardando" (click)="guardarEdicionDx()">
+                            <i class="bi bi-check-lg"></i> Guardar
+                          </button>
+                          <button type="button" class="btn btn-sm btn-light" (click)="cancelarEdicionDx()">
+                            Cancelar
+                          </button>
+                        </div>
+                      } @else {
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                          <span>{{ d.descripcion }}</span>
+                          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                  title="Corregir diagnóstico asignado" (click)="abrirEdicionDx(d)">
+                            <i class="bi bi-pencil"></i>
+                          </button>
+                        </div>
+                        <small>{{ d.medicoNombre }} · {{ fmtFechaHora(d.fechaRegistro) }}</small>
+                      }
+                    </div>
+                  }
+                </div>
+                <div class="vcol">
+                  <h6><i class="bi bi-capsule"></i> Tratamientos vinculados</h6>
+                  @for (t of tratamientosDe(c.idConsulta); track t.idTratamiento) {
+                    <div class="vitem tx-item">
+                      <span>{{ t.descripcion }}</span>
+                      <small>
+                        {{ fmtFecha(t.fechaInicio) }} → {{ fmtFecha(t.fechaFin) }}
+                        · {{ estadoTratamiento(t) }}
+                      </small>
+                      <p class="ind" [hidden]="!t.indicaciones">Indicaciones: {{ t.indicaciones }}</p>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+
+            @if (examenesDe(c.idConsulta).length) {
+              <div class="extras">
+                <h6><i class="bi bi-microscope"></i> Exámenes</h6>
+                @for (e of examenesDe(c.idConsulta); track e.idExamen) {
+                  <p class="small mb-1"><b>{{ e.nombreExamen }}</b> ({{ fmtFechaHora(e.fechaExamen) }}):
+                    {{ e.resultado ?? 'sin resultado' }}</p>
+                }
+              </div>
+            }
+
+            @if (evolucionesDe(c.idConsulta).length) {
+              <div class="extras">
+                <h6><i class="bi bi-activity"></i> Evoluciones</h6>
+                @for (ev of evolucionesDe(c.idConsulta); track ev.idEvolucion) {
+                  <p class="small mb-1">{{ fmtFechaHora(ev.fechaEvolucion) }} — {{ ev.medicoNombre }}:
+                    {{ ev.descripcion }}</p>
+                }
+              </div>
+            }
+          </article>
+        } @empty {
+          <p class="empty">Sin consultas registradas.</p>
+        }
+      </section>
+    }
+
+    <!-- ---------- TAB: EXÁMENES (inciso ii) ---------- -->
+    @if (tab === 'examenes') {
+      <section class="card panel">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="panel-title mb-0"><i class="bi bi-microscope"></i> Exámenes realizados por el paciente</h6>
+          <button type="button" class="btn btn-sm btn-info text-white" (click)="abrirExamen()">
+            <i class="bi bi-plus-lg"></i> Registrar examen
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>#</th><th>Examen</th><th>Fecha</th><th>Ordenado por</th>
+                <th>Consulta</th><th>Resultado</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (e of h.examenes; track e.idExamen) {
+                <tr>
+                  <td>{{ e.idExamen }}</td>
+                  <td class="fw-semibold">{{ e.nombreExamen }}</td>
+                  <td class="small">{{ fmtFechaHora(e.fechaExamen) }}</td>
+                  <td class="small">{{ e.medicoNombre }}</td>
+                  <td>{{ e.idConsulta ? '#' + e.idConsulta : '—' }}</td>
+                  <td class="small" style="max-width: 320px;">
+                    @if (editandoExam === e.idExamen) {
+                      <!-- Captura posterior del resultado -->
+                      <textarea class="form-control form-control-sm mb-1" rows="2"
+                                [(ngModel)]="formEditExam.resultado"
+                                placeholder="Escriba el resultado del examen…"></textarea>
+                      <div class="d-flex gap-1">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                [disabled]="guardando" (click)="guardarResultadoExam()">
+                          <i class="bi bi-check-lg"></i> Guardar
+                        </button>
+                        <button type="button" class="btn btn-sm btn-light" (click)="cancelarResultadoExam()">
+                          Cancelar
+                        </button>
+                      </div>
+                    } @else if (examenPendiente(e)) {
+                      <span class="badge text-bg-warning">Resultado pendiente</span>
+                    } @else {
+                      {{ e.resultado }}
+                    }
+                  </td>
+                  <td class="text-end">
+                    @if (editandoExam !== e.idExamen) {
+                      <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                              title="Capturar / corregir resultado" (click)="abrirResultadoExam(e)">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="7" class="text-center text-muted py-4">Sin exámenes registrados.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    <!-- ---------- TAB: TRATAMIENTOS ---------- -->
+    @if (tab === 'tratamientos') {
+      <section class="card panel table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>#</th><th>Descripción</th><th>Indicaciones</th>
+              <th>Consulta</th><th>Médico</th><th>Inicio</th><th>Fin</th><th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (t of h.tratamientos; track t.idTratamiento) {
+              <tr>
+                <td>{{ t.idTratamiento }}</td>
+                <td class="fw-semibold">{{ t.descripcion }}</td>
+                <td class="small">{{ t.indicaciones ?? '—' }}</td>
+                <td>#{{ t.idConsulta }}</td>
+                <td class="small">{{ t.medicoNombre }}</td>
+                <td>{{ fmtFecha(t.fechaInicio) }}</td>
+                <td>{{ fmtFecha(t.fechaFin) }}</td>
+                <td>
+                  @if (estadoTratamiento(t) === 'Vigente') {
+                    <span class="badge text-bg-success">Vigente</span>
+                  } @else {
+                    <span class="badge text-bg-secondary">Finalizado</span>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="8" class="text-center text-muted py-4">Sin tratamientos registrados.</td></tr>
+            }
+          </tbody>
+        </table>
+      </section>
+    }
+
+    <!-- ---------- TAB: EVOLUCIÓN (inciso iv) ---------- -->
+    @if (tab === 'evoluciones') {
+      <section class="card panel">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="panel-title mb-0"><i class="bi bi-activity"></i> Evolución del paciente (seguimiento médico)</h6>
+          <button type="button" class="btn btn-sm btn-warning" (click)="abrirEvolucion()">
+            <i class="bi bi-plus-lg"></i> Registrar evolución
+          </button>
+        </div>
+        @if (h.evoluciones.length) {
+          <ol class="timeline">
+            @for (ev of h.evoluciones; track ev.idEvolucion) {
+              <li class="tl-item">
+                <span class="tl-dot evol"></span>
+                <div class="tl-body">
+                  <header>
+                    <strong>Evolución #{{ ev.idEvolucion }}</strong>
+                    <span class="date">{{ fmtFechaHora(ev.fechaEvolucion) }}</span>
+                  </header>
+                  <p class="who">
+                    <i class="bi bi-person-badge"></i> {{ ev.medicoNombre }}
+                    @if (ev.idConsulta) {
+                      <span class="pill ghost"><i class="bi bi-calendar2-heart"></i> Consulta #{{ ev.idConsulta }}</span>
+                    }
+                  </p>
+                  <p class="line">{{ ev.descripcion }}</p>
+                </div>
+              </li>
+            }
+          </ol>
+        } @else {
+          <p class="empty">Sin notas de evolución. Use «Registrar evolución» para el seguimiento médico.</p>
+        }
+      </section>
+    }
+
+    <!-- ---------- Hospitalización ---------- -->
+    @if (h.habitaciones.length) {
+      <section class="card panel">
+        <h6 class="panel-title"><i class="bi bi-door-closed"></i> Habitaciones asignadas</h6>
+        @for (hab of h.habitaciones; track hab.idAsignacion) {
+          <div class="vitem">
+            <span><b>Hab. {{ hab.numeroHabitacion }}</b> — {{ hab.sucursalNombre }}</span>
+            <small>Ingreso: {{ fmtFechaHora(hab.fechaIngreso) }} ·
+              Egreso: {{ hab.fechaEgreso ? fmtFechaHora(hab.fechaEgreso) : 'actualmente internado' }}</small>
+            <p class="ind" [hidden]="!hab.observaciones">{{ hab.observaciones }}</p>
+          </div>
+        }
+      </section>
+    }
+  }
+</div>
+
+<!-- ==================== MODAL NUEVA CONSULTA ==================== -->
+@if (modalConsulta) {
+  <div class="modal-backdrop show" (click)="modalConsulta = false"></div>
+  <div class="modal d-block show" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-stethoscope"></i> Registrar consulta</h5>
+          <button type="button" class="btn-close" (click)="modalConsulta = false"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Médico <span class="req">*</span></label>
+              <select class="form-select" [(ngModel)]="formConsulta.idMedico">
+                <option value="">— Seleccione —</option>
+                @for (m of medicos; track m.idEmpleado) {
+                  <option [ngValue]="m.idEmpleado">{{ m.nombre }}{{ m.especialidad ? " — " + m.especialidad : "" }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Sucursal <span class="req">*</span></label>
+              <select class="form-select" [(ngModel)]="formConsulta.idSucursal">
+                <option value="">— Seleccione —</option>
+                @for (s of sucursales; track s.idSucursal) {
+                  <option [ngValue]="s.idSucursal">{{ s.nombre }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha y hora <span class="req">*</span></label>
+              <input type="datetime-local" class="form-control" [(ngModel)]="formConsulta.fechaConsulta" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Motivo de consulta</label>
+              <textarea class="form-control" rows="2" maxlength="500"
+                        [(ngModel)]="formConsulta.motivoConsulta"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Síntomas</label>
+              <textarea class="form-control" rows="2" [(ngModel)]="formConsulta.sintomas"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Observaciones</label>
+              <textarea class="form-control" rows="2" [(ngModel)]="formConsulta.observaciones"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" (click)="modalConsulta = false">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="guardando" (click)="guardarConsulta()">
+            <i class="bi bi-save"></i> Guardar consulta
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ MODAL DIAGNÓSTICO / TRATAMIENTO ============ -->
+@if (modalClinico && consultaSel) {
+  <div class="modal-backdrop show" (click)="cerrarModalClinico()"></div>
+  <div class="modal d-block show" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            @if (modalClinico === 'diagnostico') {
+              <i class="bi bi-clipboard2-pulse"></i> Nuevo diagnóstico
+            } @else {
+              <i class="bi bi-capsule"></i> Nuevo tratamiento
+            }
+            <small class="text-muted ms-2">Consulta #{{ consultaSel.idConsulta }}</small>
+          </h5>
+          <button type="button" class="btn-close" (click)="cerrarModalClinico()"></button>
+        </div>
+        <div class="modal-body">
+          @if (modalClinico === 'diagnostico') {
+            <label class="form-label">Descripción <span class="req">*</span></label>
+            <textarea class="form-control" rows="3"
+                      [(ngModel)]="formDiagnostico.descripcion"
+                      placeholder="Ej.: Hipertensión arterial esencial (CIE-10 I10)"></textarea>
+            <div class="form-text">Se registra a nombre de {{ consultaSel.medicoNombre }}.</div>
+          } @else {
+            <label class="form-label">Medicamento (catálogo de Inventario)</label>
+            <select class="form-select" [(ngModel)]="formTratamiento.medicamentoId"
+                    (ngModelChange)="onMedicamentoSel()">
+              <option value="">— Sin medicamento / otro —</option>
+              @for (m of medicamentos; track m.idMedicamento) {
+                <option [ngValue]="m.idMedicamento">{{ m.nombre }} (stock: {{ m.stockTotal }})</option>
+              }
+            </select>
+            <div class="form-text mb-2">
+              Solo referencia el medicamento; la salida de bodega se registra en Inventario → Movimientos.
+            </div>
+
+            <label class="form-label">Descripción <span class="req">*</span></label>
+            <textarea class="form-control" rows="2" [(ngModel)]="formTratamiento.descripcion"
+                      placeholder="Ej.: Losartán 50 mg cada 24 horas"></textarea>
+
+            <label class="form-label mt-3">Indicaciones</label>
+            <textarea class="form-control" rows="2" [(ngModel)]="formTratamiento.indicaciones"></textarea>
+
+            <div class="row g-3 mt-1">
+              <div class="col-6">
+                <label class="form-label">Fecha inicio <span class="req">*</span></label>
+                <input type="date" class="form-control" [(ngModel)]="formTratamiento.fechaInicio" />
+              </div>
+              <div class="col-6">
+                <label class="form-label">Fecha fin</label>
+                <input type="date" class="form-control" [(ngModel)]="formTratamiento.fechaFin"
+                       [min]="formTratamiento.fechaInicio" />
+                <div class="form-text">Vacío = tratamiento vigente.</div>
+              </div>
+            </div>
+          }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" (click)="cerrarModalClinico()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="guardando"
+                  (click)="modalClinico === 'diagnostico' ? guardarDiagnostico() : guardarTratamiento()">
+            <i class="bi bi-save"></i> Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ MODAL EXAMEN (inciso ii) ============ -->
+@if (modalExamen && ficha(); as h) {
+  <div class="modal-backdrop show" (click)="modalExamen = false"></div>
+  <div class="modal d-block show" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-microscope"></i> Registrar examen</h5>
+          <button type="button" class="btn-close" (click)="modalExamen = false"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Nombre del examen <span class="req">*</span></label>
+              <input type="text" class="form-control" maxlength="150"
+                     [(ngModel)]="formExamen.nombreExamen" placeholder="Ej.: Hemograma completo" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Médico ordenante <span class="req">*</span></label>
+              <select class="form-select" [(ngModel)]="formExamen.idMedico">
+                <option value="">— Seleccione —</option>
+                @for (m of medicos; track m.idEmpleado) {
+                  <option [ngValue]="m.idEmpleado">{{ m.nombre }}{{ m.especialidad ? " — " + m.especialidad : "" }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha del examen <span class="req">*</span></label>
+              <input type="datetime-local" class="form-control" [(ngModel)]="formExamen.fechaExamen" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Consulta vinculada</label>
+              <select class="form-select" [(ngModel)]="formExamen.idConsulta">
+                <option value="">— Sin consulta —</option>
+                @for (c of h.consultas; track c.idConsulta) {
+                  <option [ngValue]="c.idConsulta">#{{ c.idConsulta }} · {{ fmtFechaHora(c.fechaConsulta) }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Resultado</label>
+              <textarea class="form-control" rows="3" [(ngModel)]="formExamen.resultado"
+                        placeholder="Puede dejar vacío y capturarlo después…"></textarea>
+              <div class="form-text">Si aún no hay resultado, guárdelo vacío: aparecerá como "pendiente".</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" (click)="modalExamen = false">Cancelar</button>
+          <button type="button" class="btn btn-info text-white" [disabled]="guardando" (click)="guardarExamen()">
+            <i class="bi bi-save"></i> Guardar examen
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ MODAL EVOLUCIÓN (inciso iv) ============ -->
+@if (modalEvolucion && ficha(); as h) {
+  <div class="modal-backdrop show" (click)="modalEvolucion = false"></div>
+  <div class="modal d-block show" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-activity"></i> Registrar evolución</h5>
+          <button type="button" class="btn-close" (click)="modalEvolucion = false"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Médico <span class="req">*</span></label>
+              <select class="form-select" [(ngModel)]="formEvolucion.idMedico">
+                <option value="">— Seleccione —</option>
+                @for (m of medicos; track m.idEmpleado) {
+                  <option [ngValue]="m.idEmpleado">{{ m.nombre }}{{ m.especialidad ? " — " + m.especialidad : "" }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha y hora <span class="req">*</span></label>
+              <input type="datetime-local" class="form-control" [(ngModel)]="formEvolucion.fechaEvolucion" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Consulta vinculada</label>
+              <select class="form-select" [(ngModel)]="formEvolucion.idConsulta">
+                <option value="">— Seguimiento libre (sin consulta) —</option>
+                @for (c of h.consultas; track c.idConsulta) {
+                  <option [ngValue]="c.idConsulta">#{{ c.idConsulta }} · {{ fmtFechaHora(c.fechaConsulta) }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Descripción de la evolución <span class="req">*</span></label>
+              <textarea class="form-control" rows="4" [(ngModel)]="formEvolucion.descripcion"
+                        placeholder="Signos vitales, respuesta al tratamiento, cambios clínicos observados…"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" (click)="modalEvolucion = false">Cancelar</button>
+          <button type="button" class="btn btn-warning" [disabled]="guardando" (click)="guardarEvolucion()">
+            <i class="bi bi-save"></i> Guardar evolución
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

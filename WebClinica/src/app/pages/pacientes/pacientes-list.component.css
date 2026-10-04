@@ -1,0 +1,75 @@
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.page-head h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.page-head .sub {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: .875rem;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+.toolbar {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: #fff;
+}
+
+.table-card {
+  overflow: hidden;
+  background: #fff;
+}
+
+thead th {
+  background: #f8fafc;
+  font-size: .75rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #475569;
+  white-space: nowrap;
+}
+
+tr.inactive td {
+  opacity: .55;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #0d6efd, #20c997);
+}
+
+.actions .btn {
+  margin-left: 4px;
+}
+
+.req {
+  color: #dc3545;
+}
+
+.modal-backdrop.show {
+  opacity: .5;
+}

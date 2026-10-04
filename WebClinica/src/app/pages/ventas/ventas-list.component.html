@@ -1,0 +1,182 @@
+<div class="container-fluid py-4">
+
+  <!-- Encabezado -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h4 class="mb-1"><i class="bi bi-cash-stack me-2 text-primary"></i>Historial de Ventas de Farmacia</h4>
+      <small class="text-muted">Detalle de productos por venta · cantidades, precios y usuario que realizó cada venta</small>
+    </div>
+    <a routerLink="/dashboard/ventas/nueva" class="btn btn-success btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Nueva venta
+    </a>
+  </div>
+
+  @if (error()) { <div class="alert alert-danger py-2">{{ error() }}</div> }
+
+  <!-- KPIs -->
+  @if (resumen(); as r) {
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3 col-xl-2">
+        <div class="kpi-card p-3 h-100">
+          <div class="tiny text-uppercase">Ventas hoy</div>
+          <div class="fs-4 fw-bold">{{ r.ventasHoy }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <div class="kpi-card p-3 h-100">
+          <div class="tiny text-uppercase">Monto hoy</div>
+          <div class="fs-5 fw-bold text-success">{{ fmtMoneda(r.montoHoy) }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <div class="kpi-card p-3 h-100">
+          <div class="tiny text-uppercase">Unidades hoy</div>
+          <div class="fs-4 fw-bold">{{ r.unidadesVendidasHoy }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <div class="kpi-card p-3 h-100">
+          <div class="tiny text-uppercase">Ticket promedio</div>
+          <div class="fs-5 fw-bold text-primary">{{ fmtMoneda(r.ticketPromedio) }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <div class="kpi-card p-3 h-100">
+          <div class="tiny text-uppercase">Ventas del mes</div>
+          <div class="fs-4 fw-bold">{{ r.ventasMes }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <div class="kpi-card p-3 h-100">
+          <div class="tiny text-uppercase">Monto del mes</div>
+          <div class="fs-6 fw-bold text-success">{{ fmtMoneda(r.montoMes) }}</div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Búsqueda -->
+  <div class="card shadow-sm vt-card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <div class="input-group input-group-sm" style="max-width: 420px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" class="form-control" placeholder="Buscar por # venta, vendedor, sucursal o producto…"
+               [(ngModel)]="filtro" (keyup.enter)="buscar()" />
+        <button class="btn btn-outline-primary" (click)="buscar()">Buscar</button>
+        <button class="btn btn-outline-secondary" (click)="limpiarFiltro()">Limpiar</button>
+      </div>
+      <span class="badge text-bg-light border ms-auto">{{ ventas().length }} venta(s)</span>
+    </div>
+  </div>
+
+  @if (cargando()) {
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+  }
+
+  <!-- Listado de ventas -->
+  <div class="card shadow-sm vt-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr class="small text-muted">
+            <th style="width:90px;"># Venta</th>
+            <th>Fecha</th>
+            <th>Vendedor (Usuario)</th>
+            <th>Sucursal</th>
+            <th class="text-end">Ítems</th>
+            <th class="text-end">Unidades</th>
+            <th class="text-end">Total</th>
+            <th style="width:110px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (v of ventas(); track v.idVenta) {
+            <tr [class.table-light]="expandidas.has(v.idVenta)">
+              <td class="fw-semibold text-mono">#{{ v.idVenta }}</td>
+              <td class="small">
+                {{ fmtFechaHora(v.fechaVenta) }}
+                @if (esHoy(v.fechaVenta)) { <span class="badge bg-success ms-1">hoy</span> }
+              </td>
+              <td class="small"><i class="bi bi-person-badge me-1 text-muted"></i>{{ v.usuarioNombre }}</td>
+              <td class="small">{{ v.sucursalNombre }}</td>
+              <td class="small text-end">{{ v.detalle.length }}</td>
+              <td class="small text-end">{{ unidadesDe(v) }}</td>
+              <td class="text-end fw-bold text-success">{{ fmtMoneda(v.total) }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary py-0" (click)="toggleDetalle(v.idVenta)">
+                  @if (expandidas.has(v.idVenta)) { <i class="bi bi-chevron-up"></i> Ocultar }
+                  @else { <i class="bi bi-chevron-down"></i> Detalle }
+                </button>
+              </td>
+            </tr>
+            @if (expandidas.has(v.idVenta)) {
+              <tr>
+                <td colspan="8" class="detalle-compra p-3">
+                  <div class="small fw-semibold mb-2 text-uppercase">VentaDetalle — productos incluidos</div>
+                  <table class="table table-sm mb-0 lotes-table">
+                    <thead>
+                      <tr>
+                        <th>Código</th><th>Medicamento</th><th>Lote</th>
+                        <th class="text-end">Cantidad</th><th class="text-end">Precio unitario</th>
+                        <th class="text-end">Subtotal</th><th class="text-end">Stock lote (antes → después)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (d of v.detalle; track d.idVentaDetalle) {
+                        <tr>
+                          <td class="text-mono small">{{ d.medicamentoCodigo }}</td>
+                          <td class="small">{{ d.medicamentoNombre }}</td>
+                          <td class="text-mono small">{{ d.numeroLote }}</td>
+                          <td class="small text-end">{{ d.cantidad }}</td>
+                          <td class="small text-end">{{ fmtMoneda(d.precioUnitario) }}</td>
+                          <td class="small text-end fw-semibold">{{ fmtMoneda(d.subtotal) }}</td>
+                          <td class="small text-end text-muted">
+                            {{ d.stockAnterior }} → <b [class.text-danger]="d.stockNuevo === 0">{{ d.stockNuevo }}</b>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colspan="5" class="text-end small fw-semibold">Total venta</td>
+                        <td class="text-end fw-bold text-success">{{ fmtMoneda(v.total) }}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </td>
+              </tr>
+            }
+          } @empty {
+            <tr><td colspan="8" class="text-center text-muted py-4">No hay ventas registradas.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Top productos -->
+  @if (resumen(); as r) {
+    @if (r.topProductos.length) {
+      <div class="card shadow-sm vt-card mt-3">
+        <div class="card-header bg-white py-2 small fw-semibold">
+          <i class="bi bi-trophy me-1 text-warning"></i>Productos más vendidos (histórico)
+        </div>
+        <div class="card-body py-2">
+          <div class="row g-2">
+            @for (p of r.topProductos; track p.nombre; let i = $index) {
+              <div class="col-md-6 col-xl">
+                <div class="border rounded p-2 h-100">
+                  <div class="small fw-semibold text-truncate" title="{{ p.nombre }}">
+                    {{ i + 1 }}. {{ p.nombre }}
+                  </div>
+                  <div class="tiny">{{ p.unidades }} und · {{ fmtMoneda(p.monto) }}</div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  }
+</div>

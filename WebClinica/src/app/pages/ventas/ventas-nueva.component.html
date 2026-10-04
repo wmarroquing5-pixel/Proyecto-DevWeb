@@ -1,0 +1,239 @@
+<div class="container-fluid py-4">
+
+  <!-- Encabezado -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h4 class="mb-1"><i class="bi bi-cart-check me-2 text-primary"></i>Ventas de Farmacia</h4>
+      <small class="text-muted">Registrar venta · detalle por lote · descuento automático de existencias · validación de disponibilidad</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a routerLink="/dashboard/ventas" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-cash-stack me-1"></i>Historial y KPIs
+      </a>
+      <a routerLink="/dashboard/inventario" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-box-seam me-1"></i>Inventario
+      </a>
+    </div>
+  </div>
+
+  @if (aviso()) {
+    <div class="alert alert-success alert-dismissible py-2">{{ aviso() }}
+      <button type="button" class="btn-close btn-sm" (click)="aviso.set('')"></button>
+    </div>
+  }
+  @if (error()) {
+    <div class="alert alert-danger alert-dismissible py-2">
+      <i class="bi bi-exclamation-octagon me-1"></i>{{ error() }}
+      <button type="button" class="btn-close btn-sm" (click)="error.set('')"></button>
+    </div>
+  }
+
+  <!-- ========================= COMPROBANTE ========================= -->
+  @if (ultimaVenta(); as v) {
+    <div class="card shadow-sm vt-card vt-ticket mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h5 class="mb-1 text-success"><i class="bi bi-check-circle me-2"></i>Venta #{{ v.idVenta }} registrada</h5>
+            <div class="small text-muted">
+              <i class="bi bi-person-badge me-1"></i>Vendedor: {{ v.usuarioNombre }} ·
+              <i class="bi bi-geo-alt me-1"></i>{{ v.sucursalNombre }} ·
+              <i class="bi bi-clock me-1"></i>{{ fmtFechaHora(v.fechaVenta) }}
+            </div>
+          </div>
+          <div class="text-end">
+            <div class="small text-muted">Total cobrado</div>
+            <div class="fs-3 fw-bold text-success">{{ fmtMoneda(v.total) }}</div>
+          </div>
+        </div>
+        <table class="table table-sm mt-3 mb-0 lotes-table">
+          <thead>
+            <tr><th>Producto</th><th>Lote</th><th class="text-end">Cant.</th><th class="text-end">P. unit.</th><th class="text-end">Subtotal</th><th class="text-end">Stock lote</th></tr>
+          </thead>
+          <tbody>
+            @for (d of v.detalle; track d.idVentaDetalle) {
+              <tr>
+                <td class="small">{{ d.medicamentoCodigo }} · {{ d.medicamentoNombre }}</td>
+                <td class="small text-mono">{{ d.numeroLote }}</td>
+                <td class="small text-end">{{ d.cantidad }}</td>
+                <td class="small text-end">{{ fmtMoneda(d.precioUnitario) }}</td>
+                <td class="small text-end fw-semibold">{{ fmtMoneda(d.subtotal) }}</td>
+                <td class="small text-end text-muted">{{ d.stockAnterior }} → <b [class.text-danger]="d.stockNuevo === 0">{{ d.stockNuevo }}</b></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <div class="mt-3 d-flex gap-2">
+          <button class="btn btn-primary btn-sm" (click)="nuevaVenta()">
+            <i class="bi bi-plus-lg me-1"></i>Nueva venta
+          </button>
+          <a routerLink="/dashboard/ventas/historial" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-list-ul me-1"></i>Ver en el historial
+          </a>
+        </div>
+      </div>
+    </div>
+  }
+
+  <div class="row g-3">
+
+    <!-- ==================== CATALOGO / iv ==================== -->
+    <div class="col-xl-6">
+      <div class="card shadow-sm vt-card h-100">
+        <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2 py-2">
+          <span class="fw-semibold"><i class="bi bi-capsule me-1 text-primary"></i>Productos disponibles</span>
+          <span class="badge text-bg-light border ms-auto">Orden FEFO · solo lotes con stock y no vencidos</span>
+        </div>
+        <div class="card-body">
+          <div class="input-group input-group-sm mb-2" style="max-width: 420px;">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control" placeholder="Buscar por código, nombre o categoría…"
+                   [(ngModel)]="filtro" (keyup.enter)="buscar()" />
+            <button class="btn btn-outline-primary" (click)="buscar()">Buscar</button>
+            <button class="btn btn-outline-secondary" (click)="filtro = ''; buscar()">Refrescar</button>
+          </div>
+
+          @if (cargandoCatalogo()) {
+            <div class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+          } @else if (disponibles().length === 0) {
+            <div class="alert alert-warning py-2 small mb-0">No hay lotes disponibles que coincidan con la búsqueda.</div>
+          } @else {
+            <div class="table-responsive" style="max-height: 430px; overflow-y: auto;">
+              <table class="table table-sm table-hover align-middle mb-0 lotes-table">
+                <thead class="position-sticky top-0" style="background:#fff;">
+                  <tr>
+                    <th>Medicamento</th><th>Lote</th><th>Vence</th>
+                    <th class="text-end">Stock</th><th class="text-end">Precio</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (l of disponibles(); track l.idLote) {
+                    <tr>
+                      <td>
+                        <div class="fw-semibold small">{{ l.medicamentoNombre }}</div>
+                        <div class="tiny">{{ l.medicamentoCodigo }} · {{ l.categoriaNombre }}</div>
+                      </td>
+                      <td class="text-mono small">{{ l.numeroLote }}</td>
+                      <td class="small">
+                        {{ fmtFecha(l.fechaVencimiento) }}
+                        @if (diasRestantes(l.fechaVencimiento) <= 60) {
+                          <span class="badge bg-warning text-dark ms-1">próx. vencer</span>
+                        }
+                      </td>
+                      <td class="text-end small fw-semibold">{{ l.cantidadDisponible }}</td>
+                      <td class="text-end small text-success">{{ fmtMoneda(l.precioVenta) }}</td>
+                      <td class="text-end">
+                        <button class="btn btn-sm btn-outline-success py-0 px-2" (click)="agregar(l)"
+                                title="Agregar al carrito">
+                          <i class="bi bi-plus-lg"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== CARRITO / i + ii ==================== -->
+    <div class="col-xl-6">
+      <div class="card shadow-sm vt-card h-100">
+        <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2 py-2">
+          <span class="fw-semibold"><i class="bi bi-bag me-1 text-primary"></i>Carrito de venta</span>
+          <span class="badge text-bg-primary">{{ carrito().length }} línea(s)</span>
+          <button class="btn btn-sm btn-outline-danger py-0 ms-auto" (click)="vaciarCarrito()"
+                  [disabled]="carrito().length === 0">
+            <i class="bi bi-trash3 me-1"></i>Vaciar
+          </button>
+        </div>
+        <div class="card-body d-flex flex-column">
+
+          @if (carrito().length === 0) {
+            <div class="text-center text-muted py-5">
+              <i class="bi bi-cart-x fs-1 d-block mb-2"></i>
+              Agrega productos desde el catálogo de la izquierda.<br />
+              <small>La disponibilidad se valida antes de completar la venta.</small>
+            </div>
+          } @else {
+            <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+              <table class="table table-sm align-middle mb-0 lotes-table">
+                <thead>
+                  <tr>
+                    <th>Producto / lote</th>
+                    <th class="text-center" style="width:90px;">Cantidad *</th>
+                    <th class="text-center" style="width:110px;">P. unitario *</th>
+                    <th class="text-end">Subtotal</th>
+                    <th style="width:36px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (c of carrito(); track c.idLote) {
+                    <tr>
+                      <td>
+                        <div class="fw-semibold small">{{ c.medicamentoNombre }}</div>
+                        <div class="tiny">
+                          Lote <span class="text-mono">{{ c.numeroLote }}</span> ·
+                          disp. <b [class.text-danger]="c.cantidad > c.stockDisponible">{{ c.cantidad }}/{{ c.stockDisponible }}</b>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <input type="number" class="form-control form-control-sm text-center" min="1"
+                               [max]="c.stockDisponible" [value]="c.cantidad"
+                               (change)="cambiarCantidad(c, $event)" />
+                      </td>
+                      <td class="text-center">
+                        <input type="number" class="form-control form-control-sm text-center" min="0.01" step="0.01"
+                               [value]="c.precioUnitario" (change)="cambiarPrecio(c, $event)" />
+                      </td>
+                      <td class="text-end small fw-semibold">{{ fmtMoneda(subtotalDe(c)) }}</td>
+                      <td class="text-end">
+                        <button class="btn btn-sm btn-link text-danger p-0" (click)="quitar(c.idLote)" title="Quitar línea">
+                          <i class="bi bi-x-circle"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          <!-- Pie: usuario vendedor, sucursal y total (ii) -->
+          <div class="mt-auto pt-3 border-top">
+            <div class="row g-2 align-items-end mb-2">
+              <div class="col-7">
+                <label class="form-label small mb-1">Usuario que realiza la venta</label>
+                <input type="text" class="form-control form-control-sm" [value]="usuarioVendedor" disabled />
+                <div class="tiny mt-1">Se guarda en Venta.IdUsuario (FK Usuario).</div>
+              </div>
+              <div class="col-5">
+                <label class="form-label small mb-1">Sucursal *</label>
+                <select class="form-select form-select-sm" [(ngModel)]="idSucursal">
+                  @for (s of sucursales; track s.idSucursal) {
+                    <option [ngValue]="s.idSucursal">{{ s.nombre }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="small text-muted">{{ totalUnidades() }} unidad(es) en {{ carrito().length }} línea(s)</div>
+              <div class="fs-4 fw-bold text-primary">{{ fmtMoneda(total()) }}</div>
+            </div>
+            <button class="btn btn-success w-100 mt-2" (click)="registrarVenta()"
+                    [disabled]="guardando || carrito().length === 0">
+              @if (guardando) { <span class="spinner-border spinner-border-sm me-1"></span> }
+              <i class="bi bi-check2-circle me-1"></i>Completar venta y descontar stock
+            </button>
+            <div class="tiny text-center mt-2">
+              El backend valida cantidad &gt; 0, precio &gt; 0, lote no vencido y existencia suficiente
+              antes de confirmar (transacción SQL).
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

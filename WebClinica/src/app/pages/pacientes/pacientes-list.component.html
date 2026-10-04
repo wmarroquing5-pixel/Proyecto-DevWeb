@@ -1,0 +1,225 @@
+<div class="page">
+
+  <!-- Encabezado -->
+  <header class="page-head">
+    <div>
+      <h1><i class="bi bi-people"></i> Pacientes</h1>
+      <p class="sub">Mantenimiento · Registro de datos generales e historial clínico</p>
+    </div>
+    <button type="button" class="btn btn-primary" (click)="nuevo()">
+      <i class="bi bi-person-plus"></i> Nuevo paciente
+    </button>
+  </header>
+
+  @if (aviso()) {
+    <div class="alert alert-info alert-dismissible">{{ aviso() }}</div>
+  }
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <!-- Barra de búsqueda -->
+  <div class="card toolbar">
+    <form class="row g-2 align-items-center" (ngSubmit)="buscar()">
+      <div class="col-md-5">
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" placeholder="Buscar por nombre, DPI o teléfono…"
+                 [(ngModel)]="filtro" name="filtro" />
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+      </div>
+      <div class="col-auto">
+        <button type="button" class="btn btn-link" (click)="limpiarFiltro()">Limpiar</button>
+      </div>
+      <div class="col text-end text-muted small">
+        {{ pacientes().length }} registro(s)
+      </div>
+    </form>
+  </div>
+
+  <!-- Tabla -->
+  <div class="card table-card">
+    @if (cargando()) {
+      <div class="p-4 text-center text-muted">
+        <span class="spinner-border spinner-border-sm me-2"></span>Cargando pacientes…
+      </div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>DPI</th>
+              <th>Nacimiento / Edad</th>
+              <th>Sexo</th>
+              <th>Contacto</th>
+              <th>Registrado</th>
+              <th>Estado</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of pacientes(); track p.idPaciente) {
+              <tr [class.inactive]="!p.activo">
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="avatar">{{ iniciales(p) }}</span>
+                    <span class="fw-semibold">{{ nombreCompleto(p) }}</span>
+                  </div>
+                </td>
+                <td>{{ p.dpi ?? '—' }}</td>
+                <td>
+                  {{ fmtFecha(p.fechaNacimiento) }}
+                  <span class="badge text-bg-light border ms-1">{{ edad(p) }} años</span>
+                </td>
+                <td>{{ p.sexo ?? '—' }}</td>
+                <td class="small">
+                  <div><i class="bi bi-telephone"></i> {{ p.telefono ?? '—' }}</div>
+                  <div><i class="bi bi-envelope"></i> {{ p.correo ?? '—' }}</div>
+                </td>
+                <td class="small text-muted">{{ fmtFechaHora(p.fechaRegistro) }}</td>
+                <td>
+                  @if (p.activo) {
+                    <span class="badge text-bg-success">Activo</span>
+                  } @else {
+                    <span class="badge text-bg-secondary">Inactivo</span>
+                  }
+                </td>
+                <td class="text-end actions">
+                  <a class="btn btn-sm btn-outline-primary"
+                     [routerLink]="['/dashboard/pacientes', p.idPaciente, 'historial']"
+                     title="Historial clínico">
+                    <i class="bi bi-clipboard2-pulse"></i> Historial
+                  </a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                          (click)="editar(p)" title="Editar datos generales">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  @if (p.activo) {
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            (click)="desactivar(p)" title="Desactivar (baja lógica)">
+                      <i class="bi bi-person-x"></i>
+                    </button>
+                  } @else {
+                    <button type="button" class="btn btn-sm btn-outline-success"
+                            (click)="reactivar(p)" title="Reactivar">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                  No se encontraron pacientes con ese criterio.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- ============================ MODAL ============================ -->
+@if (modalAbierto) {
+  <div class="modal-backdrop show" (click)="cerrar()"></div>
+  <div class="modal d-block show" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <form #f="ngForm" (ngSubmit)="guardar(f)">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-person-vcard"></i> {{ tituloModal }}
+            </h5>
+            <button type="button" class="btn-close" (click)="cerrar()"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Nombres <span class="req">*</span></label>
+                <input type="text" class="form-control" name="nombres" maxlength="100"
+                       [(ngModel)]="form.nombres" required #nom="ngModel"
+                       [class.is-invalid]="nom.invalid && nom.touched" />
+                <div class="invalid-feedback">Los nombres son obligatorios (NOT NULL).</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Apellidos <span class="req">*</span></label>
+                <input type="text" class="form-control" name="apellidos" maxlength="100"
+                       [(ngModel)]="form.apellidos" required #ape="ngModel"
+                       [class.is-invalid]="ape.invalid && ape.touched" />
+                <div class="invalid-feedback">Los apellidos son obligatorios (NOT NULL).</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">DPI</label>
+                <input type="text" class="form-control" name="dpi" maxlength="20"
+                       inputmode="numeric" placeholder="13 dígitos"
+                       [(ngModel)]="form.dpi" />
+                <div class="form-text">Opcional; único si se registra.</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Fecha de nacimiento <span class="req">*</span></label>
+                <input type="date" class="form-control" name="fechaNacimiento"
+                       [max]="todayIso" [(ngModel)]="form.fechaNacimiento" required #fnac="ngModel"
+                       [class.is-invalid]="fnac.invalid && fnac.touched" />
+                <div class="invalid-feedback">La fecha de nacimiento es obligatoria.</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Sexo</label>
+                <select class="form-select" name="sexo" [(ngModel)]="form.sexo">
+                  <option value="">— Sin dato —</option>
+                  @for (s of sexos; track s) {
+                    <option [value]="s">{{ s }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Teléfono</label>
+                <input type="tel" class="form-control" name="telefono" maxlength="20"
+                       [(ngModel)]="form.telefono" />
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Correo electrónico</label>
+                <input type="email" class="form-control" name="correo" maxlength="100"
+                       [(ngModel)]="form.correo" />
+              </div>
+
+              @if (editando) {
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="chkActivo" name="activo" [(ngModel)]="form.activo" />
+                    <label class="form-check-label" for="chkActivo">Paciente activo</label>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" (click)="cerrar()">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="guardando">
+              @if (guardando) {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+              } @else {
+                <i class="bi bi-save"></i>
+              }
+              Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,58 @@
+<nav class="sidebar">
+
+  <div class="brand">
+    <div class="brand-icon"><i class="bi bi-heart-pulse-fill"></i></div>
+    <span>Clínica Salud</span>
+  </div>
+
+  <ul class="menu">
+    @for (item of menuService.menu(); track item.label) {
+      <li class="menu-item">
+        @if (hasChildren(item)) {
+          <!-- Item con submenú -->
+          <button type="button" class="menu-link submenu-toggle"
+                  (click)="toggle(item.label)">
+            <i [class]="item.icon ?? 'bi bi-circle'"></i>
+            <span>{{ item.label }}</span>
+            <i class="bi bi-chevron-down chevron"
+               [class.rotated]="open[item.label]"></i>
+          </button>
+
+          @if (open[item.label]) {
+            <ul class="submenu">
+              @for (child of item.children; track child.label) {
+                <li>
+                  <a [routerLink]="child.route" routerLinkActive="active"
+                     class="menu-link child">
+                    <i [class]="child.icon ?? 'bi bi-dot'"></i>
+                    <span>{{ child.label }}</span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        } @else {
+          <!-- Item simple -->
+          <a [routerLink]="item.route" routerLinkActive="active"
+             class="menu-link">
+            <i [class]="item.icon ?? 'bi bi-circle'"></i>
+            <span>{{ item.label }}</span>
+          </a>
+        }
+      </li>
+    } @empty {
+      <li class="menu-empty">No hay menú disponible</li>
+    }
+  </ul>
+
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <i class="bi bi-person-circle"></i>
+      <span>{{ auth.currentUser()?.fullName ?? auth.currentUser()?.username }}</span>
+    </div>
+    <button type="button" class="logout-btn" (click)="auth.logout()">
+      <i class="bi bi-box-arrow-right"></i> Salir
+    </button>
+  </div>
+
+</nav>

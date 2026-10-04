@@ -1,0 +1,234 @@
+<div class="container-fluid py-4">
+
+  <!-- Encabezado -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h4 class="mb-1"><i class="bi bi-arrow-left-right me-2 text-primary"></i>Entradas y Salidas de Inventario</h4>
+      <small class="text-muted">Actualización de existencias por ventas de farmacia o uso clínico (tabla MovimientoInventario)</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a routerLink="/dashboard/inventario" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-box-seam me-1"></i>Volver a medicamentos
+      </a>
+      <button class="btn btn-success btn-sm" (click)="abrirModal('Entrada')">
+        <i class="bi bi-box-arrow-in-down me-1"></i>Nueva entrada
+      </button>
+      <button class="btn btn-danger btn-sm" (click)="abrirModal('Salida')">
+        <i class="bi bi-box-arrow-up me-1"></i>Nueva salida
+      </button>
+    </div>
+  </div>
+
+  @if (aviso()) {
+    <div class="alert alert-info alert-dismissible py-2">{{ aviso() }}
+      <button type="button" class="btn-close btn-sm" (click)="aviso.set('')"></button>
+    </div>
+  }
+  @if (error()) {
+    <div class="alert alert-danger py-2">{{ error() }}</div>
+  }
+
+  <!-- KPIs del inventario -->
+  @if (resumen(); as r) {
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi border-primary-subtle"><div class="card-body py-2">
+          <div class="small text-muted">Medicamentos activos</div>
+          <div class="fs-4 fw-bold text-primary">{{ r.totalMedicamentos }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi"><div class="card-body py-2">
+          <div class="small text-muted">Unidades en stock</div>
+          <div class="fs-4 fw-bold">{{ r.unidadesEnStock }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi"><div class="card-body py-2">
+          <div class="small text-muted">Valor del inventario</div>
+          <div class="fs-5 fw-bold text-success">{{ fmtMoneda(r.valorInventario) }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi" [class.text-warning]="r.lotesProximoVencer > 0"><div class="card-body py-2">
+          <div class="small text-muted">Próx. a vencer</div>
+          <div class="fs-4 fw-bold">{{ r.lotesProximoVencer }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi" [class.text-danger]="r.lotesVencidos > 0"><div class="card-body py-2">
+          <div class="small text-muted">Lotes vencidos</div>
+          <div class="fs-4 fw-bold">{{ r.lotesVencidos }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3 col-xl">
+        <div class="card kpi"><div class="card-body py-2">
+          <div class="small text-muted">Movimientos hoy</div>
+          <div class="fs-4 fw-bold">{{ r.movimientosHoy }}</div>
+        </div></div>
+      </div>
+    </div>
+  }
+
+  <!-- Filtros -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <span class="small fw-semibold me-1">Filtrar:</span>
+      <div class="btn-group btn-group-sm">
+        <button class="btn" [class.btn-primary]="filtroTipo === ''" [class.btn-outline-secondary]="filtroTipo !== ''"
+                (click)="filtroTipo = ''; cambiarFiltro()">Todos</button>
+        <button class="btn" [class.btn-success]="filtroTipo === 'Entrada'" [class.btn-outline-secondary]="filtroTipo !== 'Entrada'"
+                (click)="filtroTipo = 'Entrada'; cambiarFiltro()">Entradas</button>
+        <button class="btn" [class.btn-danger]="filtroTipo === 'Salida'" [class.btn-outline-secondary]="filtroTipo !== 'Salida'"
+                (click)="filtroTipo = 'Salida'; cambiarFiltro()">Salidas</button>
+      </div>
+      @if (idMedicamentoFiltro) {
+        <span class="badge text-bg-light border ms-2">
+          Mostrando movimientos del medicamento #{{ idMedicamentoFiltro }}
+          <a routerLink="/dashboard/inventario/movimientos" class="ms-1 link-danger text-decoration-none"
+             [queryParams]="{}">×</a>
+        </span>
+      }
+    </div>
+  </div>
+
+  @if (cargando()) {
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+  }
+
+  <!-- Historial de movimientos -->
+  <div class="card shadow-sm table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Tipo</th>
+          <th>Medicamento</th>
+          <th>Lote</th>
+          <th>Motivo</th>
+          <th class="text-end">Cantidad</th>
+          <th>Referencia</th>
+          <th>Registró</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (m of movimientos(); track m.idMovimiento) {
+          <tr>
+            <td class="small text-nowrap">{{ fmtFechaHora(m.fechaMovimiento) }}</td>
+            <td>
+              @if (m.tipo === 'Entrada') {
+                <span class="badge text-bg-success"><i class="bi bi-arrow-down-circle me-1"></i>Entrada</span>
+              } @else {
+                <span class="badge text-bg-danger"><i class="bi bi-arrow-up-circle me-1"></i>Salida</span>
+              }
+            </td>
+            <td class="small">{{ m.medicamentoNombre }}</td>
+            <td class="small text-mono">{{ m.numeroLote }}</td>
+            <td><span [class]="clasesMotivo(m.motivo)">{{ m.motivo }}</span></td>
+            <td class="text-end fw-bold" [class.text-success]="m.tipo === 'Entrada'" [class.text-danger]="m.tipo === 'Salida'">
+              {{ m.tipo === 'Entrada' ? '+' : '−' }}{{ m.cantidad }}
+            </td>
+            <td class="small text-muted">{{ m.referencia ?? '—' }}</td>
+            <td class="small">{{ m.usuarioNombre }}</td>
+          </tr>
+        } @empty {
+          @if (!cargando()) {
+            <tr><td colspan="8" class="text-center text-muted py-4">No hay movimientos registrados con este filtro.</td></tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- =================== MODAL iii: Movimiento =================== -->
+@if (modalAbierto) {
+<div class="modal-backdrop show" (click)="cerrar()"></div>
+<div class="modal d-block show" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header" [class.bg-success-subtle]="!esSalida" [class.bg-danger-subtle]="esSalida">
+        <h5 class="modal-title">
+          <i class="bi me-2" [class.bi-box-arrow-in-down]="!esSalida" [class.bi-box-arrow-up]="esSalida"></i>
+          Registrar {{ esSalida ? 'salida' : 'entrada' }} de inventario
+        </h5>
+        <button type="button" class="btn-close" (click)="cerrar()"></button>
+      </div>
+      <form #fMov="ngForm" (ngSubmit)="guardar(fMov)">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label small">Tipo de movimiento *</label>
+              <div class="btn-group w-100">
+                <input type="radio" class="btn-check" name="tipoE" id="tipoE" value="Entrada"
+                       [(ngModel)]="form.tipo" (ngModelChange)="onTipoChange()" />
+                <label class="btn btn-outline-success btn-sm" for="tipoE"><i class="bi bi-plus-lg me-1"></i>Entrada</label>
+                <input type="radio" class="btn-check" name="tipoS" id="tipoS" value="Salida"
+                       [(ngModel)]="form.tipo" (ngModelChange)="onTipoChange()" />
+                <label class="btn btn-outline-danger btn-sm" for="tipoS"><i class="bi bi-dash-lg me-1"></i>Salida</label>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small">Lote *</label>
+              <select class="form-select form-select-sm" name="lote" required [(ngModel)]="form.idLote">
+                <option [ngValue]="null" disabled>Seleccione un lote…</option>
+                @for (l of lotes(); track l.idLote) {
+                  <option [ngValue]="l.idLote" [disabled]="esSalida && l.fechaVencimiento < todayIso">
+                    {{ l.medicamentoNombre }} — Lote {{ l.numeroLote }}
+                    ({{ l.cantidadDisponible }} u., vence {{ l.fechaVencimiento }}{{ esSalida && l.fechaVencimiento < todayIso ? ' · VENCIDO' : '' }})
+                  </option>
+                }
+              </select>
+              @if (loteSeleccionado; as ls) {
+                <div class="small mt-1" [class.text-danger]="ls.fechaVencimiento < todayIso">
+                  Disponible actual: <b>{{ ls.cantidadDisponible }}</b> unidades
+                  @if (ls.fechaVencimiento < todayIso) { · <b>lote vencido, no despachable</b> }
+                </div>
+              }
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small">Motivo *</label>
+              <select class="form-select form-select-sm" name="motivo" required [(ngModel)]="form.motivo">
+                @for (mo of motivos; track mo) {
+                  <option [value]="mo">{{ mo }}</option>
+                }
+              </select>
+              <div class="form-text tiny">Venta / Uso clínico generan salida; Compra / Devolución, entrada.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small">Cantidad * <span class="text-muted">(&gt; 0)</span></label>
+              <input type="number" class="form-control form-control-sm" name="cantidad" required min="1" step="1"
+                     placeholder="Unidades" [(ngModel)]="form.cantidad" />
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small">Referencia (opcional)</label>
+              <input type="text" class="form-control form-control-sm" name="referencia" maxlength="200"
+                     [placeholder]="esSalida ? 'Ej. Venta #1023 / Consulta #4 — paciente …' : 'Ej. OC-2025-010 / Proveedor …'"
+                     [(ngModel)]="form.referencia" />
+            </div>
+          </div>
+
+          <div class="alert alert-light border small mt-3 mb-0">
+            <i class="bi bi-shield-check me-1"></i>
+            Al confirmar se actualizará <b>LoteMedicamento.CantidadDisponible</b>
+            ({{ esSalida ? 'se descontará' : 'se incrementará' }} la cantidad) y quedará registrado
+            el movimiento con su usuario y fecha para auditoría.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" (click)="cerrar()">Cancelar</button>
+          <button type="submit" class="btn btn-sm" [class.btn-success]="!esSalida" [class.btn-danger]="esSalida"
+                  [disabled]="guardando">
+            @if (guardando) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-save me-1"></i>Registrar {{ esSalida ? 'salida' : 'entrada' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+}
