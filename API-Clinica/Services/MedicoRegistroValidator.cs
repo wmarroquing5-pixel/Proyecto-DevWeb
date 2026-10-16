@@ -92,8 +92,8 @@ public static class MedicoRegistroValidator
             .Select(e => e.Entity.IdDiagnostico!.Value)
             .Concat(context.ChangeTracker.Entries<Examen>()
                 .Where(e => DebeValidar(e, "IdConsulta", "IdDiagnostico") &&
-                    e.Property<int?>("IdDiagnostico").CurrentValue.HasValue)
-                .Select(e => e.Property<int?>("IdDiagnostico").CurrentValue!.Value))
+                    e.Entity.IdDiagnostico.HasValue)
+                .Select(e => e.Entity.IdDiagnostico!.Value))
             .Distinct().ToArray();
 
     private static bool DebeValidar(EntityEntry entry, params string[] relaciones) =>
@@ -200,7 +200,7 @@ public static class MedicoRegistroValidator
             .Where(e => DebeValidar(e, "IdConsulta", "IdDiagnostico") &&
                 e.Entity.IdConsulta.HasValue))
         {
-            var idDiagnostico = entry.Property<int?>("IdDiagnostico").CurrentValue;
+            var idDiagnostico = entry.Entity.IdDiagnostico;
             if (idDiagnostico is int id &&
                 consultasPorDiagnostico.TryGetValue(id, out var idConsulta) &&
                 idConsulta != entry.Entity.IdConsulta)

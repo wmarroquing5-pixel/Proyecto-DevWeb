@@ -10,8 +10,40 @@ namespace API_Clinica.Services;
 
 public sealed class DiagnosticoService(
     ClinicaDbContext context,
-    IAccesoActualService accesoActual) : IDiagnosticoService
+    IAccesoActualService accesoActual,
+    ICommonParameterValidator parameterValidator) : IDiagnosticoService
 {
+    public async Task<PagedResponse<DiagnosticoResponse>> ListarAsync(
+        DiagnosticoFiltroDto filtro, CancellationToken cancellationToken)
+    {
+        var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
+        if (filtro.IdConsulta is <= 0)
+            throw Invalid(nameof(filtro.IdConsulta), "La consulta debe ser válida.");
+
+        var query = context.Diagnosticos.AsNoTracking();
+        if (filtro.IdConsulta is int idConsulta)
+            query = query.Where(d => d.IdConsulta == idConsulta);
+
+        var total = await query.LongCountAsync(cancellationToken);
+        var items = await ConMedico(query.OrderBy(d => d.IdDiagnostico)
+            .Skip(pagination.Skip).Take(pagination.PageSize))
+            .ToListAsync(cancellationToken);
+        return new(items, filtro.Page, filtro.PageSize, total);
+    }
+
+    public async Task<DiagnosticoResponse> ObtenerAsync(
+        int id, CancellationToken cancellationToken) =>
+        await ConMedico(context.Diagnosticos.AsNoTracking()
+            .Where(d => d.IdDiagnostico == id))
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? throw new NotFoundException("Diagnóstico no encontrado.");
+
+    private IQueryable<DiagnosticoResponse> ConMedico(IQueryable<Diagnostico> query) =>
+        query.Join(context.Consultas.AsNoTracking(), d => d.IdConsulta,
+            c => c.IdConsulta, (d, c) => new DiagnosticoResponse(
+                d.IdDiagnostico, d.IdConsulta, c.IdMedico,
+                d.Descripcion, d.FechaRegistro));
+
     public async Task<DiagnosticoResponse> CrearAsync(
         CrearDiagnosticoRequest request, ClaimsPrincipal principal,
         CancellationToken cancellationToken)
@@ -19,9 +51,7 @@ public sealed class DiagnosticoService(
         var usuario = await accesoActual.ObtenerUsuarioActivoAsync(principal, cancellationToken)
             ?? throw new ForbiddenException("Acceso denegado.");
 
-        var descripcion = request.Descripcion?.Trim();
-        if (string.IsNullOrWhiteSpace(descripcion))
-            throw Invalid("Descripcion", "La descripción es obligatoria.");
+        var descripcion = ValidarDescripcion(request.Descripcion);
 
         if (request.IdConsulta <= 0)
             throw Invalid("IdConsulta", "La consulta debe ser válida.");
@@ -32,10 +62,7 @@ public sealed class DiagnosticoService(
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException("Consulta no encontrada.");
 
-        if (!await context.Empleados.AsNoTracking().AnyAsync(
-            e => e.IdEmpleado == consulta.IdMedico && e.Activo && e.TipoEmpleado == "Medico",
-            cancellationToken))
-            throw Invalid("IdMedico", "El médico de la consulta debe existir, estar activo y ser de tipo Medico.");
+        await ValidarMedicoConsultaAsync(consulta.IdMedico, cancellationToken);
 
         var idMedico = await ResolverMedicoAsync(usuario, request.IdMedico, cancellationToken);
         if (idMedico != consulta.IdMedico)
@@ -52,6 +79,53 @@ public sealed class DiagnosticoService(
 
         return new DiagnosticoResponse(diagnostico.IdDiagnostico, diagnostico.IdConsulta,
             consulta.IdMedico, diagnostico.Descripcion, diagnostico.FechaRegistro);
+    }
+
+    public async Task<DiagnosticoResponse> ActualizarAsync(
+        int id, ActualizarDiagnosticoRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        var usuario = await accesoActual.ObtenerUsuarioActivoAsync(principal, cancellationToken)
+            ?? throw new ForbiddenException("Acceso denegado.");
+        var diagnostico = await context.Diagnosticos.SingleOrDefaultAsync(
+            d => d.IdDiagnostico == id, cancellationToken)
+            ?? throw new NotFoundException("Diagnóstico no encontrado.");
+        var idMedicoConsulta = await context.Consultas.AsNoTracking()
+            .Where(c => c.IdConsulta == diagnostico.IdConsulta)
+            .Select(c => (int?)c.IdMedico)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new ConflictException("La consulta del diagnóstico no existe.");
+
+        await ValidarMedicoConsultaAsync(idMedicoConsulta, cancellationToken);
+        if (usuario.IdEmpleado is int idEmpleado &&
+            await context.Empleados.AsNoTracking().AnyAsync(
+                e => e.IdEmpleado == idEmpleado && e.TipoEmpleado == "Medico",
+                cancellationToken) && idEmpleado != idMedicoConsulta)
+            throw new ForbiddenException("No puede modificar el diagnóstico de otro médico.");
+
+        // IdConsulta y FechaRegistro conservan la atribución histórica y nunca se modifican aquí.
+        diagnostico.Descripcion = ValidarDescripcion(request.Descripcion);
+        await context.SaveChangesAsync(cancellationToken);
+        return new DiagnosticoResponse(diagnostico.IdDiagnostico, diagnostico.IdConsulta,
+            idMedicoConsulta, diagnostico.Descripcion, diagnostico.FechaRegistro);
+    }
+
+    private static string ValidarDescripcion(string? valor)
+    {
+        var descripcion = valor?.Trim();
+        if (string.IsNullOrWhiteSpace(descripcion))
+            throw Invalid("Descripcion", "La descripción es obligatoria.");
+        if (descripcion.Length > 300)
+            throw Invalid("Descripcion", "Máximo 300 caracteres.");
+        return descripcion;
+    }
+
+    private async Task ValidarMedicoConsultaAsync(int idMedico, CancellationToken cancellationToken)
+    {
+        if (!await context.Empleados.AsNoTracking().AnyAsync(
+            e => e.IdEmpleado == idMedico && e.Activo && e.TipoEmpleado == "Medico",
+            cancellationToken))
+            throw Invalid("IdMedico", "El médico de la consulta debe existir, estar activo y ser de tipo Medico.");
     }
 
     private async Task<int> ResolverMedicoAsync(

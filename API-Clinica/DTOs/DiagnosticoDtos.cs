@@ -10,7 +10,21 @@ public sealed class CrearDiagnosticoRequest
     [Range(1, int.MaxValue)]
     public int? IdMedico { get; init; }
 
-    [Required]
+    [Required, StringLength(300)]
+    public string Descripcion { get; init; } = string.Empty;
+}
+
+public sealed class DiagnosticoFiltroDto
+{
+    public int? IdConsulta { get; init; }
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = 20;
+}
+
+// La asociación clínica y la fecha de registro no se pueden cambiar por esta operación.
+public sealed class ActualizarDiagnosticoRequest
+{
+    [Required, StringLength(300)]
     public string Descripcion { get; init; } = string.Empty;
 }
 

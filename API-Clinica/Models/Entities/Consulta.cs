@@ -17,4 +17,14 @@ public class Consulta
     public string? Sintomas { get; set; }
 
     public string? Observaciones { get; set; }
+
+    public double? PesoLb { get; set; }
+
+    public double? PresionDiastolica { get; set; }
+
+    public double? PresionSistolica { get; set; }
+
+    public int? AlturaCm { get; set; }
+
+    public int? IdClinica { get; set; }
 }

@@ -720,11 +720,11 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasColumnName("Observaciones")
                 .HasColumnType("nvarchar(300)")
                 .IsRequired(false);
-            entity.Property<int?>("IdClinica").HasColumnType("int");
-            entity.Property<double?>("PesoLb").HasColumnType("float");
-            entity.Property<double?>("PresionSistolica").HasColumnType("float");
-            entity.Property<double?>("PresionDiastolica").HasColumnType("float");
-            entity.Property<int?>("AlturaCm").HasColumnType("int");
+            entity.Property(e => e.IdClinica).HasColumnType("int");
+            entity.Property(e => e.PesoLb).HasColumnType("float");
+            entity.Property(e => e.PresionSistolica).HasColumnType("float");
+            entity.Property(e => e.PresionDiastolica).HasColumnType("float");
+            entity.Property(e => e.AlturaCm).HasColumnType("int");
             entity.HasOne<Paciente>()
                 .WithMany()
                 .HasForeignKey(e => e.IdPaciente)
@@ -740,7 +740,7 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasForeignKey(e => e.IdSucursal)
                 .OnDelete(DeleteBehavior.NoAction)
                 .HasConstraintName("FK_Consulta_Sucursal");
-            entity.HasOne<Clinica>().WithMany().HasForeignKey("IdClinica")
+            entity.HasOne<Clinica>().WithMany().HasForeignKey(e => e.IdClinica)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Consulta_Clinica");
         });
 
@@ -799,18 +799,18 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasColumnType("datetime2")
                 .IsRequired(true);
             entity.Ignore(e => e.Resultado);
-            entity.Property<int?>("IdDiagnostico").HasColumnType("int");
-            entity.Property<int?>("IdTurno").HasColumnType("int");
-            entity.Property<DateOnly?>("FechaResultado").HasColumnType("date");
-            entity.Property<string?>("Prioridad").HasColumnType("nvarchar(20)");
+            entity.Property(e => e.IdDiagnostico).HasColumnType("int");
+            entity.Property(e => e.IdTurno).HasColumnType("int");
+            entity.Property(e => e.FechaResultado).HasColumnType("date");
+            entity.Property(e => e.Prioridad).HasColumnType("nvarchar(20)");
             entity.HasOne<Consulta>()
                 .WithMany()
                 .HasForeignKey(e => e.IdConsulta)
                 .OnDelete(DeleteBehavior.NoAction)
                 .HasConstraintName("FK_Examen_Consulta");
-            entity.HasOne<Diagnostico>().WithMany().HasForeignKey("IdDiagnostico")
+            entity.HasOne<Diagnostico>().WithMany().HasForeignKey(e => e.IdDiagnostico)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Examen_Diagnostico");
-            entity.HasOne<Turno>().WithMany().HasForeignKey("IdTurno")
+            entity.HasOne<Turno>().WithMany().HasForeignKey(e => e.IdTurno)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Examen_Turno");
         });
 
@@ -869,8 +869,8 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasColumnName("Indicaciones")
                 .HasColumnType("nvarchar(300)")
                 .IsRequired(false);
-            entity.Property<int?>("IdLote").HasColumnType("int");
-            entity.Property<short?>("Cantidad").HasColumnType("smallint");
+            entity.Property(e => e.IdLote).HasColumnType("int");
+            entity.Property(e => e.Cantidad).HasColumnType("smallint");
             entity.Property(e => e.FechaInicio)
                 .HasColumnName("FechaInicio")
                 .HasColumnType("date")
@@ -884,7 +884,7 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasForeignKey(e => e.IdConsulta)
                 .OnDelete(DeleteBehavior.NoAction)
                 .HasConstraintName("FK_Tratamiento_Consulta");
-            entity.HasOne<LoteMedicamento>().WithMany().HasForeignKey("IdLote")
+            entity.HasOne<LoteMedicamento>().WithMany().HasForeignKey(e => e.IdLote)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Tratamiento_Lote");
         });
 
@@ -947,7 +947,7 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
             entity.Property(x => x.PrecioBase).HasColumnType("decimal(18,2)");
             entity.Property(x => x.TipoServicio).HasColumnType("nvarchar(50)").IsRequired();
             entity.Property(x => x.Activo).HasDefaultValue(true);
-            entity.HasAlternateKey(x => x.Codigo);
+            entity.HasIndex(x => x.Codigo).IsUnique();
         });
 
         modelBuilder.Entity<Turno>(entity =>
@@ -962,7 +962,7 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
             entity.Property(x => x.HoraSalida).HasColumnType("time(7)");
             entity.Property(x => x.Jornada).HasColumnType("nvarchar(20)").IsRequired();
             entity.Property(x => x.Activo).HasDefaultValue(true);
-            entity.HasAlternateKey(x => x.Codigo);
+            entity.HasIndex(x => x.Codigo).IsUnique();
         });
 
         modelBuilder.Entity<Bitacora>(entity =>

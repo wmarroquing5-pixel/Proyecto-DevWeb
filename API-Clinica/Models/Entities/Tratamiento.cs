@@ -6,6 +6,10 @@ public class Tratamiento
 
     public int IdConsulta { get; set; }
 
+    public int? IdLote { get; set; }
+
+    public short? Cantidad { get; set; }
+
     public int IdMedico { get; set; }
 
     public string Descripcion { get; set; } = null!;
