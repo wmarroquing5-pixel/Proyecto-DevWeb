@@ -119,6 +119,8 @@ public sealed class VentaService(
                     throw FarmaciaValidation.Invalid("Items", "El importe excede el límite de decimal(18,2).");
 
                 lot.CantidadDisponible -= amount;
+                MovimientoSalidaRegistrar.Registrar(
+                    context, lot.IdLote, amount, usuario.IdUsuario, request.IdSucursal, now);
                 var detail = new VentaDetalle
                 {
                     Venta = sale,

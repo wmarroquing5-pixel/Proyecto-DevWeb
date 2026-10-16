@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMedicamentoService, MedicamentoService>();
         services.AddScoped<ILoteMedicamentoService, LoteMedicamentoService>();
         services.AddScoped<IVentaService, VentaService>();
+        services.AddScoped<IFacturaServiciosService, FacturaServiciosService>();
         services.AddHttpContextAccessor();
         services.AddExceptionHandler<GlobalExceptionHandler>();
         services.AddProblemDetails();
