@@ -21,4 +21,14 @@ public class Paciente
     public DateTime FechaRegistro { get; set; }
 
     public bool Activo { get; set; }
+
+    public string? TipoSangre { get; set; }
+
+    public string? Nit { get; set; }
+
+    public string? NombreFacturacion { get; set; }
+
+    public string? Direccion { get; set; }
+
+    public string? UrlFoto { get; set; }
 }

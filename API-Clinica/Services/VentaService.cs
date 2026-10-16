@@ -141,7 +141,7 @@ public sealed class VentaService(
         return new VentaResponse(sale.IdVenta, sale.IdUsuario, sale.IdSucursal,
             sale.FechaVenta, sale.Total,
             details.Select(d => new VentaDetalleResponse(d.Detail.IdVentaDetalle,
-                d.Detail.IdLote, d.IdMedicamento, d.Detail.Cantidad,
+                d.Detail.IdLote!.Value, d.IdMedicamento, d.Detail.Cantidad,
                 d.Detail.PrecioUnitario, d.Detail.Subtotal)).ToList());
     }
 

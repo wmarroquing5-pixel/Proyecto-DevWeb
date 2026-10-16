@@ -13,4 +13,5 @@ public class AsignacionHabitacion
     public DateTime? FechaEgreso { get; set; }
 
     public string? Observaciones { get; set; }
+    public string TipoAsignacion { get; set; } = "Paciente";
 }

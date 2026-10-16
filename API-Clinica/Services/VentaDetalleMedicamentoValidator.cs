@@ -45,6 +45,8 @@ public static class VentaDetalleMedicamentoValidator
         context.ChangeTracker.Entries<VentaDetalle>()
             .Where(e => e.State is EntityState.Added or EntityState.Modified)
             .Select(e => e.Entity.IdLote)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
             .Distinct().ToArray();
 
     private static void AplicarLotesPendientes(

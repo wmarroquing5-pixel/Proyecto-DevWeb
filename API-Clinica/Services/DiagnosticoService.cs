@@ -26,11 +26,20 @@ public sealed class DiagnosticoService(
         if (request.IdConsulta <= 0)
             throw Invalid("IdConsulta", "La consulta debe ser válida.");
 
-        if (!await context.Consultas.AsNoTracking()
-            .AnyAsync(c => c.IdConsulta == request.IdConsulta, cancellationToken))
-            throw new NotFoundException("Consulta no encontrada.");
+        var consulta = await context.Consultas.AsNoTracking()
+            .Where(c => c.IdConsulta == request.IdConsulta)
+            .Select(c => new { c.IdMedico })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException("Consulta no encontrada.");
+
+        if (!await context.Empleados.AsNoTracking().AnyAsync(
+            e => e.IdEmpleado == consulta.IdMedico && e.Activo && e.TipoEmpleado == "Medico",
+            cancellationToken))
+            throw Invalid("IdMedico", "El médico de la consulta debe existir, estar activo y ser de tipo Medico.");
 
         var idMedico = await ResolverMedicoAsync(usuario, request.IdMedico, cancellationToken);
+        if (idMedico != consulta.IdMedico)
+            throw Invalid("IdMedico", "El médico debe corresponder a la consulta.");
         var diagnostico = new Diagnostico
         {
             IdConsulta = request.IdConsulta,
@@ -42,7 +51,7 @@ public sealed class DiagnosticoService(
         await context.SaveChangesAsync(cancellationToken);
 
         return new DiagnosticoResponse(diagnostico.IdDiagnostico, diagnostico.IdConsulta,
-            diagnostico.IdMedico, diagnostico.Descripcion, diagnostico.FechaRegistro);
+            consulta.IdMedico, diagnostico.Descripcion, diagnostico.FechaRegistro);
     }
 
     private async Task<int> ResolverMedicoAsync(

@@ -18,12 +18,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICommonParameterValidator, CommonParameterValidator>();
         services.AddScoped<IAdministracionService, AdministracionService>();
         services.AddScoped<ISucursalService, SucursalService>();
+        services.AddScoped<IPacienteService, PacienteService>();
+        services.AddScoped<IEmpleadoService, EmpleadoService>();
         services.AddScoped<IEspecialidadService, EspecialidadService>();
         services.AddScoped<HabitacionTransactionCoordinator>();
         services.AddSingleton<IHabitacionEstadoNotifier, HabitacionEstadoNotifier>();
         services.AddScoped<IHabitacionService, HabitacionService>();
         services.AddScoped<IAsignacionHabitacionService, AsignacionHabitacionService>();
         services.AddScoped<IDiagnosticoService, DiagnosticoService>();
+        services.AddScoped<HistorialMedicoLecturaService>();
         services.AddScoped<ICategoriaService, CategoriaService>();
         services.AddScoped<IMarcaService, MarcaService>();
         services.AddScoped<IMedicamentoService, MedicamentoService>();

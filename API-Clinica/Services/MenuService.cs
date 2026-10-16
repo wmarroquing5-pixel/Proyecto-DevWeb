@@ -7,55 +7,58 @@ namespace API_Clinica.Services;
 
 public sealed class MenuService(IAccesoActualService accesoActual) : IMenuService
 {
+    private static readonly IReadOnlyDictionary<string, string> ModulosPorRuta =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/pacientes"] = "Pacientes",
+            ["/citas"] = "Citas",
+            ["/consultas"] = "Historial",
+            ["/medicamentos"] = "Medicamentos",
+            ["/admin/usuarios"] = "Usuarios",
+            ["/admin/roles"] = "Roles",
+            ["/admin/empleados"] = "Empleados",
+            ["/reportes/citas"] = "Reportes",
+            ["/reportes/pacientes"] = "Reportes"
+        };
+
     public async Task<List<MenuItemDto>> ObtenerMenuAsync(
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        // 1. Obtener los permisos del usuario (ya tienes este servicio)
         var permisos = await accesoActual.ObtenerPermisosAsync(user, ct);
+        var modulosConsultables = permisos
+            .Where(p => p.PuedeConsultar)
+            .Select(p => p.Modulo)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // 2. Filtrar el menú estático según los permisos
-        var filtrado = MenuCompleto.Items
-            .Where(item => ItemPermitido(item, permisos))
-            .Select(item => FiltrarHijos(item, permisos))
-            .ToList();
-
-        return filtrado;
+        return Filtrar(MenuCompleto.Items, modulosConsultables);
     }
 
-    /// <summary>
-    /// Un item es visible si el usuario tiene permiso en ALGUNO de sus módulos.
-    /// Ajusta esta lógica al formato real que devuelve ObtenerPermisosAsync.
-    /// </summary>
-    private static bool ItemPermitido(MenuItemDto item, object permisos)
+    private static List<MenuItemDto> Filtrar(
+        IEnumerable<MenuItemDto> items,
+        IReadOnlySet<string> modulosConsultables)
     {
-        // Si no hay roles definidos en el item, se muestra a todos
-        if (item.Roles is null || item.Roles.Length == 0) return true;
-
-        // Asumimos que 'permisos' es un IEnumerable<string> con los roles del usuario.
-        // Si tu ObtenerPermisosAsync devuelve otra estructura, ajusta aquí.
-        if (permisos is IEnumerable<string> rolesUsuario)
+        var visibles = new List<MenuItemDto>();
+        foreach (var item in items)
         {
-            return item.Roles.Any(r => rolesUsuario.Contains(r));
+            if (item.Children is { Count: > 0 })
+            {
+                var hijos = Filtrar(item.Children, modulosConsultables);
+                if (hijos.Count > 0)
+                    visibles.Add(item with { Children = hijos });
+            }
+            else if (item.Route == "/dashboard" && modulosConsultables.Count > 0)
+            {
+                visibles.Add(item);
+            }
+            else if (item.Route is not null &&
+                ModulosPorRuta.TryGetValue(item.Route, out var modulo) &&
+                modulosConsultables.Contains(modulo))
+            {
+                visibles.Add(item);
+            }
         }
 
-        return false;
-    }
-
-    /// <summary>
-    /// Filtra recursivamente los hijos de un item.
-    /// Si un padre queda sin hijos visibles, se oculta.
-    /// </summary>
-    private static MenuItemDto FiltrarHijos(MenuItemDto item, object permisos)
-    {
-        if (item.Children is null || item.Children.Count == 0)
-            return item;
-
-        var hijosVisibles = item.Children
-            .Where(c => ItemPermitido(c, permisos))
-            .Select(c => FiltrarHijos(c, permisos))
-            .ToList();
-
-        return item with { Children = hijosVisibles.Count > 0 ? hijosVisibles : null };
+        return visibles;
     }
 }

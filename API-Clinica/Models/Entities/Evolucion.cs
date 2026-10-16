@@ -8,6 +8,8 @@ public class Evolucion
 
     public int? IdConsulta { get; set; }
 
+    public int? IdDiagnostico { get; set; }
+
     public int IdMedico { get; set; }
 
     public DateTime FechaEvolucion { get; set; }

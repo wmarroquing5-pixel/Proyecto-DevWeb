@@ -11,4 +11,5 @@ public class Venta
     public DateTime FechaVenta { get; set; }
 
     public decimal Total { get; set; }
+    public string TipoFactura { get; set; } = "Venta Publica";
 }

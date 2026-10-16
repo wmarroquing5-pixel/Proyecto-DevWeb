@@ -8,7 +8,7 @@ public class VentaDetalle
 
     public Venta Venta { get; set; } = null!;
 
-    public int IdLote { get; set; }
+    public int? IdLote { get; set; }
 
     public int Cantidad { get; set; }
 

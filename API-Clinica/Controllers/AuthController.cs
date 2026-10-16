@@ -1,4 +1,5 @@
 using API_Clinica.DTOs;
+using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,23 +26,17 @@ public sealed class AuthController(IAuthService authService, IAccesoActualServic
 
     [Authorize]
     [HttpGet("me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
-        if (!int.TryParse(User.FindFirst("IdUsuario")?.Value, out var idUsuario) ||
-            !int.TryParse(User.FindFirst("IdRol")?.Value, out var idRol))
-        {
-            return Unauthorized();
-        }
-
-        int? idEmpleado = int.TryParse(User.FindFirst("IdEmpleado")?.Value, out var employeeId)
-            ? employeeId : null;
+        var usuario = await accesoActual.ObtenerUsuarioActivoAsync(User, cancellationToken)
+            ?? throw new ForbiddenException("Acceso denegado.");
 
         return Ok(new
         {
-            idUsuario,
-            idRol,
-            username = User.FindFirst("Username")?.Value,
-            idEmpleado
+            idUsuario = usuario.IdUsuario,
+            idRol = usuario.IdRol,
+            username = usuario.Username,
+            idEmpleado = usuario.IdEmpleado
         });
     }
 
