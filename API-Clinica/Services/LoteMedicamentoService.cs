@@ -13,8 +13,12 @@ namespace API_Clinica.Services;
 public sealed class LoteMedicamentoService(
     ClinicaDbContext context, ICommonParameterValidator parameterValidator,
     IAccesoActualService accesoActual,
-    ILogger<LoteMedicamentoService> logger) : ILoteMedicamentoService
+    ILogger<LoteMedicamentoService> logger,
+    TimeProvider timeProvider) : ILoteMedicamentoService
 {
+    private const string TipoAjuste = "Ajuste";
+    private const string PrefijoExistenciaInicial = "Existencia inicial | ";
+
     public async Task<PagedResponse<LoteMedicamentoResponse>> ListarAsync(
         int page, int pageSize, CancellationToken cancellationToken)
     {
@@ -38,38 +42,154 @@ public sealed class LoteMedicamentoService(
         ?? throw new NotFoundException("Lote no encontrado.");
 
     public async Task<LoteMedicamentoResponse> CrearAsync(
-        GuardarLoteMedicamentoRequest request, CancellationToken cancellationToken)
+        GuardarLoteMedicamentoRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
     {
         var numero = ValidarDatos(request);
-        await ValidarMedicamentoAsync(request.IdMedicamento, cancellationToken);
-        var lot = new LoteMedicamento
+        if (request.CantidadDisponible == 0)
         {
-            IdMedicamento = request.IdMedicamento, NumeroLote = numero,
-            FechaIngreso = request.FechaIngreso,
-            FechaVencimiento = request.FechaVencimiento,
-            CantidadDisponible = request.CantidadDisponible
-        };
+            await ValidarMedicamentoAsync(request.IdMedicamento, cancellationToken);
+            var loteSinExistencia = CrearEntidad(request, numero);
+            context.LoteMedicamentos.Add(loteSinExistencia);
+            await context.SaveChangesAsync(cancellationToken);
+            return ToResponse(loteSinExistencia);
+        }
+
+        var trazabilidadSolicitada = ValidarTrazabilidad(
+            request.IdSucursal, request.Observaciones, existenciaInicial: true);
+        var fechaOperacion = timeProvider.GetUtcNow().UtcDateTime;
+        var hoy = DateOnly.FromDateTime(fechaOperacion);
+        if (request.FechaVencimiento <= hoy)
+            throw FarmaciaValidation.Invalid(
+                "FechaVencimiento",
+                "Un lote con existencia inicial debe tener una fecha de vencimiento futura.");
+
+        if (!context.Database.IsSqlServer())
+        {
+            if (context.Database.IsRelational())
+                throw new NotSupportedException(
+                    "La creación transaccional con existencia requiere SQL Server.");
+            return await CrearConExistenciaCoreAsync(
+                request, numero, trazabilidadSolicitada, principal,
+                fechaOperacion, cancellationToken);
+        }
+
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, cancellationToken);
+            try
+            {
+                var response = await CrearConExistenciaCoreAsync(
+                    request, numero, trazabilidadSolicitada, principal,
+                    fechaOperacion, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return response;
+            }
+            catch
+            {
+                try { await transaction.RollbackAsync(CancellationToken.None); }
+                catch (Exception rollbackError)
+                {
+                    logger.LogError(rollbackError,
+                        "No se pudo confirmar el rollback de la creación del lote.");
+                }
+                throw;
+            }
+        }
+        catch (SqlException ex) when (ex.Number is 1205 or 1222)
+        {
+            throw new ConflictException("El inventario está siendo modificado. Intente nuevamente.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("El inventario cambió durante la creación. Intente nuevamente.");
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number is 1205 or 1222 or 547)
+        {
+            throw new ConflictException("El inventario cambió durante la creación. Intente nuevamente.");
+        }
+    }
+
+    private async Task<LoteMedicamentoResponse> CrearConExistenciaCoreAsync(
+        GuardarLoteMedicamentoRequest request, string numero,
+        TrazabilidadSolicitada trazabilidadSolicitada, ClaimsPrincipal principal,
+        DateTime fechaOperacion, CancellationToken cancellationToken)
+    {
+        var trazabilidad = await ObtenerTrazabilidadAsync(
+            trazabilidadSolicitada, principal, cancellationToken);
+
+        Medicamento? medicamento;
+        if (context.Database.IsSqlServer())
+            medicamento = await context.Medicamentos
+                .FromSqlInterpolated($"SELECT * FROM [Medicamento] WITH (UPDLOCK, HOLDLOCK) WHERE [IdMedicamento] = {request.IdMedicamento}")
+                .SingleOrDefaultAsync(cancellationToken);
+        else
+            medicamento = await context.Medicamentos.SingleOrDefaultAsync(
+                m => m.IdMedicamento == request.IdMedicamento, cancellationToken);
+        if (medicamento is null || !medicamento.Activo)
+            throw FarmaciaValidation.Invalid(
+                "IdMedicamento", "El medicamento debe existir y estar activo.");
+
+        var lot = CrearEntidad(request, numero);
         context.LoteMedicamentos.Add(lot);
-        await context.SaveChangesAsync(cancellationToken);
+        if (await context.SaveChangesAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("No se creó exactamente un lote.");
+
+        var movimiento = new MovimientoInventario
+        {
+            IdLote = lot.IdLote,
+            IdUsuario = trazabilidad.IdUsuario,
+            IdSucursal = trazabilidad.IdSucursal,
+            TipoMovimiento = TipoAjuste,
+            Cantidad = request.CantidadDisponible,
+            FechaMovimiento = fechaOperacion,
+            Observaciones = trazabilidad.Observaciones
+        };
+        context.MovimientosInventario.Add(movimiento);
+        if (await context.SaveChangesAsync(cancellationToken) != 1)
+            throw new InvalidOperationException(
+                "No se registró exactamente un movimiento de existencia inicial.");
+
         return ToResponse(lot);
     }
 
+    private static LoteMedicamento CrearEntidad(
+        GuardarLoteMedicamentoRequest request, string numero) => new()
+    {
+        IdMedicamento = request.IdMedicamento,
+        NumeroLote = numero,
+        FechaIngreso = request.FechaIngreso,
+        FechaVencimiento = request.FechaVencimiento,
+        CantidadDisponible = request.CantidadDisponible
+    };
+
     public async Task<LoteMedicamentoResponse> ActualizarAsync(
-        int id, ActualizarLoteMedicamentoRequest request, CancellationToken cancellationToken)
+        int id, ActualizarLoteMedicamentoRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
     {
         var numero = ValidarDatos(request);
         if (request.CantidadEsperada is not int cantidadEsperada || cantidadEsperada < 0)
             throw FarmaciaValidation.Invalid("CantidadEsperada", "La cantidad esperada es obligatoria y no puede ser negativa.");
         if (id <= 0)
             throw new NotFoundException("Lote no encontrado.");
+        var trazabilidadSolicitada = request.CantidadDisponible == cantidadEsperada
+            ? null
+            : ValidarTrazabilidad(
+                request.IdSucursal, request.Observaciones, existenciaInicial: false);
         if (!context.Database.IsSqlServer())
         {
             if (context.Database.IsRelational())
                 throw new NotSupportedException("La actualización transaccional requiere SQL Server.");
             try
             {
+                var trazabilidad = trazabilidadSolicitada is null
+                    ? null
+                    : await ObtenerTrazabilidadAsync(
+                        trazabilidadSolicitada, principal, cancellationToken);
                 return await ActualizarCoreAsync(id, request, numero, cantidadEsperada,
-                    null, cancellationToken);
+                    null, trazabilidad, cancellationToken);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -91,8 +211,13 @@ public sealed class LoteMedicamentoService(
                 IsolationLevel.Serializable, cancellationToken);
             try
             {
+                var trazabilidad = trazabilidadSolicitada is null
+                    ? null
+                    : await ObtenerTrazabilidadAsync(
+                        trazabilidadSolicitada, principal, cancellationToken);
                 var response = await ActualizarCoreAsync(id, request, numero,
-                    cantidadEsperada, idMedicamentoOriginal, cancellationToken);
+                    cantidadEsperada, idMedicamentoOriginal, trazabilidad,
+                    cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return response;
             }
@@ -124,7 +249,8 @@ public sealed class LoteMedicamentoService(
 
     private async Task<LoteMedicamentoResponse> ActualizarCoreAsync(
         int id, ActualizarLoteMedicamentoRequest request, string numero,
-        int cantidadEsperada, int? idMedicamentoOriginal, CancellationToken ct)
+        int cantidadEsperada, int? idMedicamentoOriginal,
+        TrazabilidadOperacion? trazabilidad, CancellationToken ct)
     {
         LoteMedicamento lot;
         if (context.Database.IsSqlServer())
@@ -167,15 +293,39 @@ public sealed class LoteMedicamentoService(
             (await context.VentaDetalles.AsNoTracking().AnyAsync(
                 d => d.IdLote == id, ct) ||
              await context.Tratamientos.AsNoTracking().AnyAsync(
-                t => t.IdLote == id, ct)))
-            throw new ConflictException("No se puede cambiar el medicamento de un lote utilizado en ventas o tratamientos.");
+                t => t.IdLote == id, ct) ||
+             await context.MovimientosInventario.AsNoTracking().AnyAsync(
+                m => m.IdLote == id, ct)))
+            throw new ConflictException(
+                "No se puede cambiar el medicamento de un lote con historial asociado.");
 
+        var diferencia = request.CantidadDisponible - lot.CantidadDisponible;
+        if (diferencia != 0 && trazabilidad is null)
+            throw new InvalidOperationException(
+                "El ajuste de existencia no tiene información de trazabilidad.");
         lot.IdMedicamento = request.IdMedicamento;
         lot.NumeroLote = numero;
         lot.FechaIngreso = request.FechaIngreso;
         lot.FechaVencimiento = request.FechaVencimiento;
         lot.CantidadDisponible = request.CantidadDisponible;
-        await context.SaveChangesAsync(ct);
+        if (diferencia != 0)
+        {
+            context.MovimientosInventario.Add(new MovimientoInventario
+            {
+                IdLote = lot.IdLote,
+                IdUsuario = trazabilidad!.IdUsuario,
+                IdSucursal = trazabilidad.IdSucursal,
+                TipoMovimiento = TipoAjuste,
+                Cantidad = diferencia,
+                FechaMovimiento = timeProvider.GetUtcNow().UtcDateTime,
+                Observaciones = trazabilidad.Observaciones
+            });
+        }
+
+        var changes = await context.SaveChangesAsync(ct);
+        if (diferencia != 0 && changes != 2)
+            throw new InvalidOperationException(
+                "El ajuste no actualizó exactamente el lote y su movimiento.");
         return ToResponse(lot);
     }
 
@@ -338,11 +488,63 @@ public sealed class LoteMedicamentoService(
         return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
 
+    private static TrazabilidadSolicitada ValidarTrazabilidad(
+        int? idSucursal, string? observaciones, bool existenciaInicial)
+    {
+        if (idSucursal is not int sucursal || sucursal <= 0)
+            throw FarmaciaValidation.Invalid(
+                "IdSucursal",
+                "La sucursal es obligatoria cuando se modifica la existencia.");
+
+        var justificacion = NormalizarObservaciones(observaciones);
+        if (justificacion is null)
+            throw FarmaciaValidation.Invalid(
+                "Observaciones",
+                "La justificación es obligatoria cuando se modifica la existencia.");
+
+        var texto = existenciaInicial
+            ? $"{PrefijoExistenciaInicial}{justificacion}"
+            : justificacion;
+        if (texto.Length > 300)
+            throw FarmaciaValidation.Invalid(
+                "Observaciones", "No puede exceder 300 caracteres.");
+
+        return new TrazabilidadSolicitada(sucursal, texto);
+    }
+
+    private async Task<TrazabilidadOperacion> ObtenerTrazabilidadAsync(
+        TrazabilidadSolicitada solicitud, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        var usuario = await accesoActual.ObtenerUsuarioActivoAsync(
+            principal, cancellationToken)
+            ?? throw new ForbiddenException("Acceso denegado.");
+
+        Sucursal? sucursal;
+        if (context.Database.IsSqlServer())
+            sucursal = await context.Sucursales
+                .FromSqlInterpolated($"SELECT * FROM [Sucursal] WITH (UPDLOCK, HOLDLOCK) WHERE [IdSucursal] = {solicitud.IdSucursal}")
+                .SingleOrDefaultAsync(cancellationToken);
+        else
+            sucursal = await context.Sucursales.SingleOrDefaultAsync(
+                s => s.IdSucursal == solicitud.IdSucursal, cancellationToken);
+        if (sucursal is null || !sucursal.Activa)
+            throw FarmaciaValidation.Invalid(
+                "IdSucursal", "La sucursal debe existir y estar activa.");
+
+        return new TrazabilidadOperacion(
+            usuario.IdUsuario, sucursal.IdSucursal, solicitud.Observaciones);
+    }
+
     public async Task EliminarAsync(int id, CancellationToken cancellationToken)
     {
         var lot = await context.LoteMedicamentos.SingleOrDefaultAsync(
             l => l.IdLote == id, cancellationToken)
             ?? throw new NotFoundException("Lote no encontrado.");
+        if (await context.MovimientosInventario.AsNoTracking()
+            .AnyAsync(m => m.IdLote == id, cancellationToken))
+            throw new ConflictException(
+                "No se puede eliminar un lote con movimientos de inventario asociados.");
         if (await context.VentaDetalles.AsNoTracking()
             .AnyAsync(d => d.IdLote == id, cancellationToken))
             throw new ConflictException("No se puede eliminar un lote utilizado en ventas.");
@@ -355,7 +557,8 @@ public sealed class LoteMedicamentoService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException sql && sql.Number == 547)
         {
-            throw new ConflictException("No se puede eliminar un lote utilizado en ventas.");
+            throw new ConflictException(
+                "No se puede eliminar un lote con dependencias históricas asociadas.");
         }
     }
 
@@ -385,11 +588,22 @@ public sealed class LoteMedicamentoService(
         var numero = FarmaciaValidation.RequiredText(numeroLote, "NumeroLote", 50);
         if (cantidadDisponible < 0)
             throw FarmaciaValidation.Invalid("CantidadDisponible", "Debe ser mayor o igual a cero.");
-        FarmaciaValidation.Dates(fechaIngreso, fechaVencimiento);
+        if (fechaIngreso == default)
+            throw FarmaciaValidation.Invalid(
+                "FechaIngreso", "Debe ser una fecha válida.");
+        if (fechaVencimiento == default || fechaVencimiento <= fechaIngreso)
+            throw FarmaciaValidation.Invalid(
+                "FechaVencimiento", "Debe ser posterior a FechaIngreso.");
         return numero;
     }
 
     private static LoteMedicamentoResponse ToResponse(LoteMedicamento lot) =>
         new(lot.IdLote, lot.IdMedicamento, lot.NumeroLote,
             lot.FechaIngreso, lot.FechaVencimiento, lot.CantidadDisponible);
+
+    private sealed record TrazabilidadSolicitada(
+        int IdSucursal, string Observaciones);
+
+    private sealed record TrazabilidadOperacion(
+        int IdUsuario, int IdSucursal, string Observaciones);
 }

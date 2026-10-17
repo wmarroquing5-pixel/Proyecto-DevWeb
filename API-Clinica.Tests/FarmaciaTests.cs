@@ -102,8 +102,8 @@ public sealed class FarmaciaTests
             Lot(medicine.IdMedicamento, 5, "CAT-1"),
             Lot(medicine.IdMedicamento, 2, "CAT-2"),
             Lot(medicine.IdMedicamento, 0, "CAT-3"),
-            Lot(medicine.IdMedicamento, 4, "CAT-4", today.AddDays(-10), today.AddDays(-1)),
-            Lot(medicine.IdMedicamento, 3, "CAT-5", today.AddDays(-1), today)
+            Lot(medicine.IdMedicamento, 0, "CAT-4", today.AddDays(-10), today.AddDays(-1)),
+            Lot(medicine.IdMedicamento, 0, "CAT-5", today.AddDays(-1), today)
         };
         foreach (var lot in lots)
             Assert.Equal(HttpStatusCode.Created,
@@ -212,11 +212,11 @@ public sealed class FarmaciaTests
         Assert.Equal("MED-001", medicine.Codigo);
 
         var createdLot = await client.PostAsJsonAsync("/api/lotes-medicamento",
-            Lot(medicine.IdMedicamento, 5));
+            Lot(medicine.IdMedicamento, 0));
         Assert.Equal(HttpStatusCode.Created, createdLot.StatusCode);
         var lot = await createdLot.Content.ReadFromJsonAsync<LoteMedicamentoResponse>();
         Assert.NotNull(lot);
-        Assert.Equal(5, lot.CantidadDisponible);
+        Assert.Equal(0, lot.CantidadDisponible);
 
         Assert.Equal(HttpStatusCode.Conflict,
             (await client.DeleteAsync($"/api/categorias/{category.IdCategoria}")).StatusCode);
@@ -230,7 +230,7 @@ public sealed class FarmaciaTests
                 })).StatusCode);
 
         var updatedLot = await client.PutAsJsonAsync($"/api/lotes-medicamento/{lot.IdLote}",
-            UpdateLot(medicine.IdMedicamento, 0, expected: 5));
+            UpdateLot(medicine.IdMedicamento, 0, expected: 0));
         Assert.Equal(HttpStatusCode.OK, updatedLot.StatusCode);
         Assert.Equal(0, (await updatedLot.Content.ReadFromJsonAsync<LoteMedicamentoResponse>())?.CantidadDisponible);
 
@@ -309,12 +309,17 @@ public sealed class FarmaciaTests
             Lot(medicine.IdMedicamento, 1, numero: "   "),
             Lot(medicine.IdMedicamento, 1, ingreso: DateOnly.MinValue),
             Lot(medicine.IdMedicamento, 1, ingreso: ingreso, vencimiento: ingreso),
-            Lot(medicine.IdMedicamento, 1, ingreso: ingreso.AddDays(1)),
             Lot(999, 1)
         };
         foreach (var request in invalidLots)
             Assert.Equal(HttpStatusCode.BadRequest,
                 (await client.PostAsJsonAsync("/api/lotes-medicamento", request)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Created,
+            (await client.PostAsJsonAsync("/api/lotes-medicamento",
+                Lot(medicine.IdMedicamento, 1, numero: "LOTE-FUTURO",
+                    ingreso: ingreso.AddDays(1),
+                    vencimiento: ingreso.AddDays(30)))).StatusCode);
 
         var lotResponse = await client.PostAsJsonAsync("/api/lotes-medicamento",
             Lot(medicine.IdMedicamento, 1));
@@ -411,7 +416,9 @@ public sealed class FarmaciaTests
         IdMedicamento = idMedicamento, CantidadDisponible = quantity,
         NumeroLote = numero,
         FechaIngreso = ingreso ?? DateOnly.FromDateTime(DateTime.UtcNow),
-        FechaVencimiento = vencimiento ?? DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1))
+        FechaVencimiento = vencimiento ?? DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)),
+        IdSucursal = quantity > 0 ? 1 : null,
+        Observaciones = quantity > 0 ? "Existencia inicial de prueba" : null
     };
 
     private static ActualizarLoteMedicamentoRequest UpdateLot(
@@ -423,7 +430,9 @@ public sealed class FarmaciaTests
         CantidadEsperada = expected,
         NumeroLote = "LOTE-001",
         FechaIngreso = ingreso ?? DateOnly.FromDateTime(DateTime.UtcNow),
-        FechaVencimiento = vencimiento ?? DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1))
+        FechaVencimiento = vencimiento ?? DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)),
+        IdSucursal = quantity != expected ? 1 : null,
+        Observaciones = quantity != expected ? "Ajuste de prueba" : null
     };
 
     private static async Task<CategoriaResponse> CreateCategoryAsync(HttpClient client)

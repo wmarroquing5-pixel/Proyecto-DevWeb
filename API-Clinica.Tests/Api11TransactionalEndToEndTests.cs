@@ -125,7 +125,8 @@ public sealed class Api11TransactionalEndToEndTests
         var adjustmentConfirmed = adjustment.StatusCode == HttpStatusCode.OK;
         var confirmedOutputs = Convert.ToInt32(saleConfirmed) +
             Convert.ToInt32(invoiceConfirmed) + Convert.ToInt32(clinicalConfirmed);
-        var movementOperations = Convert.ToInt32(entryConfirmed) + confirmedOutputs;
+        var movementOperations = Convert.ToInt32(entryConfirmed) + confirmedOutputs +
+            Convert.ToInt32(adjustmentConfirmed);
         var netMovement = (entryConfirmed ? 2 : 0) - (2 * confirmedOutputs);
         var expectedStock = (adjustmentConfirmed ? 8 : 10) + netMovement;
 
@@ -138,13 +139,19 @@ public sealed class Api11TransactionalEndToEndTests
         Assert.Equal(movementOperations, movements.Count);
         Assert.Equal(movements.Count,
             movements.Select(movement => movement.IdMovimiento).Distinct().Count());
-        Assert.All(movements, movement => Assert.Equal(2, movement.Cantidad));
+        Assert.All(movements.Where(movement => movement.TipoMovimiento != "Ajuste"),
+            movement => Assert.Equal(2, movement.Cantidad));
         Assert.Equal(entryConfirmed ? 1 : 0,
             movements.Count(movement => movement.TipoMovimiento == "Entrada"));
         Assert.Equal(Convert.ToInt32(clinicalConfirmed),
             movements.Count(movement => movement.TipoMovimiento == "Uso Interno"));
         Assert.Equal(Convert.ToInt32(saleConfirmed) + Convert.ToInt32(invoiceConfirmed),
             movements.Count(movement => movement.TipoMovimiento == "Venta Publica"));
+        var adjustments = movements
+            .Where(movement => movement.TipoMovimiento == "Ajuste").ToList();
+        Assert.Equal(Convert.ToInt32(adjustmentConfirmed), adjustments.Count);
+        if (adjustmentConfirmed)
+            Assert.Equal(-2, Assert.Single(adjustments).Cantidad);
 
         var invoices = await db.Ventas.AsNoTracking().ToListAsync();
         var details = await db.VentaDetalles.AsNoTracking().ToListAsync();
@@ -440,7 +447,9 @@ public sealed class Api11TransactionalEndToEndTests
                 FechaIngreso = today.AddDays(-5),
                 FechaVencimiento = today.AddDays(10),
                 CantidadDisponible = quantity,
-                CantidadEsperada = expected
+                CantidadEsperada = expected,
+                IdSucursal = database.IdSucursal,
+                Observaciones = "Ajuste concurrente E2E-06/API-11F2"
             });
     }
 

@@ -61,6 +61,12 @@ public sealed class GuardarLoteMedicamentoRequest
 
     [Range(0, int.MaxValue)]
     public int CantidadDisponible { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? IdSucursal { get; init; }
+
+    [StringLength(300)]
+    public string? Observaciones { get; init; }
 }
 
 public sealed class ActualizarLoteMedicamentoRequest
@@ -79,6 +85,12 @@ public sealed class ActualizarLoteMedicamentoRequest
 
     [Required, Range(0, int.MaxValue)]
     public int? CantidadEsperada { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? IdSucursal { get; init; }
+
+    [StringLength(300)]
+    public string? Observaciones { get; init; }
 }
 
 public sealed record LoteMedicamentoResponse(

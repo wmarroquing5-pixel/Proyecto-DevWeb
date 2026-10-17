@@ -27,6 +27,12 @@ public sealed class SqlServerAjusteLoteTests
         Assert.Equal(5, body.CantidadDisponible);
         await using var db = fixture.Database.OpenContext();
         Assert.Equal(5, (await db.LoteMedicamentos.SingleAsync()).CantidadDisponible);
+        var movement = Assert.Single(await db.MovimientosInventario.ToListAsync());
+        Assert.Equal("Ajuste", movement.TipoMovimiento);
+        Assert.Equal(2, movement.Cantidad);
+        Assert.Equal(fixture.Database.IdUsuario, movement.IdUsuario);
+        Assert.Equal(fixture.Database.IdSucursal, movement.IdSucursal);
+        Assert.Equal("Ajuste de prueba API-11F2", movement.Observaciones);
     }
 
     [Fact]
@@ -80,7 +86,11 @@ public sealed class SqlServerAjusteLoteTests
         Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.OK));
         Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
         await using var db = fixture.Database.OpenContext();
-        Assert.Contains((await db.LoteMedicamentos.SingleAsync()).CantidadDisponible, new[] { 5, 6 });
+        var stock = (await db.LoteMedicamentos.SingleAsync()).CantidadDisponible;
+        Assert.Contains(stock, new[] { 5, 6 });
+        var movement = Assert.Single(await db.MovimientosInventario.ToListAsync());
+        Assert.Equal("Ajuste", movement.TipoMovimiento);
+        Assert.Equal(stock - 3, movement.Cantidad);
     }
 
     [Theory]
@@ -123,15 +133,20 @@ public sealed class SqlServerAjusteLoteTests
         var movements = await db.MovimientosInventario.ToListAsync();
         if (dispatched.StatusCode == HttpStatusCode.Created)
         {
-            Assert.Single(movements);
-            Assert.Equal(2, movements[0].Cantidad);
+            Assert.Single(movements, movement =>
+                movement.TipoMovimiento is "Venta Publica" or "Uso Interno");
             Assert.Equal(adjusted.StatusCode == HttpStatusCode.OK ? 2 : 1, stock);
         }
         else
         {
-            Assert.Empty(movements);
             Assert.Equal(4, stock);
         }
+        var adjustments = movements.Where(movement =>
+            movement.TipoMovimiento == "Ajuste").ToList();
+        Assert.Equal(adjusted.StatusCode == HttpStatusCode.OK ? 1 : 0,
+            adjustments.Count);
+        if (adjusted.StatusCode == HttpStatusCode.OK)
+            Assert.Equal(1, Assert.Single(adjustments).Cantidad);
     }
 
     [Fact]
@@ -139,7 +154,7 @@ public sealed class SqlServerAjusteLoteTests
     {
         await using var fixture = await CreateAsync();
         await fixture.Database.ExecuteAsync(
-            "ALTER TABLE [LoteMedicamento] ADD CONSTRAINT [CK_Test_Ajuste_Fallo] CHECK ([CantidadDisponible] = 3)");
+            "ALTER TABLE [MovimientoInventario] ADD CONSTRAINT [CK_Test_Ajuste_Fallo] CHECK ([TipoMovimiento] <> 'Ajuste')");
         using var client = fixture.Factory.CreateClient();
         await LoginAsync(client, fixture.Database);
         var request = Request(fixture.Database, 5, 3, "LOTE-MODIFICADO");
@@ -150,6 +165,50 @@ public sealed class SqlServerAjusteLoteTests
         var lot = await db.LoteMedicamentos.SingleAsync();
         Assert.Equal(3, lot.CantidadDisponible);
         Assert.Equal("LOT-SQL-1", lot.NumeroLote);
+        Assert.Empty(await db.MovimientosInventario.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AjusteNegativoYActualizacionSinVariacionRegistranSoloLaDiferencia()
+    {
+        await using var fixture = await CreateAsync();
+        using var client = fixture.Factory.CreateClient();
+        await LoginAsync(client, fixture.Database);
+
+        var decrease = await PutAsync(client, fixture.Database, 1, 3);
+        Assert.Equal(HttpStatusCode.OK, decrease.StatusCode);
+        var unchanged = await PutAsync(client, fixture.Database, 1, 1);
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+
+        await using var db = fixture.Database.OpenContext();
+        Assert.Equal(1, (await db.LoteMedicamentos.SingleAsync()).CantidadDisponible);
+        var movement = Assert.Single(await db.MovimientosInventario.ToListAsync());
+        Assert.Equal("Ajuste", movement.TipoMovimiento);
+        Assert.Equal(-2, movement.Cantidad);
+    }
+
+    [Fact]
+    public async Task CambioDeExistenciaExigeSucursalYJustificacion()
+    {
+        await using var fixture = await CreateAsync();
+        using var client = fixture.Factory.CreateClient();
+        await LoginAsync(client, fixture.Database);
+
+        var missingBranch = Request(
+            fixture.Database, 4, 3, includeBranch: false);
+        var missingReason = Request(
+            fixture.Database, 4, 3, observations: "   ");
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PutAsJsonAsync(
+                $"/api/lotes-medicamento/{fixture.Database.IdLote}",
+                missingBranch)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PutAsJsonAsync(
+                $"/api/lotes-medicamento/{fixture.Database.IdLote}",
+                missingReason)).StatusCode);
+        await AssertStockAsync(fixture.Database, 3);
+        await using var db = fixture.Database.OpenContext();
+        Assert.Empty(await db.MovimientosInventario.ToListAsync());
     }
 
     [Fact]
@@ -230,14 +289,21 @@ public sealed class SqlServerAjusteLoteTests
 
     private static ActualizarLoteMedicamentoRequest Request(
         SqlServerTestDatabase database, int quantity, int? expected,
-        string number = "LOT-SQL-1") => new()
+        string number = "LOT-SQL-1", bool includeBranch = true,
+        string? observations = "Ajuste de prueba API-11F2") => new()
     {
         IdMedicamento = database.IdMedicamento,
         NumeroLote = number,
         FechaIngreso = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-5),
         FechaVencimiento = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(10),
         CantidadDisponible = quantity,
-        CantidadEsperada = expected
+        CantidadEsperada = expected,
+        IdSucursal = expected.HasValue && quantity != expected.Value && includeBranch
+            ? database.IdSucursal
+            : null,
+        Observaciones = expected.HasValue && quantity != expected.Value
+            ? observations
+            : null
     };
 
     private static Task<HttpResponseMessage> PutAsync(

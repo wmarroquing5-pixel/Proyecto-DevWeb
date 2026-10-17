@@ -239,7 +239,12 @@ public sealed class SqlServerEntradaInventarioTests
         await using var db = fixture.Database.OpenContext();
         var stock = (await db.LoteMedicamentos.SingleAsync()).CantidadDisponible;
         Assert.Equal(adjustmentResponse.StatusCode == HttpStatusCode.OK ? 6 : 5, stock);
-        Assert.Single(await db.MovimientosInventario.ToListAsync());
+        var movements = await db.MovimientosInventario.ToListAsync();
+        Assert.Equal(adjustmentResponse.StatusCode == HttpStatusCode.OK ? 2 : 1,
+            movements.Count);
+        if (adjustmentResponse.StatusCode == HttpStatusCode.OK)
+            Assert.Contains(movements,
+                movement => movement.TipoMovimiento == "Ajuste" && movement.Cantidad == 1);
     }
 
     [Theory]
@@ -411,7 +416,11 @@ public sealed class SqlServerEntradaInventarioTests
         FechaIngreso = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-5),
         FechaVencimiento = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(10),
         CantidadDisponible = quantity,
-        CantidadEsperada = expected
+        CantidadEsperada = expected,
+        IdSucursal = quantity != expected ? database.IdSucursal : null,
+        Observaciones = quantity != expected
+            ? "Ajuste concurrente de entrada API-11F2"
+            : null
     };
 
     private static async Task LoginAsync(

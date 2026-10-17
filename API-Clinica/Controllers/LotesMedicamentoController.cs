@@ -22,14 +22,14 @@ public sealed class LotesMedicamentoController(ILoteMedicamentoService service) 
     public async Task<ActionResult<LoteMedicamentoResponse>> Crear(
         GuardarLoteMedicamentoRequest request, CancellationToken ct)
     {
-        var response = await service.CrearAsync(request, ct);
+        var response = await service.CrearAsync(request, User, ct);
         return CreatedAtAction(nameof(Obtener), new { id = response.IdLote }, response);
     }
 
     [HttpPut("{id:int}"), PermisoRequerido("LotesMedicamento", Operacion.Modificar)]
     public async Task<ActionResult<LoteMedicamentoResponse>> Actualizar(
         int id, ActualizarLoteMedicamentoRequest request, CancellationToken ct) =>
-        Ok(await service.ActualizarAsync(id, request, ct));
+        Ok(await service.ActualizarAsync(id, request, User, ct));
 
     [HttpPost("{id:int}/entradas"),
      PermisoRequerido("LotesMedicamento", Operacion.Modificar)]
