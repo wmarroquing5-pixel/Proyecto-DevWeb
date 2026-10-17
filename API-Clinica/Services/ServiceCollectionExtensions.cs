@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDiagnosticoService, DiagnosticoService>();
         services.AddScoped<IExamenService, ExamenService>();
         services.AddScoped<ITratamientoService, TratamientoService>();
+        services.AddScoped<IConsumoClinicoService, ConsumoClinicoService>();
         services.AddScoped<HistorialMedicoLecturaService>();
         services.AddScoped<IHistorialMedicoService, HistorialMedicoService>();
         services.AddScoped<ICategoriaService, CategoriaService>();

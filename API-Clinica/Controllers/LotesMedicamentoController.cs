@@ -28,7 +28,7 @@ public sealed class LotesMedicamentoController(ILoteMedicamentoService service) 
 
     [HttpPut("{id:int}"), PermisoRequerido("LotesMedicamento", Operacion.Modificar)]
     public async Task<ActionResult<LoteMedicamentoResponse>> Actualizar(
-        int id, GuardarLoteMedicamentoRequest request, CancellationToken ct) =>
+        int id, ActualizarLoteMedicamentoRequest request, CancellationToken ct) =>
         Ok(await service.ActualizarAsync(id, request, ct));
 
     [HttpDelete("{id:int}"), PermisoRequerido("LotesMedicamento", Operacion.Eliminar)]

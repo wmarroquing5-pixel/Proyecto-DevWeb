@@ -63,6 +63,24 @@ public sealed class GuardarLoteMedicamentoRequest
     public int CantidadDisponible { get; init; }
 }
 
+public sealed class ActualizarLoteMedicamentoRequest
+{
+    [Range(1, int.MaxValue)]
+    public int IdMedicamento { get; init; }
+
+    [Required, StringLength(50)]
+    public string NumeroLote { get; init; } = string.Empty;
+
+    public DateOnly FechaIngreso { get; init; }
+    public DateOnly FechaVencimiento { get; init; }
+
+    [Range(0, int.MaxValue)]
+    public int CantidadDisponible { get; init; }
+
+    [Required, Range(0, int.MaxValue)]
+    public int? CantidadEsperada { get; init; }
+}
+
 public sealed record LoteMedicamentoResponse(
     int IdLote, int IdMedicamento, string NumeroLote,
     DateOnly FechaIngreso, DateOnly FechaVencimiento, int CantidadDisponible);
