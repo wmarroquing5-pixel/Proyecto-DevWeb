@@ -12,11 +12,11 @@ public sealed class ConsultasController(IConsultaService service) : ControllerBa
     [HttpGet, PermisoRequerido("Consultas", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<ConsultaListadoDto>>> Listar(
         [FromQuery] ConsultaFiltroDto filtro, CancellationToken ct) =>
-        Ok(await service.ListarAsync(filtro, ct));
+        Ok(await service.ListarAsync(filtro, User, ct));
 
     [HttpGet("{id:int}"), PermisoRequerido("Consultas", Operacion.Consultar)]
     public async Task<ActionResult<ConsultaDetalleDto>> Obtener(int id, CancellationToken ct) =>
-        Ok(await service.ObtenerAsync(id, ct));
+        Ok(await service.ObtenerAsync(id, User, ct));
 
     [HttpPost, PermisoRequerido("Consultas", Operacion.Crear)]
     public async Task<ActionResult<ConsultaDetalleDto>> Crear(

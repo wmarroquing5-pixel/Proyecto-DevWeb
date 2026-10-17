@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ICommonParameterValidator, CommonParameterValidator>();
         services.AddScoped<IAdministracionService, AdministracionService>();
         services.AddScoped<ISucursalService, SucursalService>();

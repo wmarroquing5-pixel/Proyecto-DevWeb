@@ -152,6 +152,39 @@ public sealed class FarmaciaTests
     }
 
     [Fact]
+    public async Task CatalogoUsaFechaUtcControladaYExcluyeLotesNoDisponiblesSinModificarInventario()
+    {
+        var ahora = new DateTimeOffset(2026, 6, 15, 23, 59, 0, TimeSpan.Zero);
+        var hoy = DateOnly.FromDateTime(ahora.UtcDateTime);
+        using var factory = new FarmaciaApiFactory(ahora);
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync("Medicamentos");
+        await factory.SeedCatalogoConFechasAsync(hoy);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var inventarioAntes = await factory.ReadInventoryAsync();
+
+        var catalogo = await client.GetFromJsonAsync<PagedResponse<CatalogoMedicamentoResponse>>(
+            "/api/medicamentos/catalogo");
+        var detalle = await client.GetFromJsonAsync<CatalogoMedicamentoResponse>(
+            "/api/medicamentos/catalogo/1");
+
+        Assert.NotNull(catalogo);
+        Assert.Equal(2, catalogo.TotalCount);
+        var disponible = Assert.Single(catalogo.Items, item => item.IdMedicamento == 1);
+        var soloFuturo = Assert.Single(catalogo.Items, item => item.IdMedicamento == 2);
+        Assert.Equal(7, disponible.ExistenciaTotal);
+        Assert.Equal(12.50m, disponible.PrecioVenta);
+        Assert.Equal(0, soloFuturo.ExistenciaTotal);
+        Assert.NotNull(detalle);
+        Assert.Equal(disponible.ExistenciaTotal, detalle.ExistenciaTotal);
+        Assert.Equal(disponible.PrecioVenta, detalle.PrecioVenta);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/medicamentos/catalogo/3")).StatusCode);
+        Assert.Equal(inventarioAntes, await factory.ReadInventoryAsync());
+    }
+
+    [Fact]
     public async Task CrudMantieneRelacionesYAplicaBajasLogicas()
     {
         using var factory = new FarmaciaApiFactory();
@@ -430,6 +463,14 @@ public sealed class FarmaciaTests
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
         private readonly string signingKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        private readonly TimeProvider timeProvider;
+
+        public FarmaciaApiFactory(DateTimeOffset? utcNow = null)
+        {
+            timeProvider = utcNow.HasValue
+                ? new FixedTimeProvider(utcNow.Value)
+                : TimeProvider.System;
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -449,9 +490,11 @@ public sealed class FarmaciaTests
             {
                 services.RemoveAll<DbContextOptions<ClinicaDbContext>>();
                 services.RemoveAll<ClinicaDbContext>();
+                services.RemoveAll<TimeProvider>();
                 services.AddSingleton(new DbContextOptionsBuilder<ClinicaDbContext>()
                     .UseInMemoryDatabase(databaseName).Options);
                 services.AddScoped<ClinicaDbContext>();
+                services.AddSingleton(timeProvider);
             });
         }
 
@@ -491,5 +534,99 @@ public sealed class FarmaciaTests
             });
             await db.SaveChangesAsync();
         }
+
+        public async Task SeedCatalogoConFechasAsync(DateOnly hoy)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Categorias.Add(new Categoria
+                { IdCategoria = 1, Nombre = "Analgésicos", Activa = true });
+            db.Marcas.Add(new Marca
+                { IdMarca = 1, Nombre = "Laboratorio", Activa = true });
+            db.Medicamentos.AddRange(
+                new Medicamento
+                {
+                    IdMedicamento = 1, IdCategoria = 1, IdMarca = 1,
+                    Codigo = "CAT-FECHA-1", Nombre = "Disponible",
+                    PrecioVenta = 12.50m, Activo = true
+                },
+                new Medicamento
+                {
+                    IdMedicamento = 2, IdCategoria = 1, IdMarca = 1,
+                    Codigo = "CAT-FECHA-2", Nombre = "Ingreso futuro",
+                    PrecioVenta = 20m, Activo = true
+                },
+                new Medicamento
+                {
+                    IdMedicamento = 3, IdCategoria = 1, IdMarca = 1,
+                    Codigo = "CAT-FECHA-3", Nombre = "Inactivo",
+                    PrecioVenta = 30m, Activo = false
+                });
+            db.LoteMedicamentos.AddRange(
+                new LoteMedicamento
+                {
+                    IdLote = 1, IdMedicamento = 1, NumeroLote = "VIGENTE",
+                    FechaIngreso = hoy.AddDays(-1), FechaVencimiento = hoy.AddDays(2),
+                    CantidadDisponible = 5
+                },
+                new LoteMedicamento
+                {
+                    IdLote = 2, IdMedicamento = 1, NumeroLote = "INGRESA-HOY",
+                    FechaIngreso = hoy, FechaVencimiento = hoy.AddDays(3),
+                    CantidadDisponible = 2
+                },
+                new LoteMedicamento
+                {
+                    IdLote = 3, IdMedicamento = 1, NumeroLote = "FUTURO",
+                    FechaIngreso = hoy.AddDays(1), FechaVencimiento = hoy.AddDays(4),
+                    CantidadDisponible = 11
+                },
+                new LoteMedicamento
+                {
+                    IdLote = 4, IdMedicamento = 1, NumeroLote = "VENCIDO",
+                    FechaIngreso = hoy.AddDays(-5), FechaVencimiento = hoy,
+                    CantidadDisponible = 13
+                },
+                new LoteMedicamento
+                {
+                    IdLote = 5, IdMedicamento = 1, NumeroLote = "SIN-STOCK",
+                    FechaIngreso = hoy.AddDays(-1), FechaVencimiento = hoy.AddDays(2),
+                    CantidadDisponible = 0
+                },
+                new LoteMedicamento
+                {
+                    IdLote = 6, IdMedicamento = 2, NumeroLote = "SOLO-FUTURO",
+                    FechaIngreso = hoy.AddDays(1), FechaVencimiento = hoy.AddDays(5),
+                    CantidadDisponible = 17
+                },
+                new LoteMedicamento
+                {
+                    IdLote = 7, IdMedicamento = 3, NumeroLote = "MED-INACTIVO",
+                    FechaIngreso = hoy, FechaVencimiento = hoy.AddDays(5),
+                    CantidadDisponible = 19
+                });
+            await db.SaveChangesAsync();
+        }
+
+        public async Task<List<InventorySnapshot>> ReadInventoryAsync()
+        {
+            using var scope = Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+                .LoteMedicamentos.AsNoTracking()
+                .OrderBy(lote => lote.IdLote)
+                .Select(lote => new InventorySnapshot(
+                    lote.IdLote, lote.CantidadDisponible,
+                    lote.FechaIngreso, lote.FechaVencimiento))
+                .ToListAsync();
+        }
+    }
+
+    private sealed record InventorySnapshot(
+        int IdLote, int CantidadDisponible,
+        DateOnly FechaIngreso, DateOnly FechaVencimiento);
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

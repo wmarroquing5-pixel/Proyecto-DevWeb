@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace API_Clinica.Services;
 
 public sealed class MedicamentoService(
-    ClinicaDbContext context, ICommonParameterValidator parameterValidator) : IMedicamentoService
+    ClinicaDbContext context,
+    ICommonParameterValidator parameterValidator,
+    TimeProvider timeProvider) : IMedicamentoService
 {
     public async Task<PagedResponse<CatalogoMedicamentoResponse>> ListarCatalogoAsync(
         string? nombre, int? categoriaId, int? marcaId,
@@ -34,7 +36,7 @@ public sealed class MedicamentoService(
             medicamentos = medicamentos.Where(m => m.IdMarca == marcaId.Value);
 
         var total = await medicamentos.LongCountAsync(cancellationToken);
-        var fechaActual = DateOnly.FromDateTime(DateTime.UtcNow);
+        var fechaActual = FechaActualUtc();
         var pagina = medicamentos.OrderBy(m => m.IdMedicamento)
             .Skip(pagination.Skip).Take(pagination.PageSize);
         var items = await ConsultaCatalogo(pagina, fechaActual).ToListAsync(cancellationToken);
@@ -44,7 +46,7 @@ public sealed class MedicamentoService(
     public async Task<CatalogoMedicamentoResponse> ObtenerCatalogoAsync(
         int id, CancellationToken cancellationToken)
     {
-        var fechaActual = DateOnly.FromDateTime(DateTime.UtcNow);
+        var fechaActual = FechaActualUtc();
         var medicamentos = context.Medicamentos.AsNoTracking()
             .Where(m => m.IdMedicamento == id && m.Activo);
         return await ConsultaCatalogo(medicamentos, fechaActual)
@@ -65,8 +67,13 @@ public sealed class MedicamentoService(
             medicamento.Descripcion, medicamento.ImagenURL,
             context.LoteMedicamentos.AsNoTracking()
                 .Where(lote => lote.IdMedicamento == medicamento.IdMedicamento &&
-                    lote.FechaVencimiento > fechaActual && lote.CantidadDisponible > 0)
+                    lote.FechaIngreso <= fechaActual &&
+                    lote.FechaVencimiento > fechaActual &&
+                    lote.CantidadDisponible > 0)
                 .Sum(lote => (long?)lote.CantidadDisponible) ?? 0L);
+
+    private DateOnly FechaActualUtc() =>
+        DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 
     public async Task<PagedResponse<MedicamentoResponse>> ListarAsync(
         int page, int pageSize, CancellationToken cancellationToken)

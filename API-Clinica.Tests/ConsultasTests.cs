@@ -87,6 +87,30 @@ public sealed class ConsultasTests
     }
 
     [Theory]
+    [InlineData("paciente")]
+    [InlineData("clinica")]
+    [InlineData("sucursal")]
+    public async Task RechazaRecursosClinicosInactivosAlCrearSinPersistir(string recurso)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        if (recurso == "paciente") body["idPaciente"] = 3;
+        if (recurso == "clinica") body["idClinica"] = 3;
+        if (recurso == "sucursal") body["idSucursal"] = 3;
+
+        var response = await client.PostAsJsonAsync("/api/consultas", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.ToListAsync());
+    }
+
+    [Theory]
     [InlineData(999)]
     [InlineData(3)]
     [InlineData(4)]
@@ -203,6 +227,84 @@ public sealed class ConsultasTests
     }
 
     [Fact]
+    public async Task MedicoListaSoloSusConsultasYElFiltroNoAmpliaSuAlcance()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.ConfigureCurrentUserAsMedicoAsync(1);
+        await factory.GrantReadAsync(2);
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var propias = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
+            "/api/consultas");
+        Assert.NotNull(propias);
+        Assert.Equal(2, propias.TotalCount);
+        Assert.All(propias.Items, consulta => Assert.Equal(1, consulta.IdMedico));
+
+        var filtroAjeno = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
+            "/api/consultas?idMedico=2");
+        Assert.NotNull(filtroAjeno);
+        Assert.Equal(0, filtroAjeno.TotalCount);
+        Assert.Empty(filtroAjeno.Items);
+
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(3, await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.CountAsync());
+    }
+
+    [Fact]
+    public async Task MedicoObtieneDetallePropioYElAjenoRespondeNoEncontrado()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.ConfigureCurrentUserAsMedicoAsync(1);
+        await factory.GrantReadAsync(2);
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var propia = await client.GetAsync("/api/consultas/1");
+        var ajena = await client.GetAsync("/api/consultas/3");
+
+        Assert.Equal(HttpStatusCode.OK, propia.StatusCode);
+        Assert.Equal(1,
+            (await propia.Content.ReadFromJsonAsync<ConsultaDetalleDto>())?.IdMedico);
+        Assert.Equal(HttpStatusCode.NotFound, ajena.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(3, await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("usuario")]
+    [InlineData("rol")]
+    [InlineData("medico")]
+    public async Task LecturaMedicaRevalidaEstadoActualSinEfectosSecundarios(string recurso)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.ConfigureCurrentUserAsMedicoAsync(1);
+        await factory.GrantReadAsync(2);
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        if (recurso == "usuario") await factory.SetCurrentUserActiveAsync(false);
+        if (recurso == "rol") await factory.SetRoleActiveAsync(2, false);
+        if (recurso == "medico") await factory.DeactivateEmpleadoAsync(1);
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/consultas")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/consultas/1")).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(3, await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.CountAsync());
+    }
+
+    [Fact]
     public async Task ActualizaConsultaSinDependenciasYValidaNuevasRelaciones()
     {
         using var factory = new ConsultaApiFactory();
@@ -226,6 +328,91 @@ public sealed class ConsultasTests
                     idClinica: 2))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await client.PutAsJsonAsync("/api/consultas/9999", Actualizar())).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("paciente")]
+    [InlineData("clinica")]
+    [InlineData("sucursal")]
+    public async Task RechazaRecursosClinicosInactivosAlActualizarYConservaConsulta(
+        string recurso)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        body["idClinica"] = 1;
+        body["motivoConsulta"] = "No debe persistirse";
+        if (recurso == "paciente") body["idPaciente"] = 3;
+        if (recurso == "clinica") body["idClinica"] = 3;
+        if (recurso == "sucursal")
+        {
+            body["idSucursal"] = 3;
+            body.Remove("idClinica");
+        }
+
+        var response = await client.PutAsJsonAsync("/api/consultas/1", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
+        Assert.Equal(1, stored.IdPaciente);
+        Assert.Equal(1, stored.IdSucursal);
+        Assert.Equal(1, stored.IdClinica);
+        Assert.Equal("Motivo", stored.MotivoConsulta);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task RechazaMedicoInactivoONoMedicoAlActualizarYConservaConsulta(
+        int idMedico)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var response = await client.PutAsJsonAsync("/api/consultas/1",
+            Actualizar(idMedico: idMedico));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
+        Assert.Equal(1, stored.IdMedico);
+        Assert.Equal("Motivo", stored.MotivoConsulta);
+    }
+
+    [Fact]
+    public async Task RevalidaMedicoVinculadoInactivoAunqueNoCambieLaAtribucion()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        await factory.LinkUserToMedicoAsync(1);
+        await factory.SeedConsultasAsync();
+        await factory.DeactivateEmpleadoAsync(1);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var response = await client.PutAsJsonAsync("/api/consultas/1", new ConsultaUpdateDto
+        {
+            IdPaciente = 1, IdMedico = 1, IdSucursal = 1, IdClinica = 1,
+            FechaConsulta = Fecha, MotivoConsulta = "No debe persistirse"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
+        Assert.Equal("Motivo", stored.MotivoConsulta);
     }
 
     [Fact]
@@ -403,14 +590,18 @@ public sealed class ConsultasTests
             db.Roles.Add(new Rol { IdRol = 1, Nombre = "Prueba", Activo = true });
             db.Sucursales.AddRange(
                 new Sucursal { IdSucursal = 1, Nombre = "Uno", Activa = true },
-                new Sucursal { IdSucursal = 2, Nombre = "Dos", Activa = true });
+                new Sucursal { IdSucursal = 2, Nombre = "Dos", Activa = true },
+                new Sucursal { IdSucursal = 3, Nombre = "Inactiva", Activa = false });
             db.Pacientes.AddRange(
                 new Paciente { IdPaciente = 1, Nombres = "Paciente", Apellidos = "Uno",
                     FechaNacimiento = new DateOnly(1990, 1, 1), FechaRegistro = DateTime.UtcNow,
                     Activo = true },
                 new Paciente { IdPaciente = 2, Nombres = "Paciente", Apellidos = "Dos",
                     FechaNacimiento = new DateOnly(1991, 1, 1), FechaRegistro = DateTime.UtcNow,
-                    Activo = true });
+                    Activo = true },
+                new Paciente { IdPaciente = 3, Nombres = "Paciente", Apellidos = "Inactivo",
+                    FechaNacimiento = new DateOnly(1992, 1, 1), FechaRegistro = DateTime.UtcNow,
+                    Activo = false });
             db.Empleados.AddRange(
                 new Empleado { IdEmpleado = 1, IdSucursal = 1, Nombres = "Médico", Apellidos = "Uno",
                     DPI = "MED-1", TipoEmpleado = "Medico", Activo = true },
@@ -422,7 +613,9 @@ public sealed class ConsultasTests
                     DPI = "ENF-4", TipoEmpleado = "Enfermera", Activo = true });
             db.Clinicas.AddRange(
                 new Clinica { IdClinica = 1, IdSucursal = 1, NombreClinica = "Uno", Activa = true },
-                new Clinica { IdClinica = 2, IdSucursal = 2, NombreClinica = "Dos", Activa = true });
+                new Clinica { IdClinica = 2, IdSucursal = 2, NombreClinica = "Dos", Activa = true },
+                new Clinica { IdClinica = 3, IdSucursal = 1, NombreClinica = "Inactiva",
+                    Activa = false });
             var user = new Usuario
             {
                 IdUsuario = 1, IdRol = 1, Username = "consultas.prueba", Activo = true
@@ -455,12 +648,47 @@ public sealed class ConsultasTests
             await db.SaveChangesAsync();
         }
 
-        public async Task GrantReadAsync()
+        public async Task ConfigureCurrentUserAsMedicoAsync(int idEmpleado)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Roles.Add(new Rol { IdRol = 2, Nombre = "MEDICO", Activo = true });
+            var usuario = await db.Usuarios.SingleAsync();
+            usuario.IdRol = 2;
+            usuario.IdEmpleado = idEmpleado;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetCurrentUserActiveAsync(bool activo)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Usuarios.SingleAsync()).Activo = activo;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetRoleActiveAsync(int idRol, bool activo)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Roles.SingleAsync(rol => rol.IdRol == idRol)).Activo = activo;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task DeactivateEmpleadoAsync(int idEmpleado)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Empleados.SingleAsync(e => e.IdEmpleado == idEmpleado)).Activo = false;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task GrantReadAsync(int idRol = 1)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             db.Permisos.Add(new Permiso
-                { IdRol = 1, Modulo = "Consultas", PuedeConsultar = true });
+                { IdRol = idRol, Modulo = "Consultas", PuedeConsultar = true });
             await db.SaveChangesAsync();
         }
 

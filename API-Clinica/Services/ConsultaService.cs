@@ -26,8 +26,11 @@ public sealed class ConsultaService(
             c.PresionSistolica, c.AlturaCm);
 
     public async Task<PagedResponse<ConsultaListadoDto>> ListarAsync(
-        ConsultaFiltroDto filtro, CancellationToken cancellationToken)
+        ConsultaFiltroDto filtro, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
     {
+        var idMedicoAutorizado = await ObtenerMedicoParaLecturaAsync(
+            principal, cancellationToken);
         var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
         ValidarFiltroId(filtro.IdPaciente, nameof(filtro.IdPaciente));
         ValidarFiltroId(filtro.IdMedico, nameof(filtro.IdMedico));
@@ -37,6 +40,8 @@ public sealed class ConsultaService(
             throw Invalid(nameof(filtro.Hasta), "Debe ser posterior o igual a Desde.");
 
         var query = context.Consultas.AsNoTracking();
+        if (idMedicoAutorizado.HasValue)
+            query = query.Where(c => c.IdMedico == idMedicoAutorizado.Value);
         if (filtro.IdPaciente.HasValue)
             query = query.Where(c => c.IdPaciente == filtro.IdPaciente.Value);
         if (filtro.IdMedico.HasValue)
@@ -57,11 +62,20 @@ public sealed class ConsultaService(
         return new(items, filtro.Page, filtro.PageSize, total);
     }
 
-    public async Task<ConsultaDetalleDto> ObtenerAsync(int id, CancellationToken cancellationToken) =>
-        await context.Consultas.AsNoTracking()
+    public async Task<ConsultaDetalleDto> ObtenerAsync(
+        int id, ClaimsPrincipal principal, CancellationToken cancellationToken)
+    {
+        var idMedicoAutorizado = await ObtenerMedicoParaLecturaAsync(
+            principal, cancellationToken);
+        var query = context.Consultas.AsNoTracking();
+        if (idMedicoAutorizado.HasValue)
+            query = query.Where(c => c.IdMedico == idMedicoAutorizado.Value);
+
+        return await query
             .Where(c => c.IdConsulta == id)
             .Select(Detalle).SingleOrDefaultAsync(cancellationToken)
-        ?? throw new NotFoundException("Consulta no encontrada.");
+            ?? throw new NotFoundException("Consulta no encontrada.");
+    }
 
     public async Task<ConsultaDetalleDto> CrearAsync(
         ConsultaCreateDto request, ClaimsPrincipal principal, CancellationToken cancellationToken)
@@ -103,18 +117,49 @@ public sealed class ConsultaService(
         await accesoActual.ObtenerUsuarioActivoAsync(principal, cancellationToken)
             ?? throw new ForbiddenException("Acceso denegado.");
 
+    private async Task<int?> ObtenerMedicoParaLecturaAsync(
+        ClaimsPrincipal principal, CancellationToken cancellationToken)
+    {
+        var usuario = await ObtenerUsuarioAsync(principal, cancellationToken);
+        var nombreRol = await context.Roles.AsNoTracking()
+            .Where(rol => rol.IdRol == usuario.IdRol && rol.Activo)
+            .Select(rol => rol.Nombre)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new ForbiddenException("El rol actual no se encuentra activo.");
+
+        if (!string.Equals(nombreRol, "MEDICO", StringComparison.Ordinal))
+            return null;
+
+        if (!usuario.IdEmpleado.HasValue)
+            throw new ForbiddenException(
+                "El usuario médico no tiene un empleado vinculado.");
+
+        var medicoActivo = await context.Empleados.AsNoTracking()
+            .AnyAsync(
+                empleado => empleado.IdEmpleado == usuario.IdEmpleado.Value &&
+                    empleado.Activo && empleado.TipoEmpleado == "Medico",
+                cancellationToken);
+        if (!medicoActivo)
+            throw new ForbiddenException(
+                "El empleado médico vinculado no se encuentra activo.");
+
+        return usuario.IdEmpleado.Value;
+    }
+
     private async Task<int> ResolverMedicoAsync(
         Usuario usuario, int? solicitado, int? medicoActual,
         CancellationToken cancellationToken)
     {
         if (usuario.IdEmpleado is int vinculado)
         {
-            var tipo = await context.Empleados.AsNoTracking()
+            var empleadoVinculado = await context.Empleados.AsNoTracking()
                 .Where(e => e.IdEmpleado == vinculado)
-                .Select(e => e.TipoEmpleado)
+                .Select(e => new { e.Activo, e.TipoEmpleado })
                 .SingleOrDefaultAsync(cancellationToken);
-            if (tipo == "Medico")
+            if (empleadoVinculado?.TipoEmpleado == "Medico")
             {
+                if (!empleadoVinculado.Activo)
+                    throw Invalid("IdMedico", "El médico indicado está inactivo.");
                 if (medicoActual.HasValue && medicoActual.Value != vinculado)
                     throw new ForbiddenException("No puede modificar la consulta de otro médico.");
                 if (solicitado.HasValue && solicitado.Value != vinculado)
@@ -126,30 +171,61 @@ public sealed class ConsultaService(
 
         if (solicitado is not > 0)
             throw Invalid("IdMedico", "Debe indicar un médico válido.");
+        await ValidarMedicoActivoAsync(solicitado.Value, cancellationToken);
         return solicitado.Value;
+    }
+
+    private async Task ValidarMedicoActivoAsync(int idMedico, CancellationToken cancellationToken)
+    {
+        var medico = await context.Empleados.AsNoTracking()
+            .Where(e => e.IdEmpleado == idMedico)
+            .Select(e => new { e.Activo, e.TipoEmpleado })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (medico is null)
+            throw Invalid("IdMedico", "El médico indicado no existe.");
+        if (!medico.Activo)
+            throw Invalid("IdMedico", "El médico indicado está inactivo.");
+        if (medico.TipoEmpleado != "Medico")
+            throw Invalid("IdMedico", "El empleado indicado no es de tipo Medico.");
     }
 
     private async Task AplicarDatosAsync(
         Consulta consulta, ConsultaDatosRequest request, int idMedico,
         CancellationToken cancellationToken)
     {
-        if (request.IdPaciente <= 0 || !await context.Pacientes.AsNoTracking()
-            .AnyAsync(p => p.IdPaciente == request.IdPaciente, cancellationToken))
+        var pacienteActivo = request.IdPaciente <= 0 ? null :
+            await context.Pacientes.AsNoTracking()
+                .Where(p => p.IdPaciente == request.IdPaciente)
+                .Select(p => (bool?)p.Activo)
+                .SingleOrDefaultAsync(cancellationToken);
+        if (pacienteActivo is null)
             throw Invalid(nameof(request.IdPaciente), "El paciente indicado no existe.");
-        if (request.IdSucursal <= 0 || !await context.Sucursales.AsNoTracking()
-            .AnyAsync(s => s.IdSucursal == request.IdSucursal, cancellationToken))
+        if (!pacienteActivo.Value)
+            throw Invalid(nameof(request.IdPaciente), "El paciente indicado está inactivo.");
+
+        var sucursalActiva = request.IdSucursal <= 0 ? null :
+            await context.Sucursales.AsNoTracking()
+                .Where(s => s.IdSucursal == request.IdSucursal)
+                .Select(s => (bool?)s.Activa)
+                .SingleOrDefaultAsync(cancellationToken);
+        if (sucursalActiva is null)
             throw Invalid(nameof(request.IdSucursal), "La sucursal indicada no existe.");
+        if (!sucursalActiva.Value)
+            throw Invalid(nameof(request.IdSucursal), "La sucursal indicada está inactiva.");
+
         if (request.IdClinica is int idClinica)
         {
             if (idClinica <= 0)
                 throw Invalid(nameof(request.IdClinica), "La clínica indicada no existe.");
-            var sucursalClinica = await context.Clinicas.AsNoTracking()
+            var clinica = await context.Clinicas.AsNoTracking()
                 .Where(c => c.IdClinica == idClinica)
-                .Select(c => (int?)c.IdSucursal)
+                .Select(c => new { c.IdSucursal, c.Activa })
                 .SingleOrDefaultAsync(cancellationToken);
-            if (sucursalClinica is null)
+            if (clinica is null)
                 throw Invalid(nameof(request.IdClinica), "La clínica indicada no existe.");
-            if (sucursalClinica != request.IdSucursal)
+            if (!clinica.Activa)
+                throw Invalid(nameof(request.IdClinica), "La clínica indicada está inactiva.");
+            if (clinica.IdSucursal != request.IdSucursal)
                 throw Invalid(nameof(request.IdClinica),
                     "La clínica debe pertenecer a la sucursal indicada.");
         }

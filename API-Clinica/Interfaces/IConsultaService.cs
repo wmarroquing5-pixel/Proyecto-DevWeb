@@ -6,8 +6,10 @@ namespace API_Clinica.Interfaces;
 public interface IConsultaService
 {
     Task<PagedResponse<ConsultaListadoDto>> ListarAsync(
-        ConsultaFiltroDto filtro, CancellationToken cancellationToken);
-    Task<ConsultaDetalleDto> ObtenerAsync(int id, CancellationToken cancellationToken);
+        ConsultaFiltroDto filtro, ClaimsPrincipal principal,
+        CancellationToken cancellationToken);
+    Task<ConsultaDetalleDto> ObtenerAsync(
+        int id, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<ConsultaDetalleDto> CrearAsync(
         ConsultaCreateDto request, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<ConsultaDetalleDto> ActualizarAsync(
