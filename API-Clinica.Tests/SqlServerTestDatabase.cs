@@ -101,8 +101,10 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         await db.SaveChangesAsync();
 
         db.Permisos.AddRange(
-            new Permiso { IdRol = rol.IdRol, Modulo = "Ventas", PuedeCrear = true },
-            new Permiso { IdRol = rol.IdRol, Modulo = "Facturas", PuedeCrear = true });
+            new Permiso { IdRol = rol.IdRol, Modulo = "Ventas",
+                PuedeConsultar = true, PuedeCrear = true },
+            new Permiso { IdRol = rol.IdRol, Modulo = "Facturas",
+                PuedeConsultar = true, PuedeCrear = true });
         var lote = new LoteMedicamento
         {
             IdMedicamento = medicamento.IdMedicamento, NumeroLote = "LOT-SQL-1",

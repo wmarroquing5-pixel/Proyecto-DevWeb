@@ -309,6 +309,100 @@ public sealed class VentasTests
         Assert.Empty(await db.Ventas.ToListAsync());
     }
 
+    [Fact]
+    public async Task ConsultasDeVentasExigenJwtPermisoYEstadosActivos()
+    {
+        using var factory = new VentaApiFactory();
+        var password = await factory.SeedAsync();
+        using var client = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/ventas")).StatusCode);
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/ventas")).StatusCode);
+        await factory.GrantAsync(crear: false, consultar: true);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/ventas")).StatusCode);
+
+        await factory.SetUserActiveAsync(false);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/ventas")).StatusCode);
+        await factory.SetUserActiveAsync(true);
+        await factory.SetRoleActiveAsync(false);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/ventas")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ListadoDeVentasPaginaFiltraYNoModificaInventario()
+    {
+        using var factory = new VentaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(consultar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var desde = DateTime.UtcNow.AddMinutes(-1);
+
+        var primera = await client.PostAsJsonAsync("/api/ventas", Request(1, (1, 1)));
+        var segunda = await client.PostAsJsonAsync("/api/ventas", Request(1, (2, 1)));
+        Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, segunda.StatusCode);
+        var venta1 = await primera.Content.ReadFromJsonAsync<VentaResponse>();
+        var venta2 = await segunda.Content.ReadFromJsonAsync<VentaResponse>();
+        Assert.NotNull(venta1);
+        Assert.NotNull(venta2);
+        var existenciasAntes = await factory.GetStocksAsync();
+
+        var pagina = await client.GetFromJsonAsync<PagedResponse<VentaConsultaResumenResponse>>(
+            "/api/ventas?idSucursal=1&idUsuario=1&page=1&pageSize=1");
+        Assert.NotNull(pagina);
+        Assert.Equal(2, pagina.TotalCount);
+        Assert.Equal(2, pagina.TotalPages);
+        Assert.Equal(venta2.IdVenta, Assert.Single(pagina.Items).IdVenta);
+        var porId = await client.GetFromJsonAsync<PagedResponse<VentaConsultaResumenResponse>>(
+            $"/api/ventas?idVenta={venta1.IdVenta}&fechaDesde={Uri.EscapeDataString(desde.ToString("O"))}&fechaHasta={Uri.EscapeDataString(DateTime.UtcNow.AddMinutes(1).ToString("O"))}");
+        Assert.NotNull(porId);
+        Assert.Equal(venta1.IdVenta, Assert.Single(porId.Items).IdVenta);
+        Assert.Empty((await client.GetFromJsonAsync<PagedResponse<VentaConsultaResumenResponse>>(
+            "/api/ventas?idSucursal=2"))!.Items);
+        Assert.Equal(existenciasAntes, await factory.GetStocksAsync());
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/ventas?idUsuario=0")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/ventas?fechaDesde=2026-02-02&fechaHasta=2026-02-01"))
+            .StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/ventas/999")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DetalleDeVentaConservaPreciosHistoricosYMedicamentoDelLote()
+    {
+        using var factory = new VentaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(consultar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var created = await client.PostAsJsonAsync("/api/ventas", Request(1, (1, 2)));
+        var venta = await created.Content.ReadFromJsonAsync<VentaResponse>();
+        Assert.NotNull(venta);
+        await factory.SetMedicationPriceAsync(1, 99m);
+
+        var detalle = await client.GetFromJsonAsync<VentaConsultaResponse>(
+            $"/api/ventas/{venta.IdVenta}");
+        Assert.NotNull(detalle);
+        Assert.Equal("Venta Publica", detalle.TipoFactura);
+        Assert.Equal(25m, detalle.Total);
+        var linea = Assert.Single(detalle.Detalles);
+        Assert.Equal(1, linea.IdMedicamento);
+        Assert.Equal(2, linea.IdLote);
+        Assert.Null(linea.IdServicio);
+        Assert.Equal(12.50m, linea.PrecioUnitario);
+        Assert.Equal(25m, linea.Subtotal);
+    }
+
     private static CrearVentaRequest Request(int idSucursal, params (int Id, int Quantity)[] items) => new()
     {
         IdSucursal = idSucursal,
@@ -398,12 +492,52 @@ public sealed class VentasTests
             return password;
         }
 
-        public async Task GrantAsync()
+        public async Task GrantAsync(bool crear = true, bool consultar = false)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
-            db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Ventas", PuedeCrear = true });
+            var permiso = await db.Permisos.SingleOrDefaultAsync(p => p.Modulo == "Ventas");
+            if (permiso is null)
+                db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Ventas",
+                    PuedeCrear = crear, PuedeConsultar = consultar });
+            else
+            {
+                permiso.PuedeCrear |= crear;
+                permiso.PuedeConsultar |= consultar;
+            }
             await db.SaveChangesAsync();
+        }
+
+        public async Task SetUserActiveAsync(bool active)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Usuarios.SingleAsync()).Activo = active;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetRoleActiveAsync(bool active)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Roles.SingleAsync()).Activo = active;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetMedicationPriceAsync(int id, decimal price)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Medicamentos.SingleAsync(m => m.IdMedicamento == id)).PrecioVenta = price;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task<int[]> GetStocksAsync()
+        {
+            using var scope = Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+                .LoteMedicamentos.AsNoTracking().OrderBy(l => l.IdLote)
+                .Select(l => l.CantidadDisponible).ToArrayAsync();
         }
 
         private static Medicamento Medicine(int id, string code, decimal price, bool active) => new()

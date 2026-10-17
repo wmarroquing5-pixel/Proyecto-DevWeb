@@ -1,8 +1,10 @@
+using System.Security.Claims;
 using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
 using API_Clinica.Models.Entities;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace API_Clinica.Services;
@@ -10,8 +12,79 @@ namespace API_Clinica.Services;
 public sealed class HistorialMedicoService(
     ClinicaDbContext context,
     HistorialMedicoLecturaService lectura,
-    ICommonParameterValidator parameterValidator) : IHistorialMedicoService
+    ICommonParameterValidator parameterValidator,
+    IAccesoActualService accesoActual) : IHistorialMedicoService
 {
+    public async Task<HistorialMedicoResponseDto> CrearAsync(
+        HistorialMedicoCreateDto request, ClaimsPrincipal principal, CancellationToken ct)
+    {
+        var usuario = await accesoActual.ObtenerUsuarioActivoAsync(principal, ct)
+            ?? throw new ForbiddenException("Acceso denegado.");
+        var idMedico = await ObtenerMedicoActualAsync(usuario, ct);
+        var descripcion = ValidarDescripcion(request.Descripcion);
+
+        if (request.IdPaciente <= 0)
+            throw Invalid(nameof(request.IdPaciente), "Debe indicar un paciente válido.");
+        if (request.IdConsulta <= 0)
+            throw Invalid(nameof(request.IdConsulta), "Debe indicar una consulta válida.");
+        if (request.IdDiagnostico is <= 0)
+            throw Invalid(nameof(request.IdDiagnostico),
+                "Debe indicar un diagnóstico válido.");
+
+        var pacienteActivo = await context.Pacientes.AsNoTracking()
+            .Where(p => p.IdPaciente == request.IdPaciente)
+            .Select(p => (bool?)p.Activo)
+            .SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Paciente no encontrado.");
+        if (!pacienteActivo)
+            throw new BusinessRuleException("El paciente no está activo.");
+
+        var consulta = await context.Consultas.AsNoTracking()
+            .Where(c => c.IdConsulta == request.IdConsulta)
+            .Select(c => new { c.IdPaciente, c.IdMedico })
+            .SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Consulta no encontrada.");
+        if (consulta.IdPaciente != request.IdPaciente)
+            throw Invalid(nameof(request.IdPaciente),
+                "La consulta debe corresponder al paciente indicado.");
+        if (consulta.IdMedico != idMedico)
+            throw new ForbiddenException(
+                "No puede registrar una evolución para una consulta de otro médico.");
+
+        if (request.IdDiagnostico is int idDiagnostico)
+        {
+            var idConsultaDiagnostico = await context.Diagnosticos.AsNoTracking()
+                .Where(d => d.IdDiagnostico == idDiagnostico)
+                .Select(d => (int?)d.IdConsulta)
+                .SingleOrDefaultAsync(ct)
+                ?? throw new NotFoundException("Diagnóstico no encontrado.");
+            if (idConsultaDiagnostico != request.IdConsulta)
+                throw Invalid(nameof(request.IdDiagnostico),
+                    "El diagnóstico debe corresponder a la consulta indicada.");
+        }
+
+        var historial = new Evolucion
+        {
+            IdConsulta = request.IdConsulta,
+            IdDiagnostico = request.IdDiagnostico,
+            FechaEvolucion = DateTime.UtcNow,
+            Descripcion = descripcion
+        };
+        context.HistorialesMedicos.Add(historial);
+        try
+        {
+            await context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number == 547)
+        {
+            throw new ConflictException(
+                "Alguna referencia clínica dejó de existir durante el registro.");
+        }
+
+        return (await MapearAsync([historial], ct))[0];
+    }
+
     public async Task<PagedResponse<HistorialMedicoResponseDto>> ListarAsync(
         HistorialMedicoFiltroDto filtro, CancellationToken ct)
     {
@@ -82,4 +155,33 @@ public sealed class HistorialMedicoService(
             throw new AppValidationException("El filtro de historial no es válido.",
                 new Dictionary<string, string[]> { [campo] = ["Debe ser mayor que cero."] });
     }
+
+    private async Task<int> ObtenerMedicoActualAsync(Usuario usuario, CancellationToken ct)
+    {
+        if (usuario.IdEmpleado is not int idEmpleado)
+            throw new ForbiddenException("El usuario no está vinculado a un médico activo.");
+
+        var medicoValido = await context.Empleados.AsNoTracking().AnyAsync(e =>
+            e.IdEmpleado == idEmpleado && e.Activo && e.TipoEmpleado == "Medico", ct);
+        if (!medicoValido)
+            throw new ForbiddenException("El usuario no está vinculado a un médico activo.");
+        return idEmpleado;
+    }
+
+    private static string ValidarDescripcion(string? value)
+    {
+        var descripcion = string.Join(' ', (value ?? string.Empty).Split(
+            (char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (descripcion.Length == 0)
+            throw Invalid(nameof(HistorialMedicoCreateDto.Descripcion),
+                "La descripción es obligatoria.");
+        if (descripcion.Length > 300)
+            throw Invalid(nameof(HistorialMedicoCreateDto.Descripcion),
+                "Máximo 300 caracteres.");
+        return descripcion;
+    }
+
+    private static AppValidationException Invalid(string campo, string mensaje) =>
+        new("Datos del historial médico no válidos.",
+            new Dictionary<string, string[]> { [campo] = [mensaje] });
 }

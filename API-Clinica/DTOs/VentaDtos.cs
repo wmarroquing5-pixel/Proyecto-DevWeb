@@ -27,3 +27,28 @@ public sealed record VentaDetalleResponse(
 public sealed record VentaResponse(
     int IdVenta, int IdUsuario, int IdSucursal, DateTime FechaVenta,
     decimal Total, IReadOnlyList<VentaDetalleResponse> Detalles);
+
+public sealed class VentaConsultaFiltroDto
+{
+    public int? IdVenta { get; init; }
+    public DateTime? FechaDesde { get; init; }
+    public DateTime? FechaHasta { get; init; }
+    public int? IdSucursal { get; init; }
+    public int? IdPaciente { get; init; }
+    public int? IdUsuario { get; init; }
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = 20;
+}
+
+public sealed record VentaConsultaResumenResponse(
+    int IdVenta, int IdUsuario, int IdSucursal, int? IdPaciente,
+    DateTime FechaVenta, decimal Total);
+
+public sealed record VentaConsultaDetalleResponse(
+    int IdDetalle, int? IdLote, int? IdMedicamento, int? IdServicio,
+    int Cantidad, decimal PrecioUnitario, decimal Subtotal);
+
+public sealed record VentaConsultaResponse(
+    int IdVenta, int IdUsuario, int IdSucursal, int? IdPaciente,
+    DateTime FechaVenta, string TipoFactura, decimal Total,
+    IReadOnlyList<VentaConsultaDetalleResponse> Detalles);

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -151,21 +152,166 @@ public sealed class HistorialMedicoApiTests
     }
 
     [Fact]
-    public async Task SinAprobacionDeCreacionNoHayRutasDeEscritura()
+    public async Task CrearRegistraEvolucionYConservaHistorialAnterior()
     {
         using var factory = new HistorialApiFactory();
         var password = await factory.SeedAsync();
-        await factory.GrantConsultarAsync();
+        await factory.SeedHistorialesAsync();
+        await factory.GrantAsync(consultar: true, crear: true);
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
+
+        var antes = DateTime.UtcNow;
+        var response = await client.PostAsJsonAsync("/api/historial-medico", Nuevo());
+        var despues = DateTime.UtcNow;
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var dto = await response.Content.ReadFromJsonAsync<HistorialMedicoResponseDto>();
+        Assert.NotNull(dto);
+        Assert.Equal(1, dto.IdPaciente);
+        Assert.Equal(1, dto.IdConsulta);
+        Assert.Equal(1, dto.IdDiagnostico);
+        Assert.Equal(1, dto.IdMedico);
+        Assert.Equal("Paciente estable y sin fiebre", dto.Descripcion);
+        Assert.InRange(dto.FechaHistorial, antes, despues);
+        Assert.Equal($"/api/historial-medico/{dto.IdHistorial}",
+            response.Headers.Location?.AbsolutePath);
+
+        var detalle = await client.GetFromJsonAsync<HistorialMedicoResponseDto>(
+            $"/api/historial-medico/{dto.IdHistorial}");
+        Assert.Equal(dto, detalle);
+        Assert.Equal("Consulta", (await client.GetFromJsonAsync<HistorialMedicoResponseDto>(
+            "/api/historial-medico/1"))?.Descripcion);
+        Assert.Equal(7, await factory.CountAsync());
+
         Assert.Equal(HttpStatusCode.MethodNotAllowed,
+            (await client.PutAsJsonAsync($"/api/historial-medico/{dto.IdHistorial}",
+                new { Descripcion = "Cambio" })).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed,
+            (await client.DeleteAsync($"/api/historial-medico/{dto.IdHistorial}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ReferenciasInvalidasNoCreanEvolucion()
+    {
+        using var factory = new HistorialApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(crear: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        Assert.Equal(HttpStatusCode.NotFound,
             (await client.PostAsJsonAsync("/api/historial-medico",
-                new { IdConsulta = 1, Descripcion = "Prueba" })).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed,
-            (await client.PutAsJsonAsync("/api/historial-medico/1",
-                new { Descripcion = "Prueba" })).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed,
-            (await client.DeleteAsync("/api/historial-medico/1")).StatusCode);
+                Nuevo(idPaciente: 999))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PostAsJsonAsync("/api/historial-medico",
+                Nuevo(idConsulta: 999, idDiagnostico: null))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PostAsJsonAsync("/api/historial-medico",
+                Nuevo(idDiagnostico: 999))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/historial-medico",
+                Nuevo(idPaciente: 1, idConsulta: 2, idDiagnostico: null))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/historial-medico",
+                Nuevo(idDiagnostico: 2))).StatusCode);
+
+        await factory.SetPatientActiveAsync(1, false);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity,
+            (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+    }
+
+    [Fact]
+    public async Task MedicoAjenoOInactivoNoPuedeCrearEvolucion()
+    {
+        using var factory = new HistorialApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(crear: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/historial-medico",
+                Nuevo(idPaciente: 2, idConsulta: 2, idDiagnostico: 2))).StatusCode);
+        await factory.SetEmployeeActiveAsync(1, false);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+    }
+
+    [Fact]
+    public async Task JwtPermisoUsuarioYRolProtegenCreacion()
+    {
+        using (var factory = new HistorialApiFactory())
+        {
+            var password = await factory.SeedAsync();
+            using var client = factory.CreateClient();
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
+            await LoginAsync(client, password);
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
+        }
+
+        using (var factory = new HistorialApiFactory())
+        {
+            var password = await factory.SeedAsync();
+            await factory.GrantAsync(crear: true);
+            using var client = factory.CreateClient();
+            await LoginAsync(client, password);
+            await factory.SetUserActiveAsync(false);
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
+        }
+
+        using (var factory = new HistorialApiFactory())
+        {
+            var password = await factory.SeedAsync();
+            await factory.GrantAsync(crear: true);
+            using var client = factory.CreateClient();
+            await LoginAsync(client, password);
+            await factory.SetRoleActiveAsync(false);
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task DatosInvalidosYCamposDeSuplantacionSeRechazan()
+    {
+        using var factory = new HistorialApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(crear: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var invalidos = new object[]
+        {
+            new { IdPaciente = 0, IdConsulta = 1, Descripcion = "Evolución" },
+            new { IdPaciente = 1, IdConsulta = 0, Descripcion = "Evolución" },
+            new { IdPaciente = 1, IdConsulta = 1, Descripcion = "   " },
+            new { IdPaciente = 1, IdConsulta = 1, Descripcion = new string('x', 301) },
+            new { IdPaciente = 1, IdConsulta = 1, Descripcion = "Evolución", IdMedico = 2 }
+        };
+        foreach (var request in invalidos)
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await client.PostAsJsonAsync("/api/historial-medico", request)).StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+    }
+
+    [Fact]
+    public async Task ErrorDePersistenciaNoDejaEscrituraParcial()
+    {
+        using var factory = new HistorialApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(crear: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        factory.FailNextSave();
+
+        Assert.Equal(HttpStatusCode.InternalServerError,
+            (await client.PostAsJsonAsync("/api/historial-medico", Nuevo())).StatusCode);
         Assert.Equal(0, await factory.CountAsync());
     }
 
@@ -195,10 +341,20 @@ public sealed class HistorialMedicoApiTests
             new AuthenticationHeaderValue("Bearer", response.AccessToken);
     }
 
+    private static HistorialMedicoCreateDto Nuevo(
+        int idPaciente = 1, int idConsulta = 1, int? idDiagnostico = 1) => new()
+    {
+        IdPaciente = idPaciente,
+        IdConsulta = idConsulta,
+        IdDiagnostico = idDiagnostico,
+        Descripcion = "  Paciente   estable y sin fiebre  "
+    };
+
     private sealed class HistorialApiFactory : WebApplicationFactory<Program>
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
         private readonly string signingKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        private readonly FailNextSaveInterceptor saveInterceptor = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -219,7 +375,8 @@ public sealed class HistorialMedicoApiTests
                 services.RemoveAll<DbContextOptions<ClinicaDbContext>>();
                 services.RemoveAll<ClinicaDbContext>();
                 services.AddSingleton(new DbContextOptionsBuilder<ClinicaDbContext>()
-                    .UseInMemoryDatabase(databaseName).Options);
+                    .UseInMemoryDatabase(databaseName)
+                    .AddInterceptors(saveInterceptor).Options);
                 services.AddScoped<ClinicaDbContext>();
             });
         }
@@ -272,13 +429,21 @@ public sealed class HistorialMedicoApiTests
         }
 
         public async Task GrantConsultarAsync()
+            => await GrantAsync(consultar: true);
+
+        public async Task GrantAsync(bool consultar = false, bool crear = false)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
-            db.Permisos.Add(new Permiso
+            var permiso = await db.Permisos.SingleOrDefaultAsync(p =>
+                p.IdRol == 1 && p.Modulo == "Historial");
+            if (permiso is null)
             {
-                IdRol = 1, Modulo = "Historial", PuedeConsultar = true
-            });
+                permiso = new Permiso { IdRol = 1, Modulo = "Historial" };
+                db.Permisos.Add(permiso);
+            }
+            permiso.PuedeConsultar |= consultar;
+            permiso.PuedeCrear |= crear;
             await db.SaveChangesAsync();
         }
 
@@ -314,6 +479,32 @@ public sealed class HistorialMedicoApiTests
             await db.SaveChangesAsync();
         }
 
+        public async Task SetRoleActiveAsync(bool active)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Roles.SingleAsync()).Activo = active;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetEmployeeActiveAsync(int id, bool active)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Empleados.SingleAsync(e => e.IdEmpleado == id)).Activo = active;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetPatientActiveAsync(int id, bool active)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Pacientes.SingleAsync(p => p.IdPaciente == id)).Activo = active;
+            await db.SaveChangesAsync();
+        }
+
+        public void FailNextSave() => saveInterceptor.Arm();
+
         public async Task<int> CountAsync()
         {
             using var scope = Services.CreateScope();
@@ -342,5 +533,21 @@ public sealed class HistorialMedicoApiTests
             Apellidos = "Prueba", DPI = $"HIST-TEST-{id}",
             TipoEmpleado = "Medico", Activo = true
         };
+
+        private sealed class FailNextSaveInterceptor : SaveChangesInterceptor
+        {
+            private int armed;
+
+            public void Arm() => Interlocked.Exchange(ref armed, 1);
+
+            public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+                DbContextEventData eventData, InterceptionResult<int> result,
+                CancellationToken cancellationToken = default)
+            {
+                if (Interlocked.Exchange(ref armed, 0) == 1)
+                    throw new DbUpdateException("Fallo sintético de persistencia.");
+                return base.SavingChangesAsync(eventData, result, cancellationToken);
+            }
+        }
     }
 }

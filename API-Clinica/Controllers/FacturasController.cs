@@ -9,6 +9,16 @@ namespace API_Clinica.Controllers;
 [Route("api/facturas")]
 public sealed class FacturasController(IFacturaServiciosService service) : ControllerBase
 {
+    [HttpGet, PermisoRequerido("Facturas", Operacion.Consultar)]
+    public async Task<ActionResult<PagedResponse<FacturaConsultaResumenResponse>>> Listar(
+        [FromQuery] FacturaConsultaFiltroDto filtro, CancellationToken cancellationToken) =>
+        Ok(await service.ListarAsync(filtro, cancellationToken));
+
+    [HttpGet("{id:int}"), PermisoRequerido("Facturas", Operacion.Consultar)]
+    public async Task<ActionResult<FacturaConsultaResponse>> Obtener(
+        int id, CancellationToken cancellationToken) =>
+        Ok(await service.ObtenerAsync(id, cancellationToken));
+
     [HttpPost, PermisoRequerido("Facturas", Operacion.Crear)]
     [ProducesResponseType(typeof(FacturaServiciosResponse), StatusCodes.Status201Created)]
     public async Task<ActionResult<FacturaServiciosResponse>> Crear(

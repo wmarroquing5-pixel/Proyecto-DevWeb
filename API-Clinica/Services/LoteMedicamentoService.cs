@@ -1,4 +1,5 @@
 using System.Data;
+using System.Security.Claims;
 using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Exceptions;
@@ -11,6 +12,7 @@ namespace API_Clinica.Services;
 
 public sealed class LoteMedicamentoService(
     ClinicaDbContext context, ICommonParameterValidator parameterValidator,
+    IAccesoActualService accesoActual,
     ILogger<LoteMedicamentoService> logger) : ILoteMedicamentoService
 {
     public async Task<PagedResponse<LoteMedicamentoResponse>> ListarAsync(
@@ -175,6 +177,165 @@ public sealed class LoteMedicamentoService(
         lot.CantidadDisponible = request.CantidadDisponible;
         await context.SaveChangesAsync(ct);
         return ToResponse(lot);
+    }
+
+    public async Task<EntradaInventarioResponse> RegistrarEntradaAsync(
+        int id, RegistrarEntradaInventarioRequest request,
+        ClaimsPrincipal principal, CancellationToken cancellationToken)
+    {
+        ValidarEntrada(id, request);
+        if (!context.Database.IsSqlServer())
+        {
+            if (context.Database.IsRelational())
+                throw new NotSupportedException("La entrada transaccional requiere SQL Server.");
+            return await RegistrarEntradaCoreAsync(
+                id, null, request, principal, cancellationToken);
+        }
+
+        // Esta lectura determina el orden de bloqueo. La relación se confirma
+        // de nuevo dentro de la transacción antes de modificar existencias.
+        var idMedicamento = await context.LoteMedicamentos.AsNoTracking()
+            .Where(l => l.IdLote == id)
+            .Select(l => (int?)l.IdMedicamento)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException("Lote no encontrado.");
+
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, cancellationToken);
+            try
+            {
+                var response = await RegistrarEntradaCoreAsync(
+                    id, idMedicamento, request, principal, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return response;
+            }
+            catch
+            {
+                try { await transaction.RollbackAsync(CancellationToken.None); }
+                catch (Exception rollbackError)
+                {
+                    logger.LogError(rollbackError,
+                        "No se pudo confirmar el rollback de la entrada de inventario.");
+                }
+                throw;
+            }
+        }
+        catch (SqlException ex) when (ex.Number is 1205 or 1222)
+        {
+            throw new ConflictException("El inventario está siendo modificado. Intente nuevamente.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("El lote cambió durante la entrada. Intente nuevamente.");
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number is 1205 or 1222 or 547)
+        {
+            throw new ConflictException("El inventario cambió durante la entrada. Intente nuevamente.");
+        }
+    }
+
+    private async Task<EntradaInventarioResponse> RegistrarEntradaCoreAsync(
+        int id, int? idMedicamentoEsperado,
+        RegistrarEntradaInventarioRequest request, ClaimsPrincipal principal,
+        CancellationToken ct)
+    {
+        var usuario = await accesoActual.ObtenerUsuarioActivoAsync(principal, ct)
+            ?? throw new ForbiddenException("Acceso denegado.");
+
+        Sucursal? sucursal;
+        if (context.Database.IsSqlServer())
+            sucursal = await context.Sucursales
+                .FromSqlInterpolated($"SELECT * FROM [Sucursal] WITH (UPDLOCK, HOLDLOCK) WHERE [IdSucursal] = {request.IdSucursal}")
+                .SingleOrDefaultAsync(ct);
+        else
+            sucursal = await context.Sucursales.SingleOrDefaultAsync(
+                s => s.IdSucursal == request.IdSucursal, ct);
+        if (sucursal is null || !sucursal.Activa)
+            throw FarmaciaValidation.Invalid(
+                "IdSucursal", "La sucursal debe existir y estar activa.");
+
+        Medicamento? medicamento;
+        LoteMedicamento? lote;
+        if (context.Database.IsSqlServer())
+        {
+            medicamento = await context.Medicamentos
+                .FromSqlInterpolated($"SELECT * FROM [Medicamento] WITH (UPDLOCK, HOLDLOCK) WHERE [IdMedicamento] = {idMedicamentoEsperado!.Value}")
+                .SingleOrDefaultAsync(ct);
+            lote = await context.LoteMedicamentos
+                .FromSqlInterpolated($"SELECT * FROM [LoteMedicamento] WITH (XLOCK, HOLDLOCK) WHERE [IdLote] = {id}")
+                .SingleOrDefaultAsync(ct);
+        }
+        else
+        {
+            lote = await context.LoteMedicamentos.SingleOrDefaultAsync(l => l.IdLote == id, ct);
+            medicamento = lote is null ? null : await context.Medicamentos
+                .SingleOrDefaultAsync(m => m.IdMedicamento == lote.IdMedicamento, ct);
+        }
+
+        if (lote is null)
+            throw new NotFoundException("Lote no encontrado.");
+        if (idMedicamentoEsperado.HasValue &&
+            lote.IdMedicamento != idMedicamentoEsperado.Value)
+            throw new ConflictException("El medicamento del lote cambió. Intente nuevamente.");
+        if (medicamento is null || medicamento.IdMedicamento != lote.IdMedicamento ||
+            !medicamento.Activo)
+            throw new ConflictException("El medicamento del lote debe existir y estar activo.");
+
+        var fecha = DateTime.UtcNow;
+        var hoy = DateOnly.FromDateTime(fecha);
+        if (lote.FechaIngreso > hoy || lote.FechaVencimiento <= hoy)
+            throw new ConflictException("El lote no está vigente para recibir inventario.");
+        if (lote.CantidadDisponible > int.MaxValue - request.Cantidad)
+            throw FarmaciaValidation.Invalid(
+                "Cantidad", "La entrada excede el límite de existencias permitido.");
+
+        var observaciones = NormalizarObservaciones(request.Observaciones);
+        lote.CantidadDisponible += request.Cantidad;
+        var movimiento = new MovimientoInventario
+        {
+            IdLote = lote.IdLote,
+            IdUsuario = usuario.IdUsuario,
+            IdSucursal = sucursal.IdSucursal,
+            TipoMovimiento = "Entrada",
+            Cantidad = request.Cantidad,
+            FechaMovimiento = fecha,
+            Observaciones = observaciones
+        };
+        context.MovimientosInventario.Add(movimiento);
+        var changes = await context.SaveChangesAsync(ct);
+        if (changes != 2)
+            throw new InvalidOperationException(
+                "La entrada no actualizó exactamente el lote y su movimiento.");
+
+        return new EntradaInventarioResponse(
+            movimiento.IdMovimiento, lote.IdLote, lote.IdMedicamento,
+            sucursal.IdSucursal, movimiento.Cantidad, lote.CantidadDisponible,
+            movimiento.FechaMovimiento, movimiento.Observaciones);
+    }
+
+    private static void ValidarEntrada(
+        int id, RegistrarEntradaInventarioRequest request)
+    {
+        if (id <= 0)
+            throw new NotFoundException("Lote no encontrado.");
+        if (request.IdSucursal <= 0)
+            throw FarmaciaValidation.Invalid(
+                "IdSucursal", "La sucursal debe ser válida.");
+        if (request.Cantidad <= 0)
+            throw FarmaciaValidation.Invalid(
+                "Cantidad", "La cantidad debe ser positiva.");
+        if (request.Observaciones?.Trim().Length > 300)
+            throw FarmaciaValidation.Invalid(
+                "Observaciones", "No puede exceder 300 caracteres.");
+    }
+
+    private static string? NormalizarObservaciones(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
 
     public async Task EliminarAsync(int id, CancellationToken cancellationToken)

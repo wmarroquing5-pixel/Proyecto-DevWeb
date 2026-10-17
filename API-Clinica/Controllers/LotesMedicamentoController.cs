@@ -31,6 +31,15 @@ public sealed class LotesMedicamentoController(ILoteMedicamentoService service) 
         int id, ActualizarLoteMedicamentoRequest request, CancellationToken ct) =>
         Ok(await service.ActualizarAsync(id, request, ct));
 
+    [HttpPost("{id:int}/entradas"),
+     PermisoRequerido("LotesMedicamento", Operacion.Modificar)]
+    public async Task<ActionResult<EntradaInventarioResponse>> RegistrarEntrada(
+        int id, RegistrarEntradaInventarioRequest request, CancellationToken ct)
+    {
+        var response = await service.RegistrarEntradaAsync(id, request, User, ct);
+        return CreatedAtAction(nameof(Obtener), new { id }, response);
+    }
+
     [HttpDelete("{id:int}"), PermisoRequerido("LotesMedicamento", Operacion.Eliminar)]
     public async Task<IActionResult> Eliminar(int id, CancellationToken ct)
     {

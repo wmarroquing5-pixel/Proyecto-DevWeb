@@ -1,4 +1,23 @@
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+
 namespace API_Clinica.DTOs;
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class HistorialMedicoCreateDto
+{
+    [Range(1, int.MaxValue)]
+    public int IdPaciente { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int IdConsulta { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? IdDiagnostico { get; init; }
+
+    [Required, StringLength(300)]
+    public string Descripcion { get; init; } = string.Empty;
+}
 
 public sealed class HistorialMedicoFiltroDto
 {

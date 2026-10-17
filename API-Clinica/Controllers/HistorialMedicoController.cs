@@ -9,6 +9,14 @@ namespace API_Clinica.Controllers;
 [Route("api/historial-medico")]
 public sealed class HistorialMedicoController(IHistorialMedicoService service) : ControllerBase
 {
+    [HttpPost, PermisoRequerido("Historial", Operacion.Crear)]
+    public async Task<ActionResult<HistorialMedicoResponseDto>> Crear(
+        HistorialMedicoCreateDto request, CancellationToken ct)
+    {
+        var response = await service.CrearAsync(request, User, ct);
+        return CreatedAtAction(nameof(Obtener), new { id = response.IdHistorial }, response);
+    }
+
     [HttpGet, PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<HistorialMedicoResponseDto>>> Listar(
         [FromQuery] HistorialMedicoFiltroDto filtro, CancellationToken ct) =>

@@ -84,3 +84,20 @@ public sealed class ActualizarLoteMedicamentoRequest
 public sealed record LoteMedicamentoResponse(
     int IdLote, int IdMedicamento, string NumeroLote,
     DateOnly FechaIngreso, DateOnly FechaVencimiento, int CantidadDisponible);
+
+public sealed class RegistrarEntradaInventarioRequest
+{
+    [Range(1, int.MaxValue)]
+    public int IdSucursal { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int Cantidad { get; init; }
+
+    [StringLength(300)]
+    public string? Observaciones { get; init; }
+}
+
+public sealed record EntradaInventarioResponse(
+    int IdMovimiento, int IdLote, int IdMedicamento, int IdSucursal,
+    int Cantidad, int CantidadDisponible, DateTime FechaMovimiento,
+    string? Observaciones);

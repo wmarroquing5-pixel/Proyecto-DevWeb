@@ -13,9 +13,63 @@ namespace API_Clinica.Services;
 public sealed class VentaService(
     ClinicaDbContext context,
     IAccesoActualService accesoActual,
+    ICommonParameterValidator parameterValidator,
     ILogger<VentaService> logger) : IVentaService
 {
     private const decimal MaxSqlMoney = 9_999_999_999_999_999.99m;
+
+    public async Task<PagedResponse<VentaConsultaResumenResponse>> ListarAsync(
+        VentaConsultaFiltroDto filtro, CancellationToken ct)
+    {
+        var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
+        ValidarFiltros(filtro.IdVenta, filtro.IdSucursal, filtro.IdPaciente,
+            filtro.IdUsuario, filtro.FechaDesde, filtro.FechaHasta);
+
+        var query = context.Ventas.AsNoTracking()
+            .Where(v => v.TipoFactura == "Venta Publica");
+        if (filtro.IdVenta is int idVenta)
+            query = query.Where(v => v.IdVenta == idVenta);
+        if (filtro.FechaDesde is DateTime desde)
+            query = query.Where(v => v.FechaVenta >= desde);
+        if (filtro.FechaHasta is DateTime hasta)
+            query = query.Where(v => v.FechaVenta <= hasta);
+        if (filtro.IdSucursal is int idSucursal)
+            query = query.Where(v => v.IdSucursal == idSucursal);
+        if (filtro.IdPaciente is int idPaciente)
+            query = query.Where(v => EF.Property<int?>(v, "IdPaciente") == idPaciente);
+        if (filtro.IdUsuario is int idUsuario)
+            query = query.Where(v => v.IdUsuario == idUsuario);
+
+        var total = await query.LongCountAsync(ct);
+        var items = await query.OrderByDescending(v => v.FechaVenta)
+            .ThenByDescending(v => v.IdVenta)
+            .Skip(pagination.Skip).Take(pagination.PageSize)
+            .Select(v => new VentaConsultaResumenResponse(
+                v.IdVenta, v.IdUsuario, v.IdSucursal,
+                EF.Property<int?>(v, "IdPaciente"), v.FechaVenta, v.Total))
+            .ToListAsync(ct);
+        return new(items, filtro.Page, filtro.PageSize, total);
+    }
+
+    public async Task<VentaConsultaResponse> ObtenerAsync(int id, CancellationToken ct)
+    {
+        if (id <= 0)
+            throw FarmaciaValidation.Invalid("IdVenta", "Debe ser mayor que cero.");
+        var venta = await context.Ventas.AsNoTracking()
+            .Where(v => v.IdVenta == id && v.TipoFactura == "Venta Publica")
+            .Select(v => new
+            {
+                v.IdVenta, v.IdUsuario, v.IdSucursal, v.FechaVenta,
+                v.TipoFactura, v.Total,
+                IdPaciente = EF.Property<int?>(v, "IdPaciente")
+            })
+            .SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Venta no encontrada.");
+        var detalles = await ObtenerDetallesAsync(id, ct);
+        return new(venta.IdVenta, venta.IdUsuario, venta.IdSucursal,
+            venta.IdPaciente, venta.FechaVenta, venta.TipoFactura,
+            venta.Total, detalles);
+    }
 
     public async Task<VentaResponse> CrearAsync(
         CrearVentaRequest request, ClaimsPrincipal principal,
@@ -193,6 +247,50 @@ public sealed class VentaService(
             quantities[item.IdMedicamento] = current + item.Cantidad;
         }
         return quantities;
+    }
+
+    private async Task<IReadOnlyList<VentaConsultaDetalleResponse>> ObtenerDetallesAsync(
+        int idVenta, CancellationToken ct)
+    {
+        var filas = await context.VentaDetalles.AsNoTracking()
+            .Where(d => d.IdVenta == idVenta)
+            .OrderBy(d => d.IdVentaDetalle)
+            .Select(d => new
+            {
+                d.IdVentaDetalle, d.IdLote, d.Cantidad,
+                d.PrecioUnitario, d.Subtotal,
+                IdServicio = EF.Property<int?>(d, "IdServicio")
+            })
+            .ToListAsync(ct);
+        var loteIds = filas.Where(d => d.IdLote.HasValue)
+            .Select(d => d.IdLote!.Value).Distinct().ToArray();
+        var medicamentos = await context.LoteMedicamentos.AsNoTracking()
+            .Where(l => loteIds.Contains(l.IdLote))
+            .ToDictionaryAsync(l => l.IdLote, l => l.IdMedicamento, ct);
+        return filas.Select(d => new VentaConsultaDetalleResponse(
+            d.IdVentaDetalle, d.IdLote,
+            d.IdLote is int idLote && medicamentos.TryGetValue(idLote, out var medicamento)
+                ? medicamento : null,
+            d.IdServicio, d.Cantidad, d.PrecioUnitario, d.Subtotal)).ToList();
+    }
+
+    private static void ValidarFiltros(
+        int? idVenta, int? idSucursal, int? idPaciente, int? idUsuario,
+        DateTime? desde, DateTime? hasta)
+    {
+        ValidarFiltroId(idVenta, nameof(VentaConsultaFiltroDto.IdVenta));
+        ValidarFiltroId(idSucursal, nameof(VentaConsultaFiltroDto.IdSucursal));
+        ValidarFiltroId(idPaciente, nameof(VentaConsultaFiltroDto.IdPaciente));
+        ValidarFiltroId(idUsuario, nameof(VentaConsultaFiltroDto.IdUsuario));
+        if (desde.HasValue && hasta.HasValue && desde > hasta)
+            throw FarmaciaValidation.Invalid(nameof(VentaConsultaFiltroDto.FechaHasta),
+                "Debe ser igual o posterior a FechaDesde.");
+    }
+
+    private static void ValidarFiltroId(int? id, string campo)
+    {
+        if (id is <= 0)
+            throw FarmaciaValidation.Invalid(campo, "Debe ser mayor que cero.");
     }
 
     private sealed record ProductStock(

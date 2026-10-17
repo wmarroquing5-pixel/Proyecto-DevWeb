@@ -510,6 +510,136 @@ public sealed class FacturasServiciosTests
         await factory.AssertSinFacturaAsync();
     }
 
+    [Fact]
+    public async Task ConsultasDeFacturasExigenJwtPermisoYEstadosActivos()
+    {
+        using var factory = new FacturaApiFactory();
+        var password = await factory.SeedAsync();
+        using var client = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/facturas")).StatusCode);
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/facturas")).StatusCode);
+        await factory.GrantFacturasAsync(crear: false, consultar: true);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/facturas")).StatusCode);
+
+        await factory.SetUsuarioActivoAsync(false);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/facturas")).StatusCode);
+        await factory.SetUsuarioActivoAsync(true);
+        await factory.SetRolActivoAsync(false);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/facturas")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ListadoFacturasPaginaFiltraYExcluyeVentasPublicas()
+    {
+        using var factory = new FacturaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantFacturasAsync(consultar: true);
+        await factory.GrantVentasAsync(consultar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var desde = DateTime.UtcNow.AddMinutes(-1);
+
+        var primera = await client.PostAsJsonAsync("/api/facturas", Solicitud((1, 1)));
+        var segunda = await client.PostAsJsonAsync("/api/facturas", SolicitudMedicamento(1));
+        Assert.Equal(HttpStatusCode.Created, primera.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, segunda.StatusCode);
+        var factura1 = await primera.Content.ReadFromJsonAsync<FacturaServiciosResponse>();
+        var factura2 = await segunda.Content.ReadFromJsonAsync<FacturaServiciosResponse>();
+        Assert.NotNull(factura1);
+        Assert.NotNull(factura2);
+        Assert.Equal(HttpStatusCode.Created,
+            (await client.PostAsJsonAsync("/api/ventas", new CrearVentaRequest
+            {
+                IdSucursal = 1,
+                Items = [new CrearVentaItemRequest { IdMedicamento = 1, Cantidad = 1 }]
+            })).StatusCode);
+
+        var pagina = await client.GetFromJsonAsync<PagedResponse<FacturaConsultaResumenResponse>>(
+            "/api/facturas?idSucursal=1&idPaciente=1&idUsuario=1&page=1&pageSize=1");
+        Assert.NotNull(pagina);
+        Assert.Equal(2, pagina.TotalCount);
+        Assert.Equal(2, pagina.TotalPages);
+        Assert.Equal(factura2.IdFactura, Assert.Single(pagina.Items).IdFactura);
+        var filtrada = await client.GetFromJsonAsync<PagedResponse<FacturaConsultaResumenResponse>>(
+            $"/api/facturas?idFactura={factura1.IdFactura}&fechaDesde={Uri.EscapeDataString(desde.ToString("O"))}&fechaHasta={Uri.EscapeDataString(DateTime.UtcNow.AddMinutes(1).ToString("O"))}");
+        Assert.NotNull(filtrada);
+        Assert.Equal(factura1.IdFactura, Assert.Single(filtrada.Items).IdFactura);
+        var ventas = await client.GetFromJsonAsync<PagedResponse<VentaConsultaResumenResponse>>(
+            "/api/ventas");
+        Assert.NotNull(ventas);
+        Assert.Single(ventas.Items);
+        Assert.Equal(1, ventas.TotalCount);
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/facturas?idPaciente=0")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync("/api/facturas?pageSize=101")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/facturas/999")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DetallesDeFacturasConservanServiciosMedicamentosYPreciosHistoricos()
+    {
+        using var factory = new FacturaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantFacturasAsync(consultar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var servicioResponse = await client.PostAsJsonAsync("/api/facturas", Solicitud((1, 1)));
+        var medicamentoResponse = await client.PostAsJsonAsync(
+            "/api/facturas", SolicitudMedicamento(1));
+        var mixtaResponse = await client.PostAsJsonAsync("/api/facturas",
+            new CrearFacturaServiciosRequest
+            {
+                IdSucursal = 1, IdPaciente = 1,
+                Servicios = [new CrearFacturaServicioItemRequest { IdServicio = 2, Cantidad = 1 }],
+                Medicamentos = [new CrearFacturaMedicamentoItemRequest
+                    { IdMedicamento = 1, Cantidad = 2 }]
+            });
+        var servicio = await servicioResponse.Content.ReadFromJsonAsync<FacturaServiciosResponse>();
+        var medicamento = await medicamentoResponse.Content.ReadFromJsonAsync<FacturaServiciosResponse>();
+        var mixta = await mixtaResponse.Content.ReadFromJsonAsync<FacturaServiciosResponse>();
+        Assert.NotNull(servicio);
+        Assert.NotNull(medicamento);
+        Assert.NotNull(mixta);
+        await factory.SetPrecioAsync(1, 999m);
+        await factory.SetMedicamentoPrecioAsync(888m);
+        var stockAntes = await factory.GetStockAsync();
+
+        var servicioLeido = await client.GetFromJsonAsync<FacturaConsultaResponse>(
+            $"/api/facturas/{servicio.IdFactura}");
+        var medicamentoLeido = await client.GetFromJsonAsync<FacturaConsultaResponse>(
+            $"/api/facturas/{medicamento.IdFactura}");
+        var mixtaLeida = await client.GetFromJsonAsync<FacturaConsultaResponse>(
+            $"/api/facturas/{mixta.IdFactura}");
+        Assert.NotNull(servicioLeido);
+        Assert.NotNull(medicamentoLeido);
+        Assert.NotNull(mixtaLeida);
+        var lineaServicio = Assert.Single(servicioLeido.Detalles);
+        Assert.Equal(1, lineaServicio.IdServicio);
+        Assert.Equal(100m, lineaServicio.PrecioUnitario);
+        var lineaMedicamento = Assert.Single(medicamentoLeido.Detalles);
+        Assert.Equal(1, lineaMedicamento.IdMedicamento);
+        Assert.Equal(1, lineaMedicamento.IdLote);
+        Assert.Equal(5m, lineaMedicamento.PrecioUnitario);
+        Assert.Equal(2, mixtaLeida.Detalles.Count);
+        Assert.Contains(mixtaLeida.Detalles, d => d.IdServicio == 2 &&
+            d.PrecioUnitario == 37.25m);
+        Assert.Contains(mixtaLeida.Detalles, d => d.IdMedicamento == 1 &&
+            d.PrecioUnitario == 5m);
+        Assert.Equal(mixta.Total, mixtaLeida.Total);
+        Assert.Equal(stockAntes, await factory.GetStockAsync());
+    }
+
     private static async Task LoginAsync(HttpClient client, string password)
     {
         var login = await client.PostAsJsonAsync("/api/auth/login",
@@ -601,22 +731,28 @@ public sealed class FacturasServiciosTests
             return password;
         }
 
-        public async Task GrantFacturasAsync()
+        public async Task GrantFacturasAsync(bool crear = true, bool consultar = false)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             var permiso = await db.Permisos.SingleOrDefaultAsync(p => p.Modulo == "Facturas");
             if (permiso is null)
-                db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Facturas", PuedeCrear = true });
-            else permiso.PuedeCrear = true;
+                db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Facturas",
+                    PuedeCrear = crear, PuedeConsultar = consultar });
+            else
+            {
+                permiso.PuedeCrear |= crear;
+                permiso.PuedeConsultar |= consultar;
+            }
             await db.SaveChangesAsync();
         }
 
-        public async Task GrantVentasAsync()
+        public async Task GrantVentasAsync(bool crear = true, bool consultar = false)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
-            db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Ventas", PuedeCrear = true });
+            db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Ventas",
+                PuedeCrear = crear, PuedeConsultar = consultar });
             await db.SaveChangesAsync();
         }
 
@@ -674,6 +810,13 @@ public sealed class FacturasServiciosTests
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             (await db.LoteMedicamentos.SingleAsync(l => l.IdLote == idLote)).CantidadDisponible = cantidad;
             await db.SaveChangesAsync();
+        }
+
+        public async Task<int> GetStockAsync()
+        {
+            using var scope = Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+                .LoteMedicamentos.AsNoTracking().SumAsync(l => l.CantidadDisponible);
         }
 
         public async Task AddLoteAsync(int idLote, DateOnly ingreso, DateOnly vencimiento, int cantidad)
