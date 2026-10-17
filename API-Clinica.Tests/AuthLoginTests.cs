@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Models.Entities;
@@ -192,16 +193,32 @@ public sealed class AuthLoginTests
     }
 
     [Fact]
-    public async Task DevelopmentSwaggerDocumentsBearerScheme()
+    public async Task DevelopmentOpenApiDocumentsBearerScheme()
     {
         using var factory = new AuthApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/swagger/v1/swagger.json");
+        var response = await client.GetAsync("/openapi/v1.json");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("\"Bearer\"", body);
-        Assert.Contains("\"bearer\"", body);
+        Assert.DoesNotContain(factory.SigningKey, body, StringComparison.Ordinal);
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        Assert.StartsWith("3.", root.GetProperty("openapi").GetString());
+        var bearer = root.GetProperty("components").GetProperty("securitySchemes")
+            .GetProperty("Bearer");
+        Assert.Equal("http", bearer.GetProperty("type").GetString());
+        Assert.Equal("bearer", bearer.GetProperty("scheme").GetString());
+        Assert.Equal("JWT", bearer.GetProperty("bearerFormat").GetString());
+
+        var protectedOperation = root.GetProperty("paths")
+            .GetProperty("/api/auth/me").GetProperty("get");
+        Assert.Equal("Bearer", protectedOperation.GetProperty("security")[0]
+            .EnumerateObject().Single().Name);
+        var anonymousOperation = root.GetProperty("paths")
+            .GetProperty("/api/auth/login").GetProperty("post");
+        Assert.False(anonymousOperation.TryGetProperty("security", out var security) &&
+            security.GetArrayLength() > 0);
     }
 
     [Fact]

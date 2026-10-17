@@ -3,7 +3,11 @@ using API_Clinica.Common;
 using API_Clinica.Services;
 using API_Clinica.Interfaces;
 using API_Clinica.Hubs;
+using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,22 +15,32 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
-// 👇 CONFIGURACIÓN DE CORS (SOLUCIONA EL BLOQUEO EN ANGULAR)
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy =>
+builder.Services.AddCors();
+builder.Services.AddOptions<ApiCorsOptions>()
+    .BindConfiguration(ApiCorsOptions.SectionName)
+    .Validate(options => options.IsValid(),
+        "Cors:AllowedOrigins debe contener orígenes HTTP/HTTPS exactos, únicos y sin rutas, comodines ni barra final.")
+    .ValidateOnStart();
+builder.Services.AddOptions<CorsOptions>()
+    .Configure<IOptions<ApiCorsOptions>>((options, configured) =>
     {
-        policy.WithOrigins("http://localhost:4200")
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+        options.AddPolicy(ApiCorsOptions.PolicyName, policy =>
+        {
+            if (configured.Value.AllowedOrigins.Length > 0)
+                policy.WithOrigins(configured.Value.AllowedOrigins)
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
+        });
     });
-});
 
 builder.Services.AddScoped<IMenuService, MenuService>();
 
-// 👇 USAR SOLO AddOpenApi() DE MICROSOFT (NO SWASHBUCKLE)
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
+});
 
 builder.Services.AddApplicationServices();
 builder.Services.AddAuthenticationServices(builder.Configuration);
@@ -38,6 +52,14 @@ builder.Services.AddOptions<DatabaseConnectionOptions>()
     .Validate(options => !string.IsNullOrWhiteSpace(options.DefaultConnection),
         "Falta configurar ConnectionStrings:DefaultConnection.")
     .ValidateOnStart();
+builder.Services.AddOptions<ApiHealthOptions>()
+    .BindConfiguration(ApiHealthOptions.SectionName)
+    .Validate(options => options.IsValid(),
+        "HealthChecks:DatabaseTimeoutSeconds debe estar entre 1 y 30.")
+    .ValidateOnStart();
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadinessHealthCheck>(
+        "database", tags: ["ready"]);
 
 var app = builder.Build();
 
@@ -72,14 +94,34 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseRouting();
 
-// 👇 ACTIVAR CORS
-app.UseCors();
+app.UseCors(ApiCorsOptions.PolicyName);
 
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<HabitacionHub>("/hubs/habitaciones");
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteMinimalHealthResponse
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = WriteMinimalHealthResponse
+}).AllowAnonymous();
+
+static Task WriteMinimalHealthResponse(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json";
+    return context.Response.WriteAsJsonAsync(new
+    {
+        status = report.Status == HealthStatus.Healthy
+            ? "available"
+            : "unavailable"
+    });
+}
 
 app.Run();
 

@@ -4,10 +4,12 @@ using API_Clinica.DTOs;
 using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
 using API_Clinica.Models.Entities;
+using System.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace API_Clinica.Services;
 
@@ -160,12 +162,38 @@ public sealed class AdministracionService(
     public async Task<PermisoResponse> CrearPermisoAsync(GuardarPermisoRequest request, CancellationToken ct)
     {
         var modulo = RequiredText(request.Modulo, nameof(request.Modulo));
-        await ValidatePermissionReferences(request.IdRol, modulo, null, ct);
-        var permiso = new Permiso { IdRol = request.IdRol, Modulo = modulo };
-        SetPermissionFlags(permiso, request);
-        context.Permisos.Add(permiso);
-        await SaveAsync(ct);
-        return ToResponse(permiso);
+
+        if (!context.Database.IsSqlServer())
+            return await CrearPermisoCoreAsync(request, modulo, ct);
+
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, ct);
+            try
+            {
+                await LockPermissionsTableAsync(ct);
+                var response = await CrearPermisoCoreAsync(request, modulo, ct);
+                await transaction.CommitAsync(ct);
+                return response;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+        }
+        catch (SqlException ex) when (ex.Number is 1205 or 1222)
+        {
+            throw new ConflictException(
+                "Los permisos están siendo modificados. Intente nuevamente.");
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number is 2601 or 2627 or 547)
+        {
+            throw new ConflictException(
+                "La operación entra en conflicto con una restricción de la base de datos.");
+        }
     }
 
     public async Task<PermisoResponse> ActualizarPermisoAsync(int id, GuardarPermisoRequest request, CancellationToken ct)
@@ -212,6 +240,33 @@ public sealed class AdministracionService(
         if (await context.Permisos.AnyAsync(p => p.IdRol == idRol && p.Modulo == modulo &&
             (!id.HasValue || p.IdPermiso != id.Value), ct))
             throw new ConflictException("Ya existe un permiso para ese rol y módulo.");
+    }
+
+    private async Task<PermisoResponse> CrearPermisoCoreAsync(
+        GuardarPermisoRequest request, string modulo, CancellationToken ct)
+    {
+        if (!await context.Roles.AnyAsync(r => r.IdRol == request.IdRol && r.Activo, ct))
+            throw Invalid("IdRol", "El rol no existe o está inactivo.");
+        if (await context.Permisos.AnyAsync(
+            p => p.IdRol == request.IdRol && p.Modulo == modulo, ct))
+            throw new ConflictException("Ya existe un permiso para ese rol y módulo.");
+
+        var permiso = new Permiso { IdRol = request.IdRol, Modulo = modulo };
+        SetPermissionFlags(permiso, request);
+        context.Permisos.Add(permiso);
+        await SaveAsync(ct);
+        return ToResponse(permiso);
+    }
+
+    private async Task LockPermissionsTableAsync(CancellationToken ct)
+    {
+        var transaction = context.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("La creación SQL de permisos requiere una transacción activa.");
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        command.Transaction = transaction.GetDbTransaction();
+        command.CommandText =
+            "SELECT TOP (1) [IdPermiso] FROM [dbo].[Permiso] WITH (TABLOCKX, HOLDLOCK);";
+        await command.ExecuteScalarAsync(ct);
     }
 
     private async Task SaveAsync(CancellationToken ct)
