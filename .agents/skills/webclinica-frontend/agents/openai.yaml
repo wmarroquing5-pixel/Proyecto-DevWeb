@@ -1,0 +1,4 @@
+interface:
+  display_name: "WebClinica Frontend"
+  short_description: "Angular Fase 1: cambios mínimos, contratos API y pruebas"
+  default_prompt: "Usa $webclinica-frontend para resolver esta tarea en Angular WebClinica, verificando solo los archivos, contratos y pruebas relacionados; no modifiques el backend ni Azure SQL."

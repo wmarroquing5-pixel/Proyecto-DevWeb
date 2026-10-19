@@ -26,13 +26,6 @@ public static class MenuCompleto
         },
         new MenuItemDto
         {
-            Label = "Citas",
-            Route = "/citas",
-            Icon = "fa-calendar-alt",
-            Roles = new[] { "Admin", "Doctor", "Recepcionista" }
-        },
-        new MenuItemDto
-        {
             Label = "Consultas",
             Route = "/consultas",
             Icon = "fa-stethoscope",
@@ -44,6 +37,24 @@ public static class MenuCompleto
             Route = "/medicamentos",
             Icon = "fa-pills",
             Roles = new[] { "Admin", "Doctor" }
+        },
+        new MenuItemDto
+        {
+            Label = "Lotes de medicamentos",
+            Route = "/inventario/lotes",
+            Icon = "fa-boxes-stacked"
+        },
+        new MenuItemDto
+        {
+            Label = "Habitaciones",
+            Route = "/habitaciones",
+            Icon = "fa-bed"
+        },
+        new MenuItemDto
+        {
+            Label = "Ventas",
+            Route = "/ventas",
+            Icon = "fa-cash-register"
         },
         new MenuItemDto
         {
@@ -71,29 +82,6 @@ public static class MenuCompleto
                     Label = "Empleados",
                     Route = "/admin/empleados",
                     Icon = "fa-id-badge",
-                    Roles = new[] { "Admin" }
-                }
-            }
-        },
-        new MenuItemDto
-        {
-            Label = "Reportes",
-            Icon = "fa-chart-bar",
-            Roles = new[] { "Admin" },
-            Children = new List<MenuItemDto>
-            {
-                new MenuItemDto
-                {
-                    Label = "Citas del día",
-                    Route = "/reportes/citas",
-                    Icon = "fa-calendar-day",
-                    Roles = new[] { "Admin" }
-                },
-                new MenuItemDto
-                {
-                    Label = "Pacientes atendidos",
-                    Route = "/reportes/pacientes",
-                    Icon = "fa-notes-medical",
                     Roles = new[] { "Admin" }
                 }
             }

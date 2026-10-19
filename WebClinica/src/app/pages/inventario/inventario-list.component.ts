@@ -4,6 +4,8 @@ import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { InventarioService } from '../../core/services/inventario.service';
 import { CatalogoMedicamentoResponse, PagedResponse } from '../../core/models/inventario.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-inventario-list',
@@ -14,12 +16,16 @@ import { CatalogoMedicamentoResponse, PagedResponse } from '../../core/models/in
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="fa fa-pills"></i> Inventario de Medicamentos</h2>
         <div class="d-flex gap-2">
-          <a routerLink="/inventario/medicamentos/nuevo" class="btn btn-primary">
-            <i class="fa fa-plus"></i> Nuevo Medicamento
-          </a>
-          <a routerLink="/inventario/lotes" class="btn btn-secondary">
-            <i class="fa fa-boxes"></i> Gestionar Lotes
-          </a>
+          @if (permisos.puedeCrear(MODULOS_PERMISO.MEDICAMENTOS)) {
+            <a routerLink="/inventario/medicamentos/nuevo" class="btn btn-primary">
+              <i class="fa fa-plus"></i> Nuevo Medicamento
+            </a>
+          }
+          @if (permisos.puedeConsultar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
+            <a routerLink="/inventario/lotes" class="btn btn-secondary">
+              <i class="fa fa-boxes"></i> Gestionar Lotes
+            </a>
+          }
         </div>
       </div>
 
@@ -96,14 +102,18 @@ import { CatalogoMedicamentoResponse, PagedResponse } from '../../core/models/in
                     </span>
                   </td>
                   <td>
-                    <a [routerLink]="['/inventario/medicamentos/editar', m.idMedicamento]"
-                       class="btn btn-sm btn-warning me-1">
-                      <i class="fa fa-edit"></i>
-                    </a>
-                    <button (click)="desactivar(m.idMedicamento)" class="btn btn-sm btn-danger"
-                            [disabled]="!m.existenciaTotal">
-                      <i class="fa fa-trash"></i>
-                    </button>
+                    @if (permisos.puedeModificar(MODULOS_PERMISO.MEDICAMENTOS)) {
+                      <a [routerLink]="['/inventario/medicamentos/editar', m.idMedicamento]"
+                         class="btn btn-sm btn-warning me-1" aria-label="Editar medicamento">
+                        <i class="fa fa-edit"></i>
+                      </a>
+                    }
+                    @if (permisos.puedeEliminar(MODULOS_PERMISO.MEDICAMENTOS)) {
+                      <button (click)="desactivar(m.idMedicamento)" class="btn btn-sm btn-danger"
+                              [disabled]="!m.existenciaTotal" aria-label="Eliminar medicamento">
+                        <i class="fa fa-trash"></i>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -132,6 +142,8 @@ import { CatalogoMedicamentoResponse, PagedResponse } from '../../core/models/in
 })
 export class InventarioListComponent implements OnInit {
   private service = inject(InventarioService);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   medicamentos: CatalogoMedicamentoResponse[] = [];
   categorias: { idCategoria: number; nombre: string }[] = [];

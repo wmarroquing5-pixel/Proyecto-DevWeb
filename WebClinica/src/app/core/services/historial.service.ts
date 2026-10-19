@@ -7,6 +7,7 @@ import {
   DiagnosticoResponse, CrearDiagnosticoRequest, ActualizarDiagnosticoRequest, DiagnosticoFiltroDto,
   HistorialMedicoResponseDto, HistorialMedicoCreateDto, HistorialMedicoFiltroDto,
   TratamientoResponseDto, TratamientoCreateDto, TratamientoUpdateDto, TratamientoFiltroDto,
+  ConsumoClinicoCreateDto, ConsumoClinicoResponseDto,
   ExamenResponseDto, ExamenCreateDto, ExamenUpdateDto, ExamenFiltroDto,
   ContactoEmergenciaResponseDto, ContactoEmergenciaCreateDto, ContactoEmergenciaUpdateDto,
   PagedResponse
@@ -98,6 +99,16 @@ export class HistorialService {
 
   actualizarTratamiento(id: number, request: TratamientoUpdateDto): Observable<TratamientoResponseDto> {
     return this.http.put<TratamientoResponseDto>(`${this.apiUrl}/tratamientos/${id}`, request);
+  }
+
+  registrarConsumoClinico(
+    idTratamiento: number,
+    request: ConsumoClinicoCreateDto,
+  ): Observable<ConsumoClinicoResponseDto> {
+    return this.http.post<ConsumoClinicoResponseDto>(
+      `${this.apiUrl}/tratamientos/${idTratamiento}/consumos`,
+      request,
+    );
   }
 
   // ==================== EXÁMENES ====================

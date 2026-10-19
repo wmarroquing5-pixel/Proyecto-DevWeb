@@ -9,11 +9,13 @@ import { authGuard } from './auth.guard';
 class GuardTestPage {}
 
 describe('authGuard', () => {
-  let authenticated: boolean;
+  let sessionValid: boolean;
+  let validateSession: jasmine.Spy;
   beforeEach(() => {
-    authenticated = false;
+    sessionValid = false;
+    validateSession = jasmine.createSpy('validateSession').and.callFake(() => sessionValid);
     TestBed.configureTestingModule({ providers: [
-      { provide: AuthService, useValue: { isAuthenticated: () => authenticated } },
+      { provide: AuthService, useValue: { validateSession } },
       provideRouter([
         { path: 'login', component: GuardTestPage },
         { path: 'protected', component: GuardTestPage, canActivate: [authGuard] },
@@ -28,9 +30,23 @@ describe('authGuard', () => {
   });
 
   it('permite la ruta protegida con sesión', async () => {
-    authenticated = true;
+    sessionValid = true;
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/protected');
     expect(TestBed.inject(Router).url).toBe('/protected');
+  });
+
+  it('rechaza una sesión expirada después de que AuthService la valida', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/protected');
+    expect(validateSession).toHaveBeenCalledTimes(1);
+    expect(TestBed.inject(Router).url).toBe('/login');
+  });
+
+  it('no vuelve a ejecutar el guard ni genera bucles en la ruta de login', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/login');
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(validateSession).not.toHaveBeenCalled();
   });
 });

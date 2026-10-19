@@ -4,6 +4,8 @@ import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { UsuariosService } from '../../core/services/usuarios.service';
 import { UsuarioResponse, PagedResponse } from '../../core/models/usuario.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-usuarios',
@@ -13,9 +15,11 @@ import { UsuarioResponse, PagedResponse } from '../../core/models/usuario.model'
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Gestión de Usuarios</h2>
-        <a routerLink="/admin/usuarios/nuevo" class="btn btn-primary">
-          <i class="fa fa-plus"></i> Nuevo Usuario
-        </a>
+        @if (permisos.puedeCrear(MODULOS_PERMISO.USUARIOS)) {
+          <a routerLink="/admin/usuarios/nuevo" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nuevo Usuario
+          </a>
+        }
       </div>
 
       @if (cargando) {
@@ -47,12 +51,16 @@ import { UsuarioResponse, PagedResponse } from '../../core/models/usuario.model'
                   </span>
                 </td>
                 <td>
-                  <a [routerLink]="['/admin/usuarios/editar', user.idUsuario]" class="btn btn-sm btn-warning me-1">
-                    <i class="fa fa-edit"></i>
-                  </a>
-                  <button (click)="eliminar(user.idUsuario)" class="btn btn-sm btn-danger" [disabled]="!user.activo">
-                    <i class="fa fa-trash"></i>
-                  </button>
+                  @if (permisos.puedeModificar(MODULOS_PERMISO.USUARIOS)) {
+                    <a [routerLink]="['/admin/usuarios/editar', user.idUsuario]" class="btn btn-sm btn-warning me-1" aria-label="Editar usuario">
+                      <i class="fa fa-edit"></i>
+                    </a>
+                  }
+                  @if (permisos.puedeEliminar(MODULOS_PERMISO.USUARIOS)) {
+                    <button (click)="eliminar(user.idUsuario)" class="btn btn-sm btn-danger" [disabled]="!user.activo" aria-label="Eliminar usuario">
+                      <i class="fa fa-trash"></i>
+                    </button>
+                  }
                 </td>
               </tr>
             }
@@ -73,6 +81,8 @@ import { UsuarioResponse, PagedResponse } from '../../core/models/usuario.model'
 })
 export class UsuariosComponent implements OnInit {
   private service = inject(UsuariosService);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   usuarios: UsuarioResponse[] = [];
   total = 0;

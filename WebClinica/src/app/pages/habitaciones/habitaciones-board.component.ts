@@ -7,6 +7,9 @@ import { HabitacionResponse, ESTADOS_HABITACION } from '../../core/models/habita
 import { AsignarPacienteModalComponent } from './asignar-paciente-modal.component';
 import { RegistrarEgresoModalComponent } from './registrar-egreso-modal.component';
 import { CrearHabitacionModalComponent } from './crear-habitacion-modal.component';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
+import { finalize } from 'rxjs';
 
 @Component({
   selector: 'app-habitaciones-board',
@@ -23,10 +26,41 @@ import { CrearHabitacionModalComponent } from './crear-habitacion-modal.componen
     <div class="container-fluid mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="fa fa-bed"></i> Tablero de Habitaciones</h2>
-        <button class="btn btn-primary" (click)="mostrarModalCrear = true">
-          <i class="fa fa-plus"></i> Nueva Habitación
-        </button>
+        @if (permisos.puedeCrear(MODULOS_PERMISO.HABITACIONES)) {
+          <button class="btn btn-primary" (click)="mostrarModalCrear = true">
+            <i class="fa fa-plus"></i> Nueva Habitación
+          </button>
+        }
       </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-3" role="status" aria-live="polite">
+        <span class="badge" [ngClass]="claseEstadoConexion()">
+          {{ mensajeEstadoConexion() }}
+        </span>
+        <span class="small text-muted">
+          {{ mensajeSincronizacion() }}
+        </span>
+        @if (service.datosPotencialmenteDesactualizados()) {
+          <span class="badge bg-warning text-dark">Datos potencialmente desactualizados</span>
+        }
+        @if (service.estadoConexion() === 'error') {
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  (click)="service.reintentarConexion()">
+            Reintentar conexión
+          </button>
+        }
+      </div>
+
+      @if (service.errorSincronizacion()) {
+        <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span>{{ service.errorSincronizacion() }}</span>
+          <button type="button" class="btn btn-sm btn-outline-dark"
+                  (click)="service.reintentarSincronizacion()"
+                  [disabled]="service.estadoSincronizacion() === 'sincronizando'">
+            Reintentar sincronización
+          </button>
+        </div>
+      }
 
       <!-- Leyenda de estados -->
       <div class="d-flex gap-3 mb-4 flex-wrap">
@@ -61,15 +95,15 @@ import { CrearHabitacionModalComponent } from './crear-habitacion-modal.componen
                   </p>
                 </div>
                 <div class="card-footer bg-transparent border-0 d-flex gap-1 flex-wrap">
-                  @if (hab.estado === ESTADOS_HABITACION.LIBRE && hab.activa) {
+                  @if (hab.estado === ESTADOS_HABITACION.LIBRE && hab.activa && permisos.puedeCrear(MODULOS_PERMISO.ASIGNACIONES_HABITACION)) {
                     <button class="btn btn-sm btn-success flex-fill" (click)="abrirModalAsignar(hab)">
                       <i class="fa fa-user-plus"></i> Asignar
                     </button>
-                  } @else if (hab.estado === ESTADOS_HABITACION.OCUPADA) {
+                  } @else if (hab.estado === ESTADOS_HABITACION.OCUPADA && permisos.puedeModificar(MODULOS_PERMISO.ASIGNACIONES_HABITACION)) {
                     <button class="btn btn-sm btn-warning flex-fill" (click)="abrirModalEgreso(hab)">
                       <i class="fa fa-sign-out"></i> Egreso
                     </button>
-                  } @else if (hab.estado === ESTADOS_HABITACION.EN_LIMPIEZA) {
+                  } @else if (hab.estado === ESTADOS_HABITACION.EN_LIMPIEZA && permisos.puedeModificar(MODULOS_PERMISO.HABITACIONES)) {
                     <button class="btn btn-sm btn-success flex-fill" (click)="cambiarEstado(hab, 'Libre')">
                       <i class="fa fa-check"></i> Libre
                     </button>
@@ -120,8 +154,10 @@ import { CrearHabitacionModalComponent } from './crear-habitacion-modal.componen
   `]
 })
 export class HabitacionesBoardComponent implements OnInit {
-  private service = inject(HabitacionesService);
+  readonly service = inject(HabitacionesService);
   private destroyRef = inject(DestroyRef);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   habitaciones: HabitacionResponse[] = [];
   cargando = false;
@@ -141,13 +177,45 @@ export class HabitacionesBoardComponent implements OnInit {
 
   cargar() {
     this.cargando = true;
-    this.service.cargarHabitaciones().subscribe({
-      next: (res) => {
-        this.habitaciones = res.items;
-        this.cargando = false;
-      },
-      error: () => { this.cargando = false; }
-    });
+    this.service.cargarHabitaciones().pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.cargando = false),
+    ).subscribe({ error: () => undefined });
+  }
+
+  mensajeEstadoConexion(): string {
+    const mensajes = {
+      desconectado: 'Tiempo real desconectado',
+      conectando: 'Conectando tiempo real',
+      conectado: 'Tiempo real conectado',
+      reconectando: 'Reconectando tiempo real',
+      error: 'Error de conexión en tiempo real',
+    } as const;
+    return mensajes[this.service.estadoConexion()];
+  }
+
+  claseEstadoConexion(): string {
+    const clases = {
+      desconectado: 'bg-secondary',
+      conectando: 'bg-info text-dark',
+      conectado: 'bg-success',
+      reconectando: 'bg-warning text-dark',
+      error: 'bg-danger',
+    } as const;
+    return clases[this.service.estadoConexion()];
+  }
+
+  mensajeSincronizacion(): string {
+    const ultima = this.service.ultimaSincronizacion();
+    switch (this.service.estadoSincronizacion()) {
+      case 'sincronizando': return 'Sincronizando la fotografía confirmada por la API…';
+      case 'actualizado': return ultima
+        ? `Última sincronización HTTP: ${new Date(ultima).toLocaleTimeString()}`
+        : 'Sincronización HTTP completada.';
+      case 'desactualizado': return 'La conexión cambió; se requiere confirmar el estado con la API.';
+      case 'error': return 'No fue posible confirmar el estado actual mediante HTTP.';
+      default: return 'Aún no se ha completado una sincronización HTTP.';
+    }
   }
 
   getCardClass(estado: string): string {

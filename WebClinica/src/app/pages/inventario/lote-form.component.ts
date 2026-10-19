@@ -2,6 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { InventarioService } from '../../core/services/inventario.service';
 import {
   GuardarLoteMedicamentoRequest,
@@ -10,6 +11,9 @@ import {
   MedicamentoResponse,
   PagedResponse
 } from '../../core/models/inventario.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-lote-form',
@@ -68,7 +72,7 @@ import {
         </div>
 
         <div class="d-flex gap-2 mt-4">
-          <button type="submit" class="btn btn-success" [disabled]="cargando">
+          <button type="submit" class="btn btn-success" [disabled]="cargando || !puedeGuardar">
             {{ cargando ? 'Guardando...' : 'Guardar' }}
           </button>
           <a routerLink="/inventario/lotes" class="btn btn-secondary">Cancelar</a>
@@ -81,6 +85,8 @@ export class LoteFormComponent implements OnInit {
   private service = inject(InventarioService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private apiErrors = inject(ApiErrorService);
+  private permisos = inject(PermisosService);
 
   esEdicion = false;
   cargando = false;
@@ -102,6 +108,12 @@ export class LoteFormComponent implements OnInit {
     return this.esEdicion
       ? this.cantidadEsperada !== null && this.form.cantidadDisponible !== this.cantidadEsperada
       : this.form.cantidadDisponible > 0;
+  }
+
+  get puedeGuardar(): boolean {
+    return this.esEdicion
+      ? this.permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO)
+      : this.permisos.puedeCrear(MODULOS_PERMISO.LOTES_MEDICAMENTO);
   }
 
   ngOnInit() {
@@ -145,11 +157,16 @@ export class LoteFormComponent implements OnInit {
   guardar() {
     this.error = '';
 
+    if (this.cargando || !this.puedeGuardar) return;
+
     if (this.requiereTrazabilidad &&
         (!this.form.idSucursal || !this.form.observaciones?.trim())) {
       this.error = 'La sucursal y la justificación son obligatorias cuando cambia la existencia.';
       return;
     }
+
+    if (this.requiereTrazabilidad
+      && !confirm('¿Confirmas el cambio de existencia de este lote?')) return;
 
     this.cargando = true;
 
@@ -166,16 +183,16 @@ export class LoteFormComponent implements OnInit {
       };
       this.service.actualizarLote(id, request).subscribe({
         next: () => this.router.navigate(['/inventario/lotes']),
-        error: (err) => {
-          this.error = err.error?.message || 'Error al actualizar';
+        error: (err: HttpErrorResponse) => {
+          this.error = this.apiErrors.messageFor(err, 'No fue posible actualizar el lote.');
           this.cargando = false;
         }
       });
     } else {
       this.service.crearLote(this.form).subscribe({
         next: () => this.router.navigate(['/inventario/lotes']),
-        error: (err) => {
-          this.error = err.error?.message || 'Error al crear';
+        error: (err: HttpErrorResponse) => {
+          this.error = this.apiErrors.messageFor(err, 'No fue posible crear el lote.');
           this.cargando = false;
         }
       });

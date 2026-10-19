@@ -1,30 +1,46 @@
-<nav class="sidebar">
+<button
+  type="button"
+  class="mobile-menu-toggle"
+  [attr.aria-label]="mobileOpen() ? 'Cerrar menú principal' : 'Abrir menú principal'"
+  aria-controls="main-navigation"
+  [attr.aria-expanded]="mobileOpen()"
+  (click)="toggleMobile()">
+  <i class="bi" [class.bi-list]="!mobileOpen()" [class.bi-x-lg]="mobileOpen()"></i>
+</button>
 
+@if (mobileOpen()) {
+  <button type="button" class="sidebar-backdrop" aria-label="Cerrar menú principal"
+          (click)="closeMobile()"></button>
+}
+
+<nav id="main-navigation" class="sidebar" [class.mobile-open]="mobileOpen()"
+     aria-label="Navegación principal">
   <div class="brand">
-    <div class="brand-icon"><i class="bi bi-heart-pulse-fill"></i></div>
+    <div class="brand-icon" aria-hidden="true"><i class="bi bi-heart-pulse-fill"></i></div>
     <span>Clínica Salud</span>
   </div>
 
   <ul class="menu">
-    @for (item of menuService.menu(); track item.label) {
+    @for (item of menuService.menu(); track item; let index = $index) {
       <li class="menu-item">
         @if (hasChildren(item)) {
-          <!-- Item con submenú -->
           <button type="button" class="menu-link submenu-toggle"
+                  [attr.aria-expanded]="!!open[item.label]"
+                  [attr.aria-controls]="'submenu-' + index"
                   (click)="toggle(item.label)">
-            <i [class]="item.icon ?? 'bi bi-circle'"></i>
+            <i [class]="icono(item.icon)" aria-hidden="true"></i>
             <span>{{ item.label }}</span>
-            <i class="bi bi-chevron-down chevron"
+            <i class="bi bi-chevron-down chevron" aria-hidden="true"
                [class.rotated]="open[item.label]"></i>
           </button>
 
           @if (open[item.label]) {
-            <ul class="submenu">
-              @for (child of item.children; track child.label) {
+            <ul class="submenu" [id]="'submenu-' + index">
+              @for (child of item.children; track child) {
                 <li>
                   <a [routerLink]="child.route" routerLinkActive="active"
-                     class="menu-link child">
-                    <i [class]="child.icon ?? 'bi bi-dot'"></i>
+                     class="menu-link child" (click)="closeMobile()">
+                    <i [class]="icono(child.icon)" aria-hidden="true"></i>
                     <span>{{ child.label }}</span>
                   </a>
                 </li>
@@ -32,27 +48,38 @@
             </ul>
           }
         } @else {
-          <!-- Item simple -->
           <a [routerLink]="item.route" routerLinkActive="active"
-             class="menu-link">
-            <i [class]="item.icon ?? 'bi bi-circle'"></i>
+             [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
+             class="menu-link" (click)="closeMobile()">
+            <i [class]="icono(item.icon)" aria-hidden="true"></i>
             <span>{{ item.label }}</span>
           </a>
         }
       </li>
     } @empty {
-      <li class="menu-empty">No hay menú disponible</li>
+      <li class="menu-status" aria-live="polite">
+        @if (estadoVacio().tipo === 'cargando') {
+          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        } @else {
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+        }
+        <span>{{ estadoVacio().mensaje }}</span>
+        @if (estadoVacio().tipo === 'error') {
+          <button type="button" class="retry-btn" [disabled]="reintentando()" (click)="reintentar()">
+            {{ reintentando() ? 'Reintentando…' : 'Reintentar' }}
+          </button>
+        }
+      </li>
     }
   </ul>
 
   <div class="sidebar-footer">
     <div class="user-info">
-      <i class="bi bi-person-circle"></i>
+      <i class="bi bi-person-circle" aria-hidden="true"></i>
       <span>{{ auth.currentUser()?.fullName ?? auth.currentUser()?.username ?? 'Usuario' }}</span>
     </div>
-    <button type="button" class="logout-btn" (click)="auth.logout()">
-      <i class="bi bi-box-arrow-right"></i> Salir
+    <button type="button" class="logout-btn" (click)="logout()" aria-label="Cerrar sesión">
+      <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Salir</span>
     </button>
   </div>
-
 </nav>

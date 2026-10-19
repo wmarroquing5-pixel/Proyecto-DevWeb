@@ -4,6 +4,8 @@ import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { PacientesService } from '../../core/services/paciente.service';
 import { PacienteListadoResponse, PagedResponse } from '../../core/models/paciente.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-pacientes',
@@ -13,9 +15,11 @@ import { PacienteListadoResponse, PagedResponse } from '../../core/models/pacien
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Gestión de Pacientes</h2>
-        <a routerLink="/pacientes/nuevo" class="btn btn-primary">
-          <i class="fa fa-plus"></i> Nuevo Paciente
-        </a>
+        @if (permisos.puedeCrear(MODULOS_PERMISO.PACIENTES)) {
+          <a routerLink="/pacientes/nuevo" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nuevo Paciente
+          </a>
+        }
       </div>
 
       <!-- Filtros -->
@@ -67,15 +71,21 @@ import { PacienteListadoResponse, PagedResponse } from '../../core/models/pacien
                     </span>
                   </td>
                   <td>
-                    <a [routerLink]="['/historial', paciente.idPaciente]" class="btn btn-sm btn-info me-1">
-                      <i class="fa fa-file-medical"></i> Historial
-                   </a>
-                    <a [routerLink]="['/pacientes/editar', paciente.idPaciente]" class="btn btn-sm btn-warning me-1">
-                      <i class="fa fa-edit"></i>
-                    </a>
-                    <button (click)="eliminar(paciente.idPaciente)" class="btn btn-sm btn-danger" [disabled]="!paciente.activo">
-                      <i class="fa fa-trash"></i>
-                    </button>
+                    @if (permisos.puedeConsultar(MODULOS_PERMISO.CONSULTAS)) {
+                      <a [routerLink]="['/historial', paciente.idPaciente]" class="btn btn-sm btn-info me-1">
+                        <i class="fa fa-file-medical"></i> Historial
+                      </a>
+                    }
+                    @if (permisos.puedeModificar(MODULOS_PERMISO.PACIENTES)) {
+                      <a [routerLink]="['/pacientes/editar', paciente.idPaciente]" class="btn btn-sm btn-warning me-1" aria-label="Editar paciente">
+                        <i class="fa fa-edit"></i>
+                      </a>
+                    }
+                    @if (permisos.puedeEliminar(MODULOS_PERMISO.PACIENTES)) {
+                      <button (click)="eliminar(paciente.idPaciente)" class="btn btn-sm btn-danger" [disabled]="!paciente.activo" aria-label="Eliminar paciente">
+                        <i class="fa fa-trash"></i>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -102,6 +112,8 @@ import { PacienteListadoResponse, PagedResponse } from '../../core/models/pacien
 })
 export class PacientesComponent implements OnInit {
   private service = inject(PacientesService);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   pacientes: PacienteListadoResponse[] = [];
   total = 0;

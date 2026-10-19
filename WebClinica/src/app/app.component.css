@@ -1,0 +1,8 @@
+.authorization-alert {
+  position: fixed;
+  z-index: 1100;
+  top: 1rem;
+  right: 1rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.15);
+}

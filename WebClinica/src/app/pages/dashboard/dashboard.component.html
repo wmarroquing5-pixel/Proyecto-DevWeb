@@ -1,0 +1,54 @@
+<section class="dashboard" aria-labelledby="dashboard-title">
+  <header class="hero-card">
+    <div>
+      <p class="eyebrow">Clínica Salud</p>
+      <h1 id="dashboard-title">Dashboard</h1>
+      <p class="hero-copy">Bienvenido, <strong>{{ nombreUsuario() }}</strong>. Accede a las áreas habilitadas para tu cuenta.</p>
+    </div>
+    <div class="hero-icon" aria-hidden="true">
+      <i class="bi bi-heart-pulse-fill"></i>
+    </div>
+  </header>
+
+  <div class="section-heading">
+    <div>
+      <h2>Accesos rápidos</h2>
+      <p>Navegación disponible según tus permisos vigentes.</p>
+    </div>
+    @if (estado() === 'listo') {
+      <span class="availability-badge">
+        {{ opcionesVisibles().length }} {{ opcionesVisibles().length === 1 ? 'opción' : 'opciones' }}
+      </span>
+    }
+  </div>
+
+  @if (estado() === 'cargando') {
+    <div class="dashboard-state" role="status">
+      <span class="spinner-border text-primary" aria-hidden="true"></span>
+      <div><strong>Cargando navegación</strong><span>Estamos validando tus permisos.</span></div>
+    </div>
+  } @else if (estado() === 'error') {
+    <div class="dashboard-state error-state" role="alert">
+      <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+      <div><strong>No fue posible cargar la navegación</strong><span>Usa la opción de reintento del menú lateral.</span></div>
+    </div>
+  } @else if (accesosRapidos().length === 0) {
+    <div class="dashboard-state" role="status">
+      <i class="bi bi-shield-check" aria-hidden="true"></i>
+      <div><strong>Sin módulos adicionales</strong><span>Tu sesión está activa, pero no hay accesos rápidos autorizados.</span></div>
+    </div>
+  } @else {
+    <div class="quick-grid">
+      @for (item of accesosRapidos(); track item.route) {
+        <a class="quick-card" [routerLink]="item.route">
+          <span class="quick-icon"><i [class]="icono(item.icon)" aria-hidden="true"></i></span>
+          <span class="quick-content">
+            <strong>{{ item.label }}</strong>
+            <small>Abrir módulo</small>
+          </span>
+          <i class="bi bi-arrow-right" aria-hidden="true"></i>
+        </a>
+      }
+    </div>
+  }
+</section>

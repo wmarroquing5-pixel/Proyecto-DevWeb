@@ -1,15 +1,23 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, inject, OnInit, effect } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { Subscription, finalize } from 'rxjs';
 import { HistorialService } from '../../core/services/historial.service';
 import {
   ConsultaDetalleDto,
   DiagnosticoResponse, CrearDiagnosticoRequest,
   HistorialMedicoResponseDto, HistorialMedicoCreateDto,
   TratamientoResponseDto, TratamientoCreateDto,
+  ConsumoClinicoResponseDto,
   ExamenResponseDto, ExamenCreateDto
 } from '../../core/models/historial.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 
 @Component({
   selector: 'app-consulta-detalle',
@@ -61,14 +69,16 @@ import {
         @if (tab === 'diagnosticos') {
           <div class="card p-3 mt-3">
             <h4>Diagnósticos</h4>
-            <form (ngSubmit)="agregarDiagnostico()" class="row g-2 mb-3">
-              <div class="col-md-9">
-                <textarea class="form-control" [(ngModel)]="nuevoDiag.descripcion" name="descripcion" placeholder="Descripción del diagnóstico" required></textarea>
-              </div>
-              <div class="col-md-3">
-                <button type="submit" class="btn btn-primary w-100" [disabled]="!nuevoDiag.descripcion">Agregar</button>
-              </div>
-            </form>
+            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
+              <form (ngSubmit)="agregarDiagnostico()" class="row g-2 mb-3">
+                <div class="col-md-9">
+                  <textarea class="form-control" [(ngModel)]="nuevoDiag.descripcion" name="descripcion" placeholder="Descripción del diagnóstico" required></textarea>
+                </div>
+                <div class="col-md-3">
+                  <button type="submit" class="btn btn-primary w-100" [disabled]="!nuevoDiag.descripcion">Agregar</button>
+                </div>
+              </form>
+            }
             @for (d of diagnosticos; track d.idDiagnostico) {
               <div class="border-bottom py-2">
                 <strong>#{{ d.idDiagnostico }}</strong> - {{ d.descripcion }}
@@ -82,15 +92,53 @@ import {
         @if (tab === 'tratamientos') {
           <div class="card p-3 mt-3">
             <h4>Tratamientos</h4>
-            <form (ngSubmit)="agregarTratamiento()" class="row g-2 mb-3">
-              <div class="col-md-6"><textarea class="form-control" [(ngModel)]="nuevoTrat.descripcion" name="descripcion" placeholder="Descripción" required></textarea></div>
-              <div class="col-md-3"><input type="date" class="form-control" [(ngModel)]="nuevoTrat.fechaInicio" name="fechaInicio" required></div>
-              <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
-            </form>
+            @if (avisoConsumo) {
+              <div class="alert alert-success" role="status">{{ avisoConsumo }}</div>
+            }
+            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
+              <form (ngSubmit)="agregarTratamiento()" class="row g-2 mb-3">
+                <div class="col-md-6"><textarea class="form-control" [(ngModel)]="nuevoTrat.descripcion" name="descripcion" placeholder="Descripción" required></textarea></div>
+                <div class="col-md-3"><input type="date" class="form-control" [(ngModel)]="nuevoTrat.fechaInicio" name="fechaInicio" required></div>
+                <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
+              </form>
+            }
             @for (t of tratamientos; track t.idTratamiento) {
               <div class="border-bottom py-2">
-                <strong>#{{ t.idTratamiento }}</strong> - {{ t.descripcion }}
-                <small class="text-muted ms-2">({{ t.fechaInicio }} {{ t.fechaFin ? 'hasta ' + t.fechaFin : '' }})</small>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                  <div>
+                    <strong>#{{ t.idTratamiento }}</strong> - {{ t.descripcion }}
+                    <small class="text-muted ms-2">({{ t.fechaInicio }} {{ t.fechaFin ? 'hasta ' + t.fechaFin : '' }})</small>
+                    @if (t.idLote) {
+                      <div class="small text-muted">Lote #{{ t.idLote }} · Cantidad indicada: {{ t.cantidad ?? 'no especificada' }}</div>
+                    }
+                  </div>
+                  @if (t.idLote && permisos.puedeCrear(MODULOS_PERMISO.CONSUMO_CLINICO)) {
+                    <button type="button" class="btn btn-outline-primary btn-sm"
+                            [disabled]="guardandoConsumo" (click)="abrirConsumo(t)">
+                      Registrar consumo
+                    </button>
+                  }
+                </div>
+                @if (tratamientoConsumo?.idTratamiento === t.idTratamiento) {
+                  <form class="row g-2 mt-2 align-items-end" (ngSubmit)="registrarConsumo()">
+                    <div class="col-sm-4">
+                      <label class="form-label" [for]="'consumo-' + t.idTratamiento">Cantidad consumida *</label>
+                      <input class="form-control" type="number" min="1" step="1" required
+                             [id]="'consumo-' + t.idTratamiento" name="cantidadConsumo"
+                             [(ngModel)]="cantidadConsumo">
+                    </div>
+                    <div class="col-sm-8 d-flex gap-2">
+                      <button type="submit" class="btn btn-primary" [disabled]="guardandoConsumo">
+                        {{ guardandoConsumo ? 'Registrando...' : 'Confirmar consumo' }}
+                      </button>
+                      <button type="button" class="btn btn-secondary" [disabled]="guardandoConsumo"
+                              (click)="cerrarConsumo()">Cancelar</button>
+                    </div>
+                    @if (errorConsumo) {
+                      <div class="col-12"><div class="alert alert-danger mb-0" role="alert">{{ errorConsumo }}</div></div>
+                    }
+                  </form>
+                }
               </div>
             }
           </div>
@@ -100,11 +148,13 @@ import {
         @if (tab === 'examenes') {
           <div class="card p-3 mt-3">
             <h4>Exámenes</h4>
-            <form (ngSubmit)="agregarExamen()" class="row g-2 mb-3">
-              <div class="col-md-6"><input type="text" class="form-control" [(ngModel)]="nuevoExamen.nombreExamen" name="nombreExamen" placeholder="Nombre del examen" required></div>
-              <div class="col-md-3"><input type="datetime-local" class="form-control" [(ngModel)]="nuevoExamen.fechaExamen" name="fechaExamen" required></div>
-              <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
-            </form>
+            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
+              <form (ngSubmit)="agregarExamen()" class="row g-2 mb-3">
+                <div class="col-md-6"><input type="text" class="form-control" [(ngModel)]="nuevoExamen.nombreExamen" name="nombreExamen" placeholder="Nombre del examen" required></div>
+                <div class="col-md-3"><input type="datetime-local" class="form-control" [(ngModel)]="nuevoExamen.fechaExamen" name="fechaExamen" required></div>
+                <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
+              </form>
+            }
             @for (e of examenes; track e.idExamen) {
               <div class="border-bottom py-2">
                 <strong>#{{ e.idExamen }}</strong> - {{ e.nombreExamen }}
@@ -119,21 +169,23 @@ import {
         @if (tab === 'evoluciones') {
           <div class="card p-3 mt-3">
             <h4>Evoluciones</h4>
-            @if (diagnosticos.length === 0) {
-              <div class="alert alert-warning">Debes crear al menos un diagnóstico antes de agregar evoluciones.</div>
-            } @else {
-              <form (ngSubmit)="agregarEvolucion()" class="row g-2 mb-3">
-                <div class="col-md-4">
-                  <select class="form-select" [(ngModel)]="nuevaEvol.idDiagnostico" name="idDiagnostico" required>
-                    <option [ngValue]="null">Seleccione diagnóstico...</option>
-                    @for (d of diagnosticos; track d.idDiagnostico) {
-                      <option [ngValue]="d.idDiagnostico">#{{ d.idDiagnostico }} - {{ d.descripcion | slice:0:50 }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="col-md-6"><textarea class="form-control" [(ngModel)]="nuevaEvol.descripcion" name="descripcion" placeholder="Descripción de la evolución" required></textarea></div>
-                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
-              </form>
+            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
+              @if (diagnosticos.length === 0) {
+                <div class="alert alert-warning">Debes crear al menos un diagnóstico antes de agregar evoluciones.</div>
+              } @else {
+                <form (ngSubmit)="agregarEvolucion()" class="row g-2 mb-3">
+                  <div class="col-md-4">
+                    <select class="form-select" [(ngModel)]="nuevaEvol.idDiagnostico" name="idDiagnostico" required>
+                      <option [ngValue]="null">Seleccione diagnóstico...</option>
+                      @for (d of diagnosticos; track d.idDiagnostico) {
+                        <option [ngValue]="d.idDiagnostico">#{{ d.idDiagnostico }} - {{ d.descripcion | slice:0:50 }}</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="col-md-6"><textarea class="form-control" [(ngModel)]="nuevaEvol.descripcion" name="descripcion" placeholder="Descripción de la evolución" required></textarea></div>
+                  <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
+                </form>
+              }
             }
             @for (h of evoluciones; track h.idHistorial) {
               <div class="border-bottom py-2">
@@ -150,6 +202,11 @@ import {
 export class ConsultaDetalleComponent implements OnInit {
   private service = inject(HistorialService);
   private route = inject(ActivatedRoute);
+  private session = inject(AuthSessionService);
+  private apiErrors = inject(ApiErrorService);
+  private destroyRef = inject(DestroyRef);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   idPaciente!: number;
   idConsulta!: number;
@@ -162,11 +219,32 @@ export class ConsultaDetalleComponent implements OnInit {
   tratamientos: TratamientoResponseDto[] = [];
   examenes: ExamenResponseDto[] = [];
   evoluciones: HistorialMedicoResponseDto[] = [];
+  tratamientoConsumo: TratamientoResponseDto | null = null;
+  cantidadConsumo = 1;
+  guardandoConsumo = false;
+  errorConsumo = '';
+  avisoConsumo = '';
+  private solicitudConsumo?: Subscription;
+  private revisionConsumo = 0;
+  private identidadConsumoObservada: string | null | undefined;
 
   nuevoDiag: CrearDiagnosticoRequest = { idConsulta: 0, idMedico: null, descripcion: '' };
   nuevoTrat: TratamientoCreateDto = { idConsulta: 0, descripcion: '', indicaciones: null, fechaInicio: '', fechaFin: null, idLote: null, cantidad: null };
   nuevoExamen: ExamenCreateDto = { idConsulta: null, idDiagnostico: null, idTurno: null, nombreExamen: '', fechaExamen: '', fechaResultado: null, prioridad: null };
   nuevaEvol: HistorialMedicoCreateDto = { idPaciente: 0, idConsulta: 0, idDiagnostico: null, descripcion: '' };
+
+  constructor() {
+    effect(() => {
+      const identidad = this.identidadActual();
+      const cambioIdentidad = this.identidadConsumoObservada !== undefined
+        && this.identidadConsumoObservada !== identidad;
+      this.identidadConsumoObservada = identidad;
+      if (!identidad || cambioIdentidad
+        || !this.permisos.puedeCrear(MODULOS_PERMISO.CONSUMO_CLINICO)) {
+        this.cancelarConsumoProtegido();
+      }
+    }, { allowSignalWrites: true });
+  }
 
   ngOnInit() {
     this.idPaciente = +this.route.snapshot.paramMap.get('id')!;
@@ -226,5 +304,95 @@ export class ConsultaDetalleComponent implements OnInit {
       next: () => { this.nuevaEvol.descripcion = ''; this.nuevaEvol.idDiagnostico = null; this.cargarSecciones(); },
       error: (e) => alert(e.error?.message || 'Error al crear evolución')
     });
+  }
+
+  abrirConsumo(tratamiento: TratamientoResponseDto): void {
+    if (!tratamiento.idLote || !this.identidadActual() || this.guardandoConsumo
+      || !this.permisos.puedeCrear(MODULOS_PERMISO.CONSUMO_CLINICO)) return;
+    this.tratamientoConsumo = tratamiento;
+    this.cantidadConsumo = tratamiento.cantidad && tratamiento.cantidad > 0
+      ? tratamiento.cantidad : 1;
+    this.errorConsumo = '';
+    this.avisoConsumo = '';
+  }
+
+  cerrarConsumo(): void {
+    if (this.guardandoConsumo) return;
+    this.tratamientoConsumo = null;
+    this.cantidadConsumo = 1;
+    this.errorConsumo = '';
+  }
+
+  registrarConsumo(): void {
+    const tratamiento = this.tratamientoConsumo;
+    const identidad = this.identidadActual();
+    if (!tratamiento || !tratamiento.idLote || !identidad || this.guardandoConsumo
+      || !this.permisos.puedeCrear(MODULOS_PERMISO.CONSUMO_CLINICO)) return;
+    if (!Number.isInteger(Number(this.cantidadConsumo)) || Number(this.cantidadConsumo) <= 0) {
+      this.errorConsumo = 'La cantidad consumida debe ser un entero mayor que cero.';
+      return;
+    }
+    if (!confirm(`¿Registrar el consumo de ${this.cantidadConsumo} unidades del lote #${tratamiento.idLote}?`)) {
+      return;
+    }
+
+    const revision = ++this.revisionConsumo;
+    this.guardandoConsumo = true;
+    this.errorConsumo = '';
+    this.solicitudConsumo = this.service.registrarConsumoClinico(
+      tratamiento.idTratamiento,
+      { cantidad: Number(this.cantidadConsumo) },
+    ).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        if (revision === this.revisionConsumo) this.guardandoConsumo = false;
+      }),
+    ).subscribe({
+      next: (response: ConsumoClinicoResponseDto) => {
+        if (!this.respuestaConsumoVigente(revision, identidad, tratamiento.idTratamiento)) return;
+        this.avisoConsumo = `Salida clínica #${response.idMovimiento} confirmada: ${response.cantidad} unidades del lote #${response.idLote}, sucursal #${response.idSucursal}, ${this.formatearFecha(response.fechaMovimiento)}.`;
+        this.tratamientoConsumo = null;
+        this.cantidadConsumo = 1;
+      },
+      error: (error: HttpErrorResponse) => {
+        if (!this.respuestaConsumoVigente(revision, identidad, tratamiento.idTratamiento)) return;
+        this.errorConsumo = this.apiErrors.messageFor(
+          error,
+          'No fue posible registrar el consumo clínico.',
+        );
+      },
+    });
+  }
+
+  private respuestaConsumoVigente(
+    revision: number,
+    identidad: string,
+    idTratamiento: number,
+  ): boolean {
+    return revision === this.revisionConsumo
+      && identidad === this.identidadActual()
+      && this.tratamientoConsumo?.idTratamiento === idTratamiento
+      && this.permisos.puedeCrear(MODULOS_PERMISO.CONSUMO_CLINICO);
+  }
+
+  private identidadActual(): string | null {
+    const userId = this.session.currentUser()?.idUsuario;
+    const token = this.session.token;
+    return this.session.isAuthenticated() && userId && token ? `${userId}:${token}` : null;
+  }
+
+  private formatearFecha(value: string): string {
+    const fecha = new Date(value);
+    return Number.isNaN(fecha.getTime()) ? value : fecha.toLocaleString('es-GT');
+  }
+
+  private cancelarConsumoProtegido(): void {
+    this.revisionConsumo++;
+    this.solicitudConsumo?.unsubscribe();
+    this.solicitudConsumo = undefined;
+    this.tratamientoConsumo = null;
+    this.cantidadConsumo = 1;
+    this.guardandoConsumo = false;
+    this.errorConsumo = '';
   }
 }

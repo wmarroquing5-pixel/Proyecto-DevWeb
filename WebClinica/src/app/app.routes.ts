@@ -1,7 +1,31 @@
-import { Routes } from '@angular/router';
+import { Route, Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { permisoGuard } from './core/guards/permiso.guard';
+import { MODULOS_PERMISO, OPERACIONES_PERMISO, PermisoRequerido } from './core/models/permiso.model';
 import { MainLayoutComponent } from './layout/main/main-layout.component';
 import { LoginComponent } from './pages/login/login.component';
+import { AccesoDenegadoComponent } from './pages/acceso-denegado/acceso-denegado.component';
+
+const permiso = (modulo: string, operacion: PermisoRequerido['operacion']): PermisoRequerido =>
+  ({ modulo, operacion });
+
+const rutaPendiente = (
+  path: string,
+  modulo: string,
+  titulo: string,
+  descripcion: string,
+): Route => ({
+  path,
+  canActivate: [permisoGuard],
+  data: {
+    permisos: [permiso(modulo, OPERACIONES_PERMISO.CONSULTAR)],
+    titulo,
+    descripcion,
+  },
+  loadComponent: () =>
+    import('./pages/funcionalidad-pendiente/funcionalidad-pendiente.component')
+      .then(m => m.FuncionalidadPendienteComponent),
+});
 
 export const routes: Routes = [
   // 🔓 LOGIN: fuera del layout
@@ -26,19 +50,63 @@ export const routes: Routes = [
           import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent),
       },
 
+      // Rutas anunciadas por el menú de la API cuya pantalla funcional sigue pendiente.
+      rutaPendiente(
+        'citas',
+        MODULOS_PERMISO.CITAS,
+        'Citas médicas',
+        'La gestión de citas se encuentra en preparación.',
+      ),
+      {
+        path: 'consultas',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.CONSULTAS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/historial/consultas-list.component')
+            .then(m => m.ConsultasListComponent),
+      },
+      {
+        path: 'admin/roles',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.ROLES, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/roles/roles.component').then(m => m.RolesComponent),
+      },
+      rutaPendiente(
+        'reportes/citas',
+        MODULOS_PERMISO.REPORTES,
+        'Reporte de citas del día',
+        'El reporte de citas se encuentra en preparación.',
+      ),
+      rutaPendiente(
+        'reportes/pacientes',
+        MODULOS_PERMISO.REPORTES,
+        'Reporte de pacientes atendidos',
+        'El reporte de pacientes se encuentra en preparación.',
+      ),
+
       // ---------- Módulo Pacientes ----------
       {
         path: 'pacientes',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CONSULTAR)] },
         loadComponent: () =>
           import('./pages/pacientes/pacientes.component').then(m => m.PacientesComponent),
       },
       {
         path: 'pacientes/nuevo',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CREAR)] },
         loadComponent: () =>
           import('./pages/pacientes/paciente-form.component').then(m => m.PacienteFormComponent),
       },
       {
         path: 'pacientes/editar/:id',
+        canActivate: [permisoGuard],
+        data: { permisos: [
+          permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.MODIFICAR),
+        ] },
         loadComponent: () =>
           import('./pages/pacientes/paciente-form.component').then(m => m.PacienteFormComponent),
       },
@@ -48,16 +116,33 @@ export const routes: Routes = [
       { path: 'admin/empleados', redirectTo: 'empleados', pathMatch: 'full' },
       {
         path: 'empleados',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.EMPLEADOS, OPERACIONES_PERMISO.CONSULTAR)] },
         loadComponent: () =>
           import('./pages/empleados/empleados.component').then(m => m.EmpleadosComponent),
       },
       {
         path: 'admin/empleados/nuevo',
+        canActivate: [permisoGuard],
+        data: { permisos: [
+          permiso(MODULOS_PERMISO.EMPLEADOS, OPERACIONES_PERMISO.CREAR),
+          permiso(MODULOS_PERMISO.SUCURSALES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.ESPECIALIDADES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.TURNOS, OPERACIONES_PERMISO.CONSULTAR),
+        ] },
         loadComponent: () =>
           import('./pages/empleados/empleado-form.component').then(m => m.EmpleadoFormComponent),
       },
       {
         path: 'admin/empleados/editar/:id',
+        canActivate: [permisoGuard],
+        data: { permisos: [
+          permiso(MODULOS_PERMISO.EMPLEADOS, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.EMPLEADOS, OPERACIONES_PERMISO.MODIFICAR),
+          permiso(MODULOS_PERMISO.SUCURSALES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.ESPECIALIDADES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.TURNOS, OPERACIONES_PERMISO.CONSULTAR),
+        ] },
         loadComponent: () =>
           import('./pages/empleados/empleado-form.component').then(m => m.EmpleadoFormComponent),
       },
@@ -65,16 +150,25 @@ export const routes: Routes = [
       // ---------- Módulo Usuarios (Administración) ----------
       {
         path: 'admin/usuarios',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.CONSULTAR)] },
         loadComponent: () =>
           import('./pages/usuarios/usuarios.component').then(m => m.UsuariosComponent),
       },
       {
         path: 'admin/usuarios/nuevo',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.CREAR)] },
         loadComponent: () =>
           import('./pages/usuarios/usuario-form.component').then(m => m.UsuarioFormComponent),
       },
       {
         path: 'admin/usuarios/editar/:id',
+        canActivate: [permisoGuard],
+        data: { permisos: [
+          permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.MODIFICAR),
+        ] },
         loadComponent: () =>
           import('./pages/usuarios/usuario-form.component').then(m => m.UsuarioFormComponent),
       },
@@ -82,18 +176,30 @@ export const routes: Routes = [
       // ---------- Módulo Historial Médico ----------
 {
   path: 'historial/:id',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.CONSULTAS, OPERACIONES_PERMISO.CONSULTAR)] },
   loadComponent: () =>
     import('./pages/historial/historial-paciente.component')
       .then(m => m.HistorialPacienteComponent),
 },
 {
   path: 'historial/:id/nueva-consulta',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.CONSULTAS, OPERACIONES_PERMISO.CREAR),
+    permiso(MODULOS_PERMISO.SUCURSALES, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/historial/consulta-nueva.component')
       .then(m => m.ConsultaNuevaComponent),
 },
 {
   path: 'historial/:id/consulta/:idConsulta',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.CONSULTAS, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.HISTORIAL, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/historial/consulta-detalle.component')
       .then(m => m.ConsultaDetalleComponent),
@@ -101,12 +207,20 @@ export const routes: Routes = [
 // ---------- Módulo Habitaciones ----------
 {
   path: 'habitaciones',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.HABITACIONES, OPERACIONES_PERMISO.CONSULTAR)] },
   loadComponent: () =>
     import('./pages/habitaciones/habitaciones-board.component')
       .then(m => m.HabitacionesBoardComponent),
 },
 {
   path: 'inventario',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.CATEGORIAS, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.MARCAS, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/inventario/inventario-list.component')
       .then(m => m.InventarioListComponent),
@@ -115,30 +229,56 @@ export const routes: Routes = [
 { path: 'medicamentos', redirectTo: 'inventario', pathMatch: 'full' },
 {
   path: 'inventario/medicamentos/nuevo',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.CREAR),
+    permiso(MODULOS_PERMISO.CATEGORIAS, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.MARCAS, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/inventario/medicamento-form.component')
       .then(m => m.MedicamentoFormComponent),
 },
 {
   path: 'inventario/medicamentos/editar/:id',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.MODIFICAR),
+    permiso(MODULOS_PERMISO.CATEGORIAS, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.MARCAS, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/inventario/medicamento-form.component')
       .then(m => m.MedicamentoFormComponent),
 },
 {
   path: 'inventario/lotes',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.LOTES_MEDICAMENTO, OPERACIONES_PERMISO.CONSULTAR)] },
   loadComponent: () =>
     import('./pages/inventario/lotes-medicamento.component')
       .then(m => m.LotesMedicamentoComponent),
 },
 {
   path: 'inventario/lotes/nuevo',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.LOTES_MEDICAMENTO, OPERACIONES_PERMISO.CREAR),
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/inventario/lote-form.component')
       .then(m => m.LoteFormComponent),
 },
 {
   path: 'inventario/lotes/editar/:id',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.LOTES_MEDICAMENTO, OPERACIONES_PERMISO.CONSULTAR),
+    permiso(MODULOS_PERMISO.LOTES_MEDICAMENTO, OPERACIONES_PERMISO.MODIFICAR),
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/inventario/lote-form.component')
       .then(m => m.LoteFormComponent),
@@ -146,18 +286,27 @@ export const routes: Routes = [
 // ---------- Módulo Ventas de Farmacia ----------
 {
   path: 'ventas',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.VENTAS, OPERACIONES_PERMISO.CONSULTAR)] },
   loadComponent: () =>
     import('./pages/ventas/ventas-list.component')
       .then(m => m.VentasListComponent),
 },
 {
   path: 'ventas/nueva',
+  canActivate: [permisoGuard],
+  data: { permisos: [
+    permiso(MODULOS_PERMISO.VENTAS, OPERACIONES_PERMISO.CREAR),
+    permiso(MODULOS_PERMISO.MEDICAMENTOS, OPERACIONES_PERMISO.CONSULTAR),
+  ] },
   loadComponent: () =>
     import('./pages/ventas/ventas-nueva.component')
       .then(m => m.VentasNuevaComponent),
 },
 {
   path: 'ventas/:id',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.VENTAS, OPERACIONES_PERMISO.CONSULTAR)] },
   loadComponent: () =>
     import('./pages/ventas/venta-detalle.component')
       .then(m => m.VentaDetalleComponent),
@@ -166,8 +315,18 @@ export const routes: Routes = [
       // ---------- Módulo Permisos ----------
 
 
-      // Ruta comodín: redirige al dashboard
-      { path: '**', redirectTo: 'dashboard' },
+      {
+        path: 'acceso-denegado',
+        component: AccesoDenegadoComponent,
+      },
+
+      // Una URL desconocida se informa expresamente; no se oculta con una redirección.
+      {
+        path: '**',
+        loadComponent: () =>
+          import('./pages/pagina-no-encontrada/pagina-no-encontrada.component')
+            .then(m => m.PaginaNoEncontradaComponent),
+      },
     ],
   },
 

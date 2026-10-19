@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   CatalogoMedicamentoResponse,
@@ -36,7 +36,7 @@ export class InventarioService {
 
     return this.http.get<PagedResponse<CatalogoMedicamentoResponse>>(
       `${this.apiUrl}/medicamentos/catalogo`, { params }
-    );
+    ).pipe(map(response => this.validarPagina(response, this.esCatalogoMedicamento)));
   }
 
   obtenerCatalogo(id: number): Observable<CatalogoMedicamentoResponse> {
@@ -49,7 +49,7 @@ export class InventarioService {
       .set('pageSize', pageSize.toString());
     return this.http.get<PagedResponse<MedicamentoResponse>>(
       `${this.apiUrl}/medicamentos`, { params }
-    );
+    ).pipe(map(response => this.validarPagina(response, this.esMedicamento)));
   }
 
   obtenerMedicamento(id: number): Observable<MedicamentoResponse> {
@@ -76,7 +76,7 @@ export class InventarioService {
       .set('pageSize', pageSize.toString());
     return this.http.get<PagedResponse<LoteMedicamentoResponse>>(
       `${this.apiUrl}/lotes-medicamento`, { params }
-    );
+    ).pipe(map(response => this.validarPagina(response, this.esLote)));
   }
 
   obtenerLote(id: number): Observable<LoteMedicamentoResponse> {
@@ -94,7 +94,10 @@ export class InventarioService {
   registrarEntrada(idLote: number, request: RegistrarEntradaInventarioRequest): Observable<EntradaInventarioResponse> {
     return this.http.post<EntradaInventarioResponse>(
       `${this.apiUrl}/lotes-medicamento/${idLote}/entradas`, request
-    );
+    ).pipe(map(response => {
+      if (!this.esEntrada(response)) throw new Error('La API devolvió una entrada de inventario inválida.');
+      return response;
+    }));
   }
 
   eliminarLote(id: number): Observable<void> {
@@ -145,5 +148,73 @@ export class InventarioService {
 
   desactivarMarca(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/marcas/${id}`);
+  }
+
+  private validarPagina<T>(
+    response: PagedResponse<T>,
+    validarItem: (value: unknown) => value is T,
+  ): PagedResponse<T> {
+    if (!this.esRegistro(response)
+      || !Array.isArray(response.items)
+      || !response.items.every(validarItem)
+      || !this.esEnteroPositivo(response.page)
+      || !this.esEnteroPositivo(response.pageSize)
+      || !this.esEnteroNoNegativo(response.totalCount)
+      || !this.esEnteroNoNegativo(response.totalPages)) {
+      throw new Error('La API devolvió una página de inventario inválida.');
+    }
+    return response;
+  }
+
+  private readonly esCatalogoMedicamento = (value: unknown): value is CatalogoMedicamentoResponse =>
+    this.esRegistro(value)
+    && this.esEnteroPositivo(value['idMedicamento'])
+    && typeof value['codigo'] === 'string'
+    && typeof value['nombre'] === 'string'
+    && typeof value['precioVenta'] === 'number'
+    && typeof value['marca'] === 'string'
+    && typeof value['categoria'] === 'string'
+    && this.esEnteroNoNegativo(value['existenciaTotal']);
+
+  private readonly esMedicamento = (value: unknown): value is MedicamentoResponse =>
+    this.esRegistro(value)
+    && this.esEnteroPositivo(value['idMedicamento'])
+    && this.esEnteroPositivo(value['idCategoria'])
+    && this.esEnteroPositivo(value['idMarca'])
+    && typeof value['codigo'] === 'string'
+    && typeof value['nombre'] === 'string'
+    && typeof value['precioVenta'] === 'number'
+    && typeof value['activo'] === 'boolean';
+
+  private readonly esLote = (value: unknown): value is LoteMedicamentoResponse =>
+    this.esRegistro(value)
+    && this.esEnteroPositivo(value['idLote'])
+    && this.esEnteroPositivo(value['idMedicamento'])
+    && typeof value['numeroLote'] === 'string'
+    && typeof value['fechaIngreso'] === 'string'
+    && typeof value['fechaVencimiento'] === 'string'
+    && this.esEnteroNoNegativo(value['cantidadDisponible']);
+
+  private readonly esEntrada = (value: unknown): value is EntradaInventarioResponse =>
+    this.esRegistro(value)
+    && this.esEnteroPositivo(value['idMovimiento'])
+    && this.esEnteroPositivo(value['idLote'])
+    && this.esEnteroPositivo(value['idMedicamento'])
+    && this.esEnteroPositivo(value['idSucursal'])
+    && this.esEnteroPositivo(value['cantidad'])
+    && this.esEnteroNoNegativo(value['cantidadDisponible'])
+    && typeof value['fechaMovimiento'] === 'string'
+    && (value['observaciones'] === null || typeof value['observaciones'] === 'string');
+
+  private esRegistro(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private esEnteroPositivo(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0;
+  }
+
+  private esEnteroNoNegativo(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0;
   }
 }

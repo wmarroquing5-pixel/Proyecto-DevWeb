@@ -4,6 +4,8 @@ import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { EmpleadosService } from '../../core/services/empleado.service';
 import { EmpleadoListadoResponse, PagedResponse } from '../../core/models/empleado.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-empleados',
@@ -13,9 +15,11 @@ import { EmpleadoListadoResponse, PagedResponse } from '../../core/models/emplea
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Gestión de Empleados</h2>
-        <a routerLink="/admin/empleados/nuevo" class="btn btn-primary">
-          <i class="fa fa-plus"></i> Nuevo Empleado
-        </a>
+        @if (permisos.puedeCrear(MODULOS_PERMISO.EMPLEADOS)) {
+          <a routerLink="/admin/empleados/nuevo" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nuevo Empleado
+          </a>
+        }
       </div>
 
       <!-- Filtros -->
@@ -82,12 +86,16 @@ import { EmpleadoListadoResponse, PagedResponse } from '../../core/models/emplea
                     </span>
                   </td>
                   <td>
-                    <a [routerLink]="['/admin/empleados/editar', emp.idEmpleado]" class="btn btn-sm btn-warning me-1">
-                      <i class="fa fa-edit"></i>
-                    </a>
-                    <button (click)="eliminar(emp.idEmpleado)" class="btn btn-sm btn-danger" [disabled]="!emp.activo">
-                      <i class="fa fa-trash"></i>
-                    </button>
+                    @if (permisos.puedeModificar(MODULOS_PERMISO.EMPLEADOS)) {
+                      <a [routerLink]="['/admin/empleados/editar', emp.idEmpleado]" class="btn btn-sm btn-warning me-1" aria-label="Editar empleado">
+                        <i class="fa fa-edit"></i>
+                      </a>
+                    }
+                    @if (permisos.puedeEliminar(MODULOS_PERMISO.EMPLEADOS)) {
+                      <button (click)="eliminar(emp.idEmpleado)" class="btn btn-sm btn-danger" [disabled]="!emp.activo" aria-label="Eliminar empleado">
+                        <i class="fa fa-trash"></i>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -114,6 +122,8 @@ import { EmpleadoListadoResponse, PagedResponse } from '../../core/models/emplea
 })
 export class EmpleadosComponent implements OnInit {
   private service = inject(EmpleadosService);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   empleados: EmpleadoListadoResponse[] = [];
   total = 0;

@@ -11,15 +11,18 @@ public sealed class MenuService(IAccesoActualService accesoActual) : IMenuServic
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["/pacientes"] = "Pacientes",
-            ["/citas"] = "Citas",
-            ["/consultas"] = "Historial",
+            ["/consultas"] = "Consultas",
             ["/medicamentos"] = "Medicamentos",
+            ["/inventario/lotes"] = "LotesMedicamento",
+            ["/habitaciones"] = "Habitaciones",
+            ["/ventas"] = "Ventas",
             ["/admin/usuarios"] = "Usuarios",
             ["/admin/roles"] = "Roles",
-            ["/admin/empleados"] = "Empleados",
-            ["/reportes/citas"] = "Reportes",
-            ["/reportes/pacientes"] = "Reportes"
+            ["/admin/empleados"] = "Empleados"
         };
+
+    private static readonly IReadOnlySet<string> ModulosReconocidos =
+        ModulosPorRuta.Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public async Task<List<MenuItemDto>> ObtenerMenuAsync(
         ClaimsPrincipal user,
@@ -27,7 +30,11 @@ public sealed class MenuService(IAccesoActualService accesoActual) : IMenuServic
     {
         var permisos = await accesoActual.ObtenerPermisosAsync(user, ct);
         var modulosConsultables = permisos
-            .Where(p => p.PuedeConsultar)
+            .Where(p => !string.IsNullOrWhiteSpace(p.Modulo))
+            .GroupBy(p => p.Modulo, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Single())
+            .Where(p => p.PuedeConsultar && ModulosReconocidos.Contains(p.Modulo))
             .Select(p => p.Modulo)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 

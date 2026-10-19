@@ -142,6 +142,19 @@ export interface TratamientoFiltroDto {
   pageSize: number;
 }
 
+export interface ConsumoClinicoCreateDto {
+  cantidad: number;
+}
+
+export interface ConsumoClinicoResponseDto {
+  idMovimiento: number;
+  idTratamiento: number;
+  idLote: number;
+  cantidad: number;
+  idSucursal: number;
+  fechaMovimiento: string;
+}
+
 // ==========================================
 // EXÁMENES
 // ==========================================

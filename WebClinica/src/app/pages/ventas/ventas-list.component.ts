@@ -4,6 +4,8 @@ import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { VentasService } from '../../core/services/venta.service';
 import { VentaConsultaResumenResponse, PagedResponse } from '../../core/models/venta.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-ventas-list',
@@ -13,9 +15,11 @@ import { VentaConsultaResumenResponse, PagedResponse } from '../../core/models/v
     <div class="container-fluid mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="fa fa-cash-register"></i> Ventas de Farmacia</h2>
-        <a routerLink="/ventas/nueva" class="btn btn-primary">
-          <i class="fa fa-plus"></i> Nueva Venta
-        </a>
+        @if (permisos.puedeCrear(MODULOS_PERMISO.VENTAS)) {
+          <a routerLink="/ventas/nueva" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nueva Venta
+          </a>
+        }
       </div>
 
       <!-- Filtros -->
@@ -97,6 +101,8 @@ import { VentaConsultaResumenResponse, PagedResponse } from '../../core/models/v
 })
 export class VentasListComponent implements OnInit {
   private service = inject(VentasService);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   ventas: VentaConsultaResumenResponse[] = [];
   total = 0;

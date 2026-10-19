@@ -44,3 +44,15 @@ _ReSharper*/
 *.pubxml.user
 .agents/
 AGENTS.md
+
+# Skills de proyecto autorizadas; el resto de .agents continúa local/ignorado
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/api-rest-clinica-audit/
+!.agents/skills/api-rest-clinica-audit/**
+!.agents/skills/database-contract/
+!.agents/skills/database-contract/**
+!.agents/skills/webclinica-frontend/
+!.agents/skills/webclinica-frontend/**

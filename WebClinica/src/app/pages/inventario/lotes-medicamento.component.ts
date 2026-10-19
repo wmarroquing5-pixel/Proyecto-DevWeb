@@ -1,9 +1,27 @@
-import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, OnInit, effect, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
+import { Subscription, finalize } from 'rxjs';
+import {
+  EntradaInventarioResponse,
+  LoteMedicamentoResponse,
+  PagedResponse,
+  RegistrarEntradaInventarioRequest,
+} from '../../core/models/inventario.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 import { InventarioService } from '../../core/services/inventario.service';
-import { LoteMedicamentoResponse, PagedResponse } from '../../core/models/inventario.model';
+import { PermisosService } from '../../core/services/permisos.service';
+
+const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
+  idSucursal: 0,
+  cantidad: 0,
+  observaciones: null,
+});
 
 @Component({
   selector: 'app-lotes-medicamento',
@@ -11,37 +29,55 @@ import { LoteMedicamentoResponse, PagedResponse } from '../../core/models/invent
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
     <div class="container-fluid mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="fa fa-boxes"></i> Gestión de Lotes</h2>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+          <h2 class="mb-1"><i class="fa fa-boxes"></i> Gestión de Lotes</h2>
+          <p class="text-muted mb-0">Consulta existencias por lote y registra entradas confirmadas por la API.</p>
+        </div>
         <div class="d-flex gap-2">
           <a routerLink="/inventario" class="btn btn-secondary">
             <i class="fa fa-arrow-left"></i> Volver a Medicamentos
           </a>
-          <a routerLink="/inventario/lotes/nuevo" class="btn btn-primary">
-            <i class="fa fa-plus"></i> Nuevo Lote
-          </a>
+          @if (permisos.puedeCrear(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
+            <a routerLink="/inventario/lotes/nuevo" class="btn btn-primary">
+              <i class="fa fa-plus"></i> Nuevo Lote
+            </a>
+          }
         </div>
       </div>
 
+      @if (aviso) {
+        <div class="alert alert-success alert-dismissible" role="status">
+          {{ aviso }}
+          <button type="button" class="btn-close" aria-label="Cerrar" (click)="aviso = ''"></button>
+        </div>
+      }
+
       @if (cargando) {
-        <div class="text-center py-5">
+        <div class="text-center py-5" role="status">
           <div class="spinner-border text-primary"></div>
+          <span class="visually-hidden">Cargando lotes</span>
         </div>
       } @else if (error) {
-        <div class="alert alert-danger">{{ error }}</div>
+        <div class="alert alert-danger" role="alert">
+          {{ error }}
+          <button type="button" class="btn btn-outline-danger btn-sm ms-2" (click)="cargarLotes()">
+            Reintentar
+          </button>
+        </div>
       } @else if (lotes.length === 0) {
         <div class="alert alert-info text-center">No hay lotes registrados.</div>
       } @else {
         <div class="table-responsive">
-          <table class="table table-striped table-hover">
+          <table class="table table-striped table-hover align-middle">
             <thead class="table-dark">
               <tr>
                 <th>#</th>
-                <th>Número de Lote</th>
+                <th>Número de lote</th>
                 <th>Medicamento</th>
-                <th>Fecha Ingreso</th>
-                <th>Fecha Vencimiento</th>
-                <th>Stock</th>
+                <th>Fecha de ingreso</th>
+                <th>Fecha de vencimiento</th>
+                <th class="text-end">Existencia</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -50,14 +86,14 @@ import { LoteMedicamentoResponse, PagedResponse } from '../../core/models/invent
                 <tr>
                   <td>{{ lote.idLote }}</td>
                   <td><code>{{ lote.numeroLote }}</code></td>
-                  <td>{{ lote.idMedicamento }}</td>
+                  <td>#{{ lote.idMedicamento }}</td>
                   <td>{{ lote.fechaIngreso | date:'dd/MM/yyyy' }}</td>
                   <td>
                     <span [class.text-danger]="isVencido(lote.fechaVencimiento)">
                       {{ lote.fechaVencimiento | date:'dd/MM/yyyy' }}
                     </span>
                   </td>
-                  <td>
+                  <td class="text-end">
                     <span class="badge"
                           [class.bg-success]="lote.cantidadDisponible > 10"
                           [class.bg-warning]="lote.cantidadDisponible > 0 && lote.cantidadDisponible <= 10"
@@ -66,16 +102,21 @@ import { LoteMedicamentoResponse, PagedResponse } from '../../core/models/invent
                     </span>
                   </td>
                   <td>
-                    <button (click)="abrirModalEntrada(lote)" class="btn btn-sm btn-success me-1">
-                      <i class="fa fa-plus"></i> Entrada
-                    </button>
-                    <a [routerLink]="['/inventario/lotes/editar', lote.idLote]"
-                       class="btn btn-sm btn-warning me-1">
-                      <i class="fa fa-edit"></i>
-                    </a>
-                    <button (click)="eliminar(lote.idLote)" class="btn btn-sm btn-danger">
-                      <i class="fa fa-trash"></i>
-                    </button>
+                    @if (permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
+                      <button type="button" (click)="abrirEntrada(lote)" class="btn btn-sm btn-success me-1">
+                        <i class="fa fa-plus"></i> Entrada
+                      </button>
+                      <a [routerLink]="['/inventario/lotes/editar', lote.idLote]"
+                         class="btn btn-sm btn-warning me-1" aria-label="Editar lote">
+                        <i class="fa fa-edit"></i>
+                      </a>
+                    }
+                    @if (permisos.puedeEliminar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
+                      <button type="button" (click)="eliminar(lote.idLote)" class="btn btn-sm btn-danger"
+                              aria-label="Eliminar lote">
+                        <i class="fa fa-trash"></i>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -86,139 +127,313 @@ import { LoteMedicamentoResponse, PagedResponse } from '../../core/models/invent
         <div class="d-flex justify-content-between align-items-center mt-3">
           <span>Total: {{ total }} lotes</span>
           <div>
-            <button class="btn btn-outline-secondary btn-sm me-2"
-                    (click)="cambiarPagina(page - 1)" [disabled]="page <= 1">
+            <button type="button" class="btn btn-outline-secondary btn-sm me-2"
+                    (click)="cambiarPagina(page - 1)" [disabled]="page <= 1 || cargando">
               Anterior
             </button>
-            <span class="mx-2">Página {{ page }}</span>
-            <button class="btn btn-outline-secondary btn-sm"
-                    (click)="cambiarPagina(page + 1)" [disabled]="lotes.length < pageSize">
+            <span class="mx-2">Página {{ page }} de {{ totalPages }}</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages || cargando">
               Siguiente
             </button>
           </div>
         </div>
       }
 
-      <!-- Modal Entrada -->
       @if (loteSeleccionado) {
-        <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal d-block" tabindex="-1" role="dialog" aria-modal="true"
+             aria-labelledby="entrada-title" style="background: rgba(0,0,0,0.5);">
           <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
               <div class="modal-header">
-                <h5 class="modal-title">Registrar Entrada - Lote {{ loteSeleccionado.numeroLote }}</h5>
-                <button type="button" class="btn-close" (click)="loteSeleccionado = null"></button>
+                <h5 class="modal-title" id="entrada-title">
+                  Registrar entrada · lote {{ loteSeleccionado.numeroLote }}
+                </h5>
+                <button type="button" class="btn-close" aria-label="Cerrar"
+                        [disabled]="cargandoEntrada" (click)="cerrarEntrada()"></button>
               </div>
-              <div class="modal-body">
-                @if (errorEntrada) { <div class="alert alert-danger">{{ errorEntrada }}</div> }
-                <form (ngSubmit)="registrarEntrada()">
+              <form #entrada="ngForm" (ngSubmit)="registrarEntrada(entrada.valid)">
+                <div class="modal-body">
+                  <p class="small text-muted">
+                    Existencia actual: <strong>{{ loteSeleccionado.cantidadDisponible }}</strong> unidades.
+                    La existencia se actualizará únicamente después de la confirmación del servidor.
+                  </p>
+                  @if (errorEntrada) {
+                    <div class="alert alert-danger" role="alert">{{ errorEntrada }}</div>
+                  }
                   <div class="mb-3">
-                    <label class="form-label">ID Sucursal *</label>
-                    <input type="number" class="form-control" [(ngModel)]="entradaForm.idSucursal"
-                           name="idSucursal" required min="1">
+                    <label class="form-label" for="entrada-sucursal">ID de sucursal *</label>
+                    <input id="entrada-sucursal" type="number" class="form-control"
+                           [(ngModel)]="entradaForm.idSucursal" name="idSucursal"
+                           required min="1" step="1">
                   </div>
                   <div class="mb-3">
-                    <label class="form-label">Cantidad *</label>
-                    <input type="number" class="form-control" [(ngModel)]="entradaForm.cantidad"
-                           name="cantidad" required min="1">
+                    <label class="form-label" for="entrada-cantidad">Cantidad *</label>
+                    <input id="entrada-cantidad" type="number" class="form-control"
+                           [(ngModel)]="entradaForm.cantidad" name="cantidad"
+                           required min="1" step="1">
                   </div>
                   <div class="mb-3">
-                    <label class="form-label">Observaciones</label>
-                    <textarea class="form-control" rows="2" [(ngModel)]="entradaForm.observaciones"
-                              name="observaciones" maxlength="300"></textarea>
+                    <label class="form-label" for="entrada-observaciones">Observaciones</label>
+                    <textarea id="entrada-observaciones" class="form-control" rows="2"
+                              [(ngModel)]="entradaForm.observaciones" name="observaciones"
+                              maxlength="300"></textarea>
                   </div>
-                  <div class="d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-secondary" (click)="loteSeleccionado = null">Cancelar</button>
-                    <button type="submit" class="btn btn-success" [disabled]="cargandoEntrada">
-                      {{ cargandoEntrada ? 'Registrando...' : 'Confirmar Entrada' }}
-                    </button>
-                  </div>
-                </form>
-              </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" [disabled]="cargandoEntrada"
+                          (click)="cerrarEntrada()">Cancelar</button>
+                  <button type="submit" class="btn btn-success"
+                          [disabled]="cargandoEntrada || entrada.invalid">
+                    @if (cargandoEntrada) {
+                      <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    {{ cargandoEntrada ? 'Registrando...' : 'Confirmar entrada' }}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
       }
     </div>
-  `
+  `,
 })
 export class LotesMedicamentoComponent implements OnInit {
-  private service = inject(InventarioService);
+  private readonly service = inject(InventarioService);
+  private readonly session = inject(AuthSessionService);
+  private readonly apiErrors = inject(ApiErrorService);
+  private readonly destroyRef = inject(DestroyRef);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   lotes: LoteMedicamentoResponse[] = [];
   total = 0;
+  totalPages = 0;
   page = 1;
   pageSize = 10;
   cargando = false;
   error = '';
+  aviso = '';
 
   loteSeleccionado: LoteMedicamentoResponse | null = null;
+  entradaForm = entradaVacia();
   cargandoEntrada = false;
   errorEntrada = '';
-  entradaForm = {
-    idSucursal: 1,
-    cantidad: 0,
-    observaciones: null as string | null
-  };
 
-  ngOnInit() {
+  private solicitudListado?: Subscription;
+  private solicitudEntrada?: Subscription;
+  private revisionListado = 0;
+  private revisionEntrada = 0;
+  private identidadObservada: string | null | undefined;
+  private autorizadoObservado: boolean | undefined;
+  private inicializado = false;
+
+  constructor() {
+    effect(() => {
+      const identidad = this.identidadActual();
+      const autorizado = this.permisos.puedeConsultar(MODULOS_PERMISO.LOTES_MEDICAMENTO);
+      const puedeModificar = this.permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO);
+      const cambioIdentidad = this.identidadObservada !== undefined
+        && this.identidadObservada !== identidad;
+      const concesionConsulta = this.autorizadoObservado === false && autorizado;
+
+      this.identidadObservada = identidad;
+      this.autorizadoObservado = autorizado;
+
+      if (!identidad || !autorizado) {
+        this.limpiarDatosProtegidos();
+        return;
+      }
+
+      if (!puedeModificar) this.cancelarEntradaProtegida();
+      if (this.inicializado && (cambioIdentidad || concesionConsulta)) {
+        this.limpiarDatosProtegidos();
+        this.cargarLotes();
+      }
+    }, { allowSignalWrites: true });
+  }
+
+  ngOnInit(): void {
+    this.inicializado = true;
     this.cargarLotes();
   }
 
-  cargarLotes() {
+  cargarLotes(): void {
+    const identidad = this.identidadActual();
+    if (!identidad || !this.permisos.puedeConsultar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
+      this.limpiarDatosProtegidos();
+      return;
+    }
+
+    const revision = ++this.revisionListado;
+    this.solicitudListado?.unsubscribe();
     this.cargando = true;
     this.error = '';
-    this.service.listarLotes(this.page, this.pageSize).subscribe({
-      next: (res: PagedResponse<LoteMedicamentoResponse>) => {
-        this.lotes = res.items;
-        this.total = res.totalCount;
-        this.cargando = false;
+
+    this.solicitudListado = this.service.listarLotes(this.page, this.pageSize).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        if (revision === this.revisionListado) this.cargando = false;
+      }),
+    ).subscribe({
+      next: (response: PagedResponse<LoteMedicamentoResponse>) => {
+        if (!this.respuestaListadoVigente(revision, identidad)) return;
+        this.lotes = response.items;
+        this.page = response.page;
+        this.pageSize = response.pageSize;
+        this.total = response.totalCount;
+        this.totalPages = response.totalPages;
       },
-      error: () => {
-        this.error = 'Error al cargar los lotes. Verifica tus permisos.';
-        this.cargando = false;
-      }
+      error: (error: HttpErrorResponse) => {
+        if (!this.respuestaListadoVigente(revision, identidad)) return;
+        this.lotes = [];
+        this.total = 0;
+        this.totalPages = 0;
+        this.error = this.apiErrors.messageFor(error, 'No fue posible cargar los lotes.');
+      },
     });
+  }
+
+  abrirEntrada(lote: LoteMedicamentoResponse): void {
+    if (this.cargandoEntrada
+      || !this.permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) return;
+    this.loteSeleccionado = lote;
+    this.entradaForm = entradaVacia();
+    this.errorEntrada = '';
+  }
+
+  cerrarEntrada(): void {
+    if (this.cargandoEntrada) return;
+    this.loteSeleccionado = null;
+    this.entradaForm = entradaVacia();
+    this.errorEntrada = '';
+  }
+
+  registrarEntrada(formularioValido: boolean | null): void {
+    const lote = this.loteSeleccionado;
+    const identidad = this.identidadActual();
+    if (this.cargandoEntrada || !lote || !identidad
+      || !this.permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) return;
+
+    if (!formularioValido
+      || !Number.isInteger(Number(this.entradaForm.idSucursal))
+      || Number(this.entradaForm.idSucursal) <= 0
+      || !Number.isInteger(Number(this.entradaForm.cantidad))
+      || Number(this.entradaForm.cantidad) <= 0) {
+      this.errorEntrada = 'La sucursal y la cantidad deben ser enteros mayores que cero.';
+      return;
+    }
+
+    const observaciones = this.entradaForm.observaciones?.trim() || null;
+    if (observaciones && observaciones.length > 300) {
+      this.errorEntrada = 'Las observaciones no pueden exceder 300 caracteres.';
+      return;
+    }
+
+    if (!confirm(`¿Registrar ${this.entradaForm.cantidad} unidades en el lote ${lote.numeroLote}?`)) {
+      return;
+    }
+
+    const revision = ++this.revisionEntrada;
+    const request: RegistrarEntradaInventarioRequest = {
+      idSucursal: Number(this.entradaForm.idSucursal),
+      cantidad: Number(this.entradaForm.cantidad),
+      observaciones,
+    };
+    this.errorEntrada = '';
+    this.cargandoEntrada = true;
+
+    this.solicitudEntrada = this.service.registrarEntrada(lote.idLote, request).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        if (revision === this.revisionEntrada) this.cargandoEntrada = false;
+      }),
+    ).subscribe({
+      next: (response: EntradaInventarioResponse) => {
+        if (!this.respuestaEntradaVigente(revision, identidad, lote.idLote)) return;
+        this.aviso = `Entrada #${response.idMovimiento} confirmada: ${response.cantidad} unidades en el lote #${response.idLote}, sucursal #${response.idSucursal}, ${this.formatearFecha(response.fechaMovimiento)}. Existencia resultante: ${response.cantidadDisponible}.`;
+        this.loteSeleccionado = null;
+        this.entradaForm = entradaVacia();
+        this.cargarLotes();
+      },
+      error: (error: HttpErrorResponse) => {
+        if (!this.respuestaEntradaVigente(revision, identidad, lote.idLote)) return;
+        this.errorEntrada = this.apiErrors.messageFor(
+          error,
+          'No fue posible registrar la entrada. Verifica el estado del lote.',
+        );
+      },
+    });
+  }
+
+  eliminar(id: number): void {
+    if (!this.permisos.puedeEliminar(MODULOS_PERMISO.LOTES_MEDICAMENTO)
+      || !confirm('¿Estás seguro de eliminar este lote?')) return;
+
+    this.service.eliminarLote(id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => this.cargarLotes(),
+      error: (error: HttpErrorResponse) => {
+        this.error = this.apiErrors.messageFor(error, 'No se pudo eliminar el lote.');
+      },
+    });
+  }
+
+  cambiarPagina(nuevaPagina: number): void {
+    if (nuevaPagina < 1 || nuevaPagina > this.totalPages
+      || nuevaPagina === this.page || this.cargando) return;
+    this.page = nuevaPagina;
+    this.cargarLotes();
   }
 
   isVencido(fechaVencimiento: string): boolean {
-    return new Date(fechaVencimiento) < new Date();
+    return fechaVencimiento <= new Date().toISOString().slice(0, 10);
   }
 
-  abrirModalEntrada(lote: LoteMedicamentoResponse) {
-    this.loteSeleccionado = lote;
-    this.entradaForm = { idSucursal: 1, cantidad: 0, observaciones: null };
+  private respuestaListadoVigente(revision: number, identidad: string): boolean {
+    return revision === this.revisionListado
+      && identidad === this.identidadActual()
+      && this.permisos.puedeConsultar(MODULOS_PERMISO.LOTES_MEDICAMENTO);
+  }
+
+  private respuestaEntradaVigente(revision: number, identidad: string, idLote: number): boolean {
+    return revision === this.revisionEntrada
+      && identidad === this.identidadActual()
+      && this.loteSeleccionado?.idLote === idLote
+      && this.permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO);
+  }
+
+  private identidadActual(): string | null {
+    const userId = this.session.currentUser()?.idUsuario;
+    const token = this.session.token;
+    return this.session.isAuthenticated() && userId && token ? `${userId}:${token}` : null;
+  }
+
+  private formatearFecha(value: string): string {
+    const fecha = new Date(value);
+    return Number.isNaN(fecha.getTime()) ? value : fecha.toLocaleString('es-GT');
+  }
+
+  private cancelarEntradaProtegida(): void {
+    this.revisionEntrada++;
+    this.solicitudEntrada?.unsubscribe();
+    this.solicitudEntrada = undefined;
+    this.loteSeleccionado = null;
+    this.entradaForm = entradaVacia();
+    this.cargandoEntrada = false;
     this.errorEntrada = '';
   }
 
-  registrarEntrada() {
-    if (!this.loteSeleccionado) return;
-    this.cargandoEntrada = true;
-    this.errorEntrada = '';
-    this.service.registrarEntrada(this.loteSeleccionado.idLote, this.entradaForm).subscribe({
-      next: () => {
-        this.loteSeleccionado = null;
-        this.cargarLotes();
-      },
-      error: (err) => {
-        this.errorEntrada = err.error?.message || 'Error al registrar la entrada';
-        this.cargandoEntrada = false;
-      }
-    });
-  }
-
-  eliminar(id: number) {
-    if (confirm('¿Estás seguro de eliminar este lote?')) {
-      this.service.eliminarLote(id).subscribe({
-        next: () => this.cargarLotes(),
-        error: (err) => alert(err.error?.message || 'No se pudo eliminar el lote')
-      });
-    }
-  }
-
-  cambiarPagina(n: number) {
-    if (n > 0) {
-      this.page = n;
-      this.cargarLotes();
-    }
+  private limpiarDatosProtegidos(): void {
+    this.revisionListado++;
+    this.solicitudListado?.unsubscribe();
+    this.solicitudListado = undefined;
+    this.cancelarEntradaProtegida();
+    this.lotes = [];
+    this.total = 0;
+    this.totalPages = 0;
+    this.cargando = false;
+    this.error = '';
+    this.aviso = '';
   }
 }

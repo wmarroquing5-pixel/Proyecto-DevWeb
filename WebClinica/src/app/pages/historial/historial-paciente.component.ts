@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HistorialService } from '../../core/services/historial.service';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.model';
 
 @Component({
@@ -16,9 +18,11 @@ import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.m
           <h2>Historial Médico</h2>
           <p class="text-muted mb-0">Paciente ID: {{ idPaciente }}</p>
         </div>
-        <a [routerLink]="['/historial', idPaciente, 'nueva-consulta']" class="btn btn-primary">
-          <i class="fa fa-plus"></i> Nueva Consulta
-        </a>
+        @if (permisos.puedeCrear(MODULOS_PERMISO.CONSULTAS)) {
+          <a [routerLink]="['/historial', idPaciente, 'nueva-consulta']" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nueva Consulta
+          </a>
+        }
       </div>
 
       <div class="card p-3 mb-4">
@@ -66,10 +70,12 @@ import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.m
                   <td>{{ c.idMedico }}</td>
                   <td>{{ c.idSucursal }}</td>
                   <td>
-                    <a [routerLink]="['/historial', idPaciente, 'consulta', c.idConsulta]"
-                       class="btn btn-sm btn-info me-1">
-                      <i class="fa fa-eye"></i> Ver
-                    </a>
+                    @if (permisos.puedeConsultar(MODULOS_PERMISO.HISTORIAL)) {
+                      <a [routerLink]="['/historial', idPaciente, 'consulta', c.idConsulta]"
+                         class="btn btn-sm btn-info me-1">
+                        <i class="fa fa-eye"></i> Ver
+                      </a>
+                    }
                   </td>
                 </tr>
               }
@@ -95,6 +101,8 @@ export class HistorialPacienteComponent implements OnInit {
   private service = inject(HistorialService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  readonly permisos = inject(PermisosService);
+  readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   idPaciente!: number;
   consultas: ConsultaListadoDto[] = [];

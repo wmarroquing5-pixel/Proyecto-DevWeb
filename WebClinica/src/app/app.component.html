@@ -1,1 +1,8 @@
+@if (apiErrors.authorizationMessage(); as message) {
+  <div class="authorization-alert alert alert-warning alert-dismissible" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" aria-label="Cerrar"
+      (click)="apiErrors.dismissAuthorizationMessage()"></button>
+  </div>
+}
 <router-outlet></router-outlet>

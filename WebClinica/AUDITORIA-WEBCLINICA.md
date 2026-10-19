@@ -209,7 +209,7 @@ Cobertura nueva: login username/accessToken/me/menu y rechazo 401; navegación p
 
 CRUD de usuarios, empleados, pacientes, medicamentos, lotes, consultas y ventas: contrastados por código y compilación. Sus operaciones reales no fueron ejecutadas y no se declaran aprobadas de extremo a extremo.
 
-Advertencia conservada: `.form-floating>~label -> Did not expect successive traversals`, durante optimización de Bootstrap CSS. El CSS contiene floating labels con pseudoclases/combinadores; el build finaliza correctamente. No se editaron node_modules ni estilos activos para silenciarla. Pendiente comprobar floating labels en navegador y revisar el optimizador con una actualización compatible.
+Advertencia conservada: `.form-floating>label -> Did not expect successive traversals`, durante optimización de Bootstrap CSS. El CSS contiene floating labels con pseudoclases/combinadores; el build finaliza correctamente. No se editaron node_modules ni estilos activos para silenciarla. Pendiente comprobar floating labels en navegador y revisar el optimizador con una actualización compatible.
 
 ## H. Pendientes
 
