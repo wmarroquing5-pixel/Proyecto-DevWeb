@@ -1,15 +1,16 @@
-export interface User {
-  id: number;
-  username: string;
-  fullName: string;
-  email?: string;
-  /** Roles devueltos por el backend, ej: ['ADMIN'] */
-  roles: string[];
+// 👇 Debe coincidir EXACTAMENTE con LoginResponse.cs del backend
+export interface LoginResponse {
+  accessToken: string;   // 👈 NO "token"
+  tokenType: string;
+  expiresAtUtc: string;
 }
 
-export interface LoginResponse {
-  token: string;
-  user: User;
-  /** Menú filtrado por roles, construido en el backend */
-  menu: import('./menu-item.model').MenuItem[];
+export interface User {
+  idUsuario: number;
+  idRol: number;
+  username: string;
+  fullName?: string;
+  idEmpleado?: number | null;
+  roles?: string[];
+  id?: number;  // alias para compatibilidad
 }

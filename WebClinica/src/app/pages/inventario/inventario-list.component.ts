@@ -1,252 +1,214 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import {
-  Categoria,
-  LoteFormData,
-  Marca,
-  MedicamentoConLotes,
-  MedicamentoFormData,
-  STOCK_MINIMO_ALERTA,
-} from '../../core/models/inventario.model';
 import { InventarioService } from '../../core/services/inventario.service';
-import { estadoLote } from '../../core/mock/inventario.mock';
+import { CatalogoMedicamentoResponse, PagedResponse } from '../../core/models/inventario.model';
 
-/**
- * Módulo Inventario de Medicamentos
- *  i.   Registro de medicamentos (listado + alta/edición en modal)
- *  ii.  Registro de lotes por medicamento (modal con FEFO y alertas)
- *  iii. Acceso al historial de entradas/salidas en la vista de detalle.
- */
 @Component({
   selector: 'app-inventario-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
-  templateUrl: './inventario-list.component.html',
-  styleUrl: './inventario-list.component.css',
+  imports: [CommonModule, RouterModule, FormsModule],
+  template: `
+    <div class="container-fluid mt-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fa fa-pills"></i> Inventario de Medicamentos</h2>
+        <div class="d-flex gap-2">
+          <a routerLink="/inventario/medicamentos/nuevo" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Nuevo Medicamento
+          </a>
+          <a routerLink="/inventario/lotes" class="btn btn-secondary">
+            <i class="fa fa-boxes"></i> Gestionar Lotes
+          </a>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="card p-3 mb-4">
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label">Buscar por nombre</label>
+            <input type="text" class="form-control" placeholder="Nombre del medicamento..."
+                   [(ngModel)]="filtroNombre" (input)="buscar()">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Categoría</label>
+            <select class="form-select" [(ngModel)]="filtroCategoriaId" (change)="buscar()">
+              <option [ngValue]="null">Todas</option>
+              @for (c of categorias; track c.idCategoria) {
+                <option [ngValue]="c.idCategoria">{{ c.nombre }}</option>
+              }
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Marca</label>
+            <select class="form-select" [(ngModel)]="filtroMarcaId" (change)="buscar()">
+              <option [ngValue]="null">Todas</option>
+              @for (m of marcas; track m.idMarca) {
+                <option [ngValue]="m.idMarca">{{ m.nombre }}</option>
+              }
+            </select>
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">
+              <i class="fa fa-times"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      @if (cargando) {
+        <div class="text-center py-5">
+          <div class="spinner-border text-primary"></div>
+        </div>
+      } @else if (error) {
+        <div class="alert alert-danger">{{ error }}</div>
+      } @else if (medicamentos.length === 0) {
+        <div class="alert alert-info text-center">No hay medicamentos registrados.</div>
+      } @else {
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead class="table-dark">
+              <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Categoría</th>
+                <th>Marca</th>
+                <th>Precio</th>
+                <th>Stock</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (m of medicamentos; track m.idMedicamento) {
+                <tr>
+                  <td><code>{{ m.codigo }}</code></td>
+                  <td>{{ m.nombre }}</td>
+                  <td>{{ m.categoria }}</td>
+                  <td>{{ m.marca }}</td>
+                  <td>Q{{ m.precioVenta | number:'1.2-2' }}</td>
+                  <td>
+                    <span class="badge"
+                          [class.bg-success]="m.stockTotal > 10"
+                          [class.bg-warning]="m.stockTotal > 0 && m.stockTotal <= 10"
+                          [class.bg-danger]="m.stockTotal === 0">
+                      {{ m.stockTotal }}
+                    </span>
+                  </td>
+                  <td>
+                    <a [routerLink]="['/inventario/medicamentos/editar', m.idMedicamento]"
+                       class="btn btn-sm btn-warning me-1">
+                      <i class="fa fa-edit"></i>
+                    </a>
+                    <button (click)="desactivar(m.idMedicamento)" class="btn btn-sm btn-danger"
+                            [disabled]="!m.stockTotal">
+                      <i class="fa fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Paginación -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <span>Total: {{ total }} medicamentos</span>
+          <div>
+            <button class="btn btn-outline-secondary btn-sm me-2"
+                    (click)="cambiarPagina(page - 1)" [disabled]="page <= 1">
+              Anterior
+            </button>
+            <span class="mx-2">Página {{ page }}</span>
+            <button class="btn btn-outline-secondary btn-sm"
+                    (click)="cambiarPagina(page + 1)" [disabled]="medicamentos.length < pageSize">
+              Siguiente
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  `
 })
 export class InventarioListComponent implements OnInit {
-  private svc = inject(InventarioService);
+  private service = inject(InventarioService);
 
-  readonly medicamentos = signal<MedicamentoConLotes[]>([]);
-  readonly categorias = signal<Categoria[]>([]);
-  readonly marcas = signal<Marca[]>([]);
-  readonly cargando = signal(false);
-  readonly error = signal('');
-  readonly aviso = signal('');
+  medicamentos: CatalogoMedicamentoResponse[] = [];
+  categorias: { idCategoria: number; nombre: string }[] = [];
+  marcas: { idMarca: number; nombre: string }[] = [];
+  total = 0;
+  page = 1;
+  pageSize = 10;
+  cargando = false;
+  error = '';
 
-  filtro = this.svc.filtro();
-  mostrarInactivos = false;
-  stockAlerta = STOCK_MINIMO_ALERTA;
-  readonly todayIso = new Date().toISOString().slice(0, 10);
+  filtroNombre = '';
+  filtroCategoriaId: number | null = null;
+  filtroMarcaId: number | null = null;
 
-  /** Modal medicamento */
-  modalMed = false;
-  editandoMed = false;
-  idEditMed: number | null = null;
-  guardandoMed = false;
-  formMed: MedicamentoFormData = this.formMedVacio();
-
-  /** Modal lote */
-  modalLote = false;
-  medParaLote: MedicamentoConLotes | null = null;
-  guardandoLote = false;
-  formLote: LoteFormData = this.formLoteVacio();
-
-  ngOnInit(): void {
-    this.svc.categorias().subscribe(c => this.categorias.set(c));
-    this.svc.marcas().subscribe(m => this.marcas.set(m));
-    this.cargar();
+  ngOnInit() {
+    this.cargarCatalogos();
+    this.cargarMedicamentos();
   }
 
-  get tituloModalMed(): string {
-    return this.editandoMed ? 'Editar medicamento' : 'Registrar medicamento';
-  }
-
-  cargar(): void {
-    this.cargando.set(true);
-    this.error.set('');
-    this.svc.listarMedicamentos(this.filtro).subscribe({
-      next: list => this.medicamentos.set(this.mostrarInactivos ? list : list.filter(m => m.activo)),
-      error: () => this.error.set('No se pudo conectar con el servidor de inventario.'),
-      complete: () => this.cargando.set(false),
+  cargarCatalogos() {
+    this.service.listarCategorias(1, 100).subscribe({
+      next: (res) => this.categorias = res.items,
+      error: () => console.error('Error cargando categorías')
+    });
+    this.service.listarMarcas(1, 100).subscribe({
+      next: (res) => this.marcas = res.items,
+      error: () => console.error('Error cargando marcas')
     });
   }
 
-  buscar(): void {
-    this.svc.filtro.set(this.filtro);
-    this.cargar();
+  cargarMedicamentos() {
+    this.cargando = true;
+    this.error = '';
+    this.service.listarCatalogo({
+      nombre: this.filtroNombre || null,
+      categoriaId: this.filtroCategoriaId,
+      marcaId: this.filtroMarcaId,
+      page: this.page,
+      pageSize: this.pageSize
+    }).subscribe({
+      next: (res: PagedResponse<CatalogoMedicamentoResponse>) => {
+        this.medicamentos = res.items;
+        this.total = res.total;
+        this.cargando = false;
+      },
+      error: () => {
+        this.error = 'Error al cargar los medicamentos. Verifica tus permisos.';
+        this.cargando = false;
+      }
+    });
   }
 
-  limpiarFiltro(): void {
-    this.filtro = '';
+  buscar() {
+    this.page = 1;
+    this.cargarMedicamentos();
+  }
+
+  limpiarFiltros() {
+    this.filtroNombre = '';
+    this.filtroCategoriaId = null;
+    this.filtroMarcaId = null;
     this.buscar();
   }
 
-  toggleInactivos(): void {
-    this.mostrarInactivos = !this.mostrarInactivos;
-    this.cargar();
-  }
-
-  /* ------------------- i. Modal de medicamento ------------------- */
-
-  nuevoMedicamento(): void {
-    this.formMed = this.formMedVacio();
-    this.editandoMed = false;
-    this.idEditMed = null;
-    this.aviso.set('');
-    this.modalMed = true;
-  }
-
-  editarMedicamento(m: MedicamentoConLotes): void {
-    this.formMed = {
-      idCategoria: m.idCategoria, idMarca: m.idMarca, codigo: m.codigo,
-      nombre: m.nombre, descripcion: m.descripcion ?? '',
-      precioVenta: m.precioVenta, imagenUrl: m.imagenUrl ?? '', activo: m.activo,
-    };
-    this.editandoMed = true;
-    this.idEditMed = m.idMedicamento;
-    this.aviso.set('');
-    this.modalMed = true;
-  }
-
-  cerrarMed(): void { this.modalMed = false; }
-
-  guardarMedicamento(f: any): void {
-    this.aviso.set('');
-    if (!f?.valid) {
-      this.aviso.set('Complete los campos obligatorios: categoría, marca, código, nombre y precio.');
-      return;
-    }
-    // CHK_Medicamento_Precio: PrecioVenta > 0
-    if (this.formMed.precioVenta === null || this.formMed.precioVenta <= 0) {
-      this.aviso.set('El precio de venta debe ser mayor a cero (CHK_Medicamento_Precio).');
-      return;
-    }
-    this.guardandoMed = true;
-    const req = this.editandoMed && this.idEditMed !== null
-      ? this.svc.actualizarMedicamento(this.idEditMed, this.formMed)
-      : this.svc.crearMedicamento(this.formMed);
-
-    req.subscribe({
-      next: m => {
-        this.aviso.set(`Medicamento ${m.nombre} guardado correctamente.`);
-        this.modalMed = false;
-        this.cargar();
-      },
-      error: err => {
-        const msg = err?.error?.message ?? err?.message ?? '';
-        this.aviso.set(msg.includes('DUPLICATE_CODE')
-          ? 'El código ya existe (restricción UNIQUE en Medicamento.Codigo).'
-          : 'Error al guardar el medicamento.');
-      },
-      complete: () => (this.guardandoMed = false),
-    });
-  }
-
-  desactivar(m: MedicamentoConLotes): void {
-    if (!confirm(`¿Desactivar "${m.nombre}"? (baja lógica, Activo = 0)`)) return;
-    this.svc.desactivarMedicamento(m.idMedicamento).subscribe(() => {
-      this.aviso.set('Medicamento desactivado.');
-      this.cargar();
-    });
-  }
-
-  reactivar(m: MedicamentoConLotes): void {
-    this.svc.actualizarMedicamento(m.idMedicamento, {
-      idCategoria: m.idCategoria, idMarca: m.idMarca, codigo: m.codigo,
-      nombre: m.nombre, descripcion: m.descripcion ?? '',
-      precioVenta: m.precioVenta, imagenUrl: m.imagenUrl ?? '', activo: true,
-    }).subscribe(() => {
-      this.aviso.set('Medicamento reactivado.');
-      this.cargar();
-    });
-  }
-
-  /* -------------------- ii. Modal de lote ------------------------ */
-
-  abrirLote(m: MedicamentoConLotes): void {
-    this.medParaLote = m;
-    this.formLote = { ...this.formLoteVacio(), idMedicamento: m.idMedicamento, fechaIngreso: this.todayIso };
-    this.aviso.set('');
-    this.modalLote = true;
-  }
-
-  cerrarLote(): void { this.modalLote = false; }
-
-  guardarLote(f: any): void {
-    this.aviso.set('');
-    if (!f?.valid) {
-      this.aviso.set('Complete: medicamento, número de lote, fechas y cantidad disponible.');
-      return;
-    }
-    // CHK_Lote_Cantidad: CantidadDisponible >= 0
-    if (this.formLote.cantidadDisponible === null || this.formLote.cantidadDisponible < 0) {
-      this.aviso.set('La cantidad disponible no puede ser negativa (CHK_Lote_Cantidad >= 0).');
-      return;
-    }
-    // Regla de negocio: el vencimiento debe ser posterior al ingreso
-    if (this.formLote.fechaVencimiento <= this.formLote.fechaIngreso) {
-      this.aviso.set('La fecha de vencimiento debe ser posterior a la fecha de ingreso.');
-      return;
-    }
-    this.guardandoLote = true;
-    this.svc.crearLote(this.formLote).subscribe({
-      next: l => {
-        this.aviso.set(`Lote ${l.numeroLote} registrado (entrada automática en movimientos).`);
-        this.modalLote = false;
-        this.cargar();
-      },
-      error: err => {
-        const msg = err?.error?.message ?? err?.message ?? '';
-        this.aviso.set(msg.includes('DUPLICATE_LOTE')
-          ? `Ya existe un lote "${this.formLote.numeroLote}" para este medicamento.`
-          : 'Error al registrar el lote.');
-      },
-      complete: () => (this.guardandoLote = false),
-    });
-  }
-
-  /* ------------------------- Utilidades -------------------------- */
-
-  estadoLoteDe(l: any): string {
-    return estadoLote(l);
-  }
-
-  clasesEstado(l: any): string {
-    switch (estadoLote(l)) {
-      case 'Vencido': return 'badge bg-danger';
-      case 'Agotado': return 'badge bg-secondary';
-      case 'Próx. vencer': return 'badge bg-warning text-dark';
-      case 'Stock bajo': return 'badge bg-info text-dark';
-      default: return 'badge bg-success';
+  cambiarPagina(n: number) {
+    if (n > 0) {
+      this.page = n;
+      this.cargarMedicamentos();
     }
   }
 
-  fmtMoneda(v: number): string {
-    return v.toLocaleString('es-GT', { style: 'currency', currency: 'Q' });
-  }
-
-  fmtFecha(d: string): string {
-    return d ? d.slice(0, 10) : '—';
-  }
-
-  diasRestantes(vencimiento: string): number {
-    return Math.ceil((new Date(vencimiento).getTime() - Date.now()) / 86400000);
-  }
-
-  private formMedVacio(): MedicamentoFormData {
-    return {
-      idCategoria: null, idMarca: null, codigo: '', nombre: '',
-      descripcion: '', precioVenta: null, imagenUrl: '', activo: true,
-    };
-  }
-
-  private formLoteVacio(): LoteFormData {
-    return {
-      idMedicamento: null, numeroLote: '', fechaIngreso: '',
-      fechaVencimiento: '', cantidadDisponible: null,
-    };
+  desactivar(id: number) {
+    if (confirm('¿Estás seguro de desactivar este medicamento?')) {
+      this.service.desactivarMedicamento(id).subscribe({
+        next: () => this.cargarMedicamentos(),
+        error: () => alert('No se pudo desactivar el medicamento.')
+      });
+    }
   }
 }

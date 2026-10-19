@@ -1,6 +1,6 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:5000/api',
+  apiUrl: 'http://localhost:5293/api',
   /** URL del Hub SignalR (.NET 10): app.MapHub<HabitacionesHub>("/hubs/habitaciones") */
   hubUrl: 'http://localhost:5000/hubs/habitaciones',
   /** URL del Hub SignalR de citas: app.MapHub<CitasHub>("/hubs/citas") */
@@ -10,5 +10,5 @@ export const environment = {
    * Cuando tu compañero termine el backend, cambia esto a `false`.
    * No hay que tocar ningún componente: solo este flag.
    */
-  useMockApi: true,
+  useMockApi: false,
 };

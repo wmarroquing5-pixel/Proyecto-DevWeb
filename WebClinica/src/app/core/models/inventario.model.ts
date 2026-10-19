@@ -1,150 +1,129 @@
-/**
- * Modelos del módulo Inventario de Medicamentos.
- * Espejo 1:1 de las tablas del script SQL:
- * Categoria, Marca, Medicamento, LoteMedicamento, MovimientoInventario (nueva),
- * y las vistas derivadas de Venta/VentaDetalle/Consulta para trazabilidad.
- */
+// ==========================================
+// MEDICAMENTOS
+// ==========================================
 
-/** Tabla Categoria */
-export interface Categoria {
-  idCategoria: number;
+// Respuesta del catálogo (con stock calculado y datos de marca/categoría)
+export interface CatalogoMedicamentoResponse {
+  idMedicamento: number;
+  codigo: string;
   nombre: string;
-  activa: boolean;
+  precioVenta: number;
+  marca: string;
+  categoria: string;
+  descripcion: string | null;
+  imagenURL: string | null;
+  stockTotal: number;
 }
 
-/** Tabla Marca */
-export interface Marca {
-  idMarca: number;
-  nombre: string;
-  activa: boolean;
-}
-
-/** Tabla Medicamento (CHK_Medicamento_Precio: PrecioVenta > 0) */
-export interface Medicamento {
+// Respuesta básica (sin stock ni joins)
+export interface MedicamentoResponse {
   idMedicamento: number;
   idCategoria: number;
-  categoriaNombre: string;        // JOIN Categoria
   idMarca: number;
-  marcaNombre: string;            // JOIN Marca
-  codigo: string;                 // UNIQUE
+  codigo: string;
   nombre: string;
   descripcion: string | null;
   precioVenta: number;
-  imagenUrl: string | null;
+  imagenURL: string | null;
   activo: boolean;
 }
 
-/** Formulario de alta/edición de medicamento */
-export interface MedicamentoFormData {
-  idCategoria: number | null;
-  idMarca: number | null;
+// Request para crear/actualizar medicamento
+export interface GuardarMedicamentoRequest {
+  idCategoria: number;
+  idMarca: number;
   codigo: string;
   nombre: string;
-  descripcion: string;
-  precioVenta: number | null;
-  imagenUrl: string;
-  activo: boolean;
+  descripcion?: string | null;
+  precioVenta: number;
+  imagenURL?: string | null;
+  activo?: boolean | null;
 }
 
-/** Estado calculado de un lote según CHK_Lote_Cantidad y FechaVencimiento */
-export type EstadoLote = 'Disponible' | 'Stock bajo' | 'Agotado' | 'Próx. vencer' | 'Vencido';
+// Filtro para el catálogo
+export interface CatalogoFiltroDto {
+  nombre?: string | null;
+  categoriaId?: number | null;
+  marcaId?: number | null;
+  page?: number;
+  pageSize?: number;
+}
 
-/** Tabla LoteMedicamento — mínimo requerido por la especificación:
- *  número de lote, medicamento asociado, fecha de ingreso, fecha de vencimiento
- *  y cantidad disponible. */
-export interface LoteMedicamento {
+// ==========================================
+// LOTES DE MEDICAMENTO
+// ==========================================
+
+export interface LoteMedicamentoResponse {
   idLote: number;
   idMedicamento: number;
-  medicamentoNombre: string;      // JOIN Medicamento
-  medicamentoCodigo: string;      // JOIN Medicamento
-  numeroLote: string;             // NumeroLote NOT NULL
-  fechaIngreso: string;           // DATE NOT NULL
-  fechaVencimiento: string;       // DATE NOT NULL
-  cantidadDisponible: number;     // >= 0 (CHK_Lote_Cantidad)
+  numeroLote: string;
+  fechaIngreso: string; // DateOnly → "YYYY-MM-DD"
+  fechaVencimiento: string; // DateOnly → "YYYY-MM-DD"
+  cantidadDisponible: number;
 }
 
-/** Formulario de registro de lote */
-export interface LoteFormData {
-  idMedicamento: number | null;
+export interface GuardarLoteMedicamentoRequest {
+  idMedicamento: number;
   numeroLote: string;
   fechaIngreso: string;
   fechaVencimiento: string;
-  cantidadDisponible: number | null;
+  cantidadDisponible: number;
 }
 
-/** Tipos de movimiento (entrada/salida). CHECK sugerido en el backend. */
-export type TipoMovimiento = 'Entrada' | 'Salida';
-export type MotivoMovimiento = 'Compra' | 'Devolución' | 'Venta' | 'Uso clínico' | 'Ajuste' | 'Merma';
+export interface ActualizarLoteMedicamentoRequest {
+  idMedicamento: number;
+  numeroLote: string;
+  fechaIngreso: string;
+  fechaVencimiento: string;
+  cantidadDisponible: number;
+  cantidadEsperada?: number | null;
+}
 
-/**
- * NUEVA tabla sugerida: MovimientoInventario
- * Registra cada entrada y salida con su origen (venta de farmacia o uso clínico)
- * para dar trazabilidad total del stock.
- */
-export interface MovimientoInventario {
+export interface RegistrarEntradaInventarioRequest {
+  idSucursal: number;
+  cantidad: number;
+  observaciones?: string | null;
+}
+
+export interface EntradaInventarioResponse {
   idMovimiento: number;
   idLote: number;
-  numeroLote: string;             // JOIN LoteMedicamento
   idMedicamento: number;
-  medicamentoNombre: string;      // JOIN Medicamento
-  tipo: TipoMovimiento;           // 'Entrada' | 'Salida'
-  motivo: MotivoMovimiento;       // Compra / Venta / Uso clínico / ...
-  cantidad: number;               // > 0 (CHK)
-  referencia: string | null;      // 'Venta #123' | 'Consulta #45' | proveedor...
-  idUsuario: number;              // FK Usuario (quien registró)
-  usuarioNombre: string;          // JOIN Usuario -> Empleado
-  fechaMovimiento: string;        // DATETIME2 DEFAULT SYSUTCDATETIME()
+  idSucursal: number;
+  cantidad: number;
+  cantidadDisponible: number;
+  fechaMovimiento: string; // DateTime ISO
+  observaciones: string | null;
 }
 
-/** Formulario de entrada/salida */
-export interface MovimientoFormData {
-  idLote: number | null;
-  tipo: TipoMovimiento;
-  motivo: MotivoMovimiento;
-  cantidad: number | null;
-  referencia: string;
+// ==========================================
+// CATEGORÍAS Y MARCAS
+// ==========================================
+
+export interface CategoriaResponse {
+  idCategoria: number;
+  nombre: string;
+  activa: boolean;
 }
 
-/** Fila del listado principal: medicamento + resumen de sus lotes */
-export interface MedicamentoConLotes extends Medicamento {
-  lotes: LoteMedicamento[];
-  stockTotal: number;             // SUM(CantidadDisponible) de lotes no vencidos
-  stockMinimoAlerta: boolean;     // stockTotal <= umbral global
+export interface MarcaResponse {
+  idMarca: number;
+  nombre: string;
+  activa: boolean;
 }
 
-/** Umbral de alerta de stock bajo (configurable en pantalla) */
-export const STOCK_MINIMO_ALERTA = 20;
-
-/** Vencimiento "próximo" = menos de 60 días */
-export const DIAS_PROXIMO_VENCIMIENTO = 60;
-
-/* ------------------------------------------------------------------ */
-/* KPIs del panel de inventario                                          */
-/* ------------------------------------------------------------------ */
-
-export interface ResumenInventario {
-  totalMedicamentos: number;
-  totalLotes: number;
-  unidadesEnStock: number;
-  valorInventario: number;        // SUM(cantidad * precioVenta)
-  lotesVencidos: number;
-  lotesProximoVencer: number;
-  lotesAgotados: number;
-  movimientosHoy: number;
+export interface GuardarCatalogoFarmaciaRequest {
+  nombre: string;
+  activa?: boolean | null;
 }
 
-/** Contrato REST esperado del backend .NET (InventarioController):
- *
- *  GET    /api/Catalogos/categorias          -> Categoria[]
- *  GET    /api/Catalogos/marcas              -> Marca[]
- *  GET    /api/Medicamentos?filtro=          -> MedicamentoConLotes[]
- *  POST   /api/Medicamentos                  -> Medicamento   (registro de medicamentos)
- *  PUT    /api/Medicamentos/{id}             -> Medicamento
- *  DELETE /api/Medicamentos/{id}             -> baja lógica (Activo = 0)
- *  GET    /api/Lotes?idMedicamento=          -> LoteMedicamento[]
- *  POST   /api/Lotes                         -> LoteMedicamento (registro de lotes)
- *  PUT    /api/Lotes/{id}                    -> LoteMedicamento
- *  POST   /api/Movimientos                   -> MovimientoInventario (entradas/salidas)
- *  GET    /api/Movimientos?idLote=&tipo=     -> MovimientoInventario[]
- *  GET    /api/Inventario/Resumen            -> ResumenInventario
- */
+// ==========================================
+// GENÉRICO
+// ==========================================
+
+export interface PagedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}

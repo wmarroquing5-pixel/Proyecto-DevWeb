@@ -1,161 +1,149 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
-  Categoria,
-  LoteFormData,
-  LoteMedicamento,
-  Marca,
-  Medicamento,
-  MedicamentoConLotes,
-  MedicamentoFormData,
-  MovimientoFormData,
-  MovimientoInventario,
-  ResumenInventario,
+  CatalogoMedicamentoResponse,
+  MedicamentoResponse,
+  GuardarMedicamentoRequest,
+  CatalogoFiltroDto,
+  LoteMedicamentoResponse,
+  GuardarLoteMedicamentoRequest,
+  ActualizarLoteMedicamentoRequest,
+  RegistrarEntradaInventarioRequest,
+  EntradaInventarioResponse,
+  CategoriaResponse,
+  MarcaResponse,
+  GuardarCatalogoFarmaciaRequest,
+  PagedResponse
 } from '../models/inventario.model';
-import {
-  mockActualizarLote,
-  mockActualizarMedicamento,
-  mockCatalogoCategorias,
-  mockCatalogoMarcas,
-  mockCrearLote,
-  mockCrearMedicamento,
-  mockEliminarMedicamento,
-  mockListarLotes,
-  mockListarMedicamentos,
-  mockListarMovimientos,
-  mockRegistrarMovimiento,
-  mockResumenInventario,
-} from '../mock/inventario.mock';
 
-/**
- * Servicio del módulo Inventario de Medicamentos.
- * Alterna entre mock y API .NET real según environment.useMockApi.
- * Contrato REST documentado en inventario.model.ts.
- */
 @Injectable({ providedIn: 'root' })
 export class InventarioService {
-
   private http = inject(HttpClient);
+  private apiUrl = `${environment.apiUrl}`;
 
-  /** Último filtro usado (se conserva al volver del detalle) */
-  readonly filtro = signal<string>('');
+  // ==================== MEDICAMENTOS ====================
 
-  /* ------------------------- Catálogos ------------------------- */
+  listarCatalogo(filtro: CatalogoFiltroDto): Observable<PagedResponse<CatalogoMedicamentoResponse>> {
+    let params = new HttpParams()
+      .set('page', (filtro.page ?? 1).toString())
+      .set('pageSize', (filtro.pageSize ?? 20).toString());
 
-  categorias(): Observable<Categoria[]> {
-    if (environment.useMockApi) return mockCatalogoCategorias();
-    return this.http.get<Categoria[]>(`${environment.apiUrl}/Catalogos/categorias`);
+    if (filtro.nombre) params = params.set('nombre', filtro.nombre);
+    if (filtro.categoriaId) params = params.set('categoriaId', filtro.categoriaId.toString());
+    if (filtro.marcaId) params = params.set('marcaId', filtro.marcaId.toString());
+
+    return this.http.get<PagedResponse<CatalogoMedicamentoResponse>>(
+      `${this.apiUrl}/medicamentos/catalogo`, { params }
+    );
   }
 
-  marcas(): Observable<Marca[]> {
-    if (environment.useMockApi) return mockCatalogoMarcas();
-    return this.http.get<Marca[]>(`${environment.apiUrl}/Catalogos/marcas`);
+  obtenerCatalogo(id: number): Observable<CatalogoMedicamentoResponse> {
+    return this.http.get<CatalogoMedicamentoResponse>(`${this.apiUrl}/medicamentos/catalogo/${id}`);
   }
 
-  /* --------------------- i. Medicamentos ----------------------- */
-
-  listarMedicamentos(filtro?: string): Observable<MedicamentoConLotes[]> {
-    const q = filtro ?? this.filtro();
-    if (environment.useMockApi) return mockListarMedicamentos(q);
-    return this.http.get<MedicamentoConLotes[]>(`${environment.apiUrl}/Medicamentos`, {
-      params: q ? { filtro: q } : {},
-    });
+  listarMedicamentos(page = 1, pageSize = 20): Observable<PagedResponse<MedicamentoResponse>> {
+    const params = new HttpParams()
+      .set('page', page.toString())
+      .set('pageSize', pageSize.toString());
+    return this.http.get<PagedResponse<MedicamentoResponse>>(
+      `${this.apiUrl}/medicamentos`, { params }
+    );
   }
 
-  crearMedicamento(data: MedicamentoFormData): Observable<Medicamento> {
-    const payload = this.medToEntity(data);
-    if (environment.useMockApi) return mockCrearMedicamento(payload);
-    return this.http.post<Medicamento>(`${environment.apiUrl}/Medicamentos`, payload);
+  obtenerMedicamento(id: number): Observable<MedicamentoResponse> {
+    return this.http.get<MedicamentoResponse>(`${this.apiUrl}/medicamentos/${id}`);
   }
 
-  actualizarMedicamento(id: number, data: MedicamentoFormData): Observable<Medicamento> {
-    const payload = this.medToEntity(data);
-    if (environment.useMockApi) return mockActualizarMedicamento(id, payload);
-    return this.http.put<Medicamento>(`${environment.apiUrl}/Medicamentos/${id}`, payload);
+  crearMedicamento(request: GuardarMedicamentoRequest): Observable<MedicamentoResponse> {
+    return this.http.post<MedicamentoResponse>(`${this.apiUrl}/medicamentos`, request);
   }
 
-  desactivarMedicamento(id: number): Observable<{ ok: boolean }> {
-    if (environment.useMockApi) return mockEliminarMedicamento(id);
-    return this.http.delete<{ ok: boolean }>(`${environment.apiUrl}/Medicamentos/${id}`);
+  actualizarMedicamento(id: number, request: GuardarMedicamentoRequest): Observable<MedicamentoResponse> {
+    return this.http.put<MedicamentoResponse>(`${this.apiUrl}/medicamentos/${id}`, request);
   }
 
-  /* ------------------------ ii. Lotes -------------------------- */
-
-  listarLotes(idMedicamento?: number): Observable<LoteMedicamento[]> {
-    if (environment.useMockApi) return mockListarLotes(idMedicamento);
-    return this.http.get<LoteMedicamento[]>(`${environment.apiUrl}/Lotes`, {
-      params: idMedicamento ? { idMedicamento } : {},
-    });
+  desactivarMedicamento(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/medicamentos/${id}`);
   }
 
-  crearLote(data: LoteFormData): Observable<LoteMedicamento> {
-    if (!data.idMedicamento || !data.numeroLote.trim() || !data.fechaIngreso ||
-        !data.fechaVencimiento || data.cantidadDisponible === null) {
-      throw new Error('Faltan campos obligatorios del lote');
-    }
-    const payload = {
-      idMedicamento: data.idMedicamento,
-      numeroLote: data.numeroLote.trim(),
-      fechaIngreso: data.fechaIngreso,
-      fechaVencimiento: data.fechaVencimiento,
-      cantidadDisponible: data.cantidadDisponible,
-    };
-    if (environment.useMockApi) return mockCrearLote(payload);
-    return this.http.post<LoteMedicamento>(`${environment.apiUrl}/Lotes`, payload);
+  // ==================== LOTES ====================
+
+  listarLotes(page = 1, pageSize = 20): Observable<PagedResponse<LoteMedicamentoResponse>> {
+    const params = new HttpParams()
+      .set('page', page.toString())
+      .set('pageSize', pageSize.toString());
+    return this.http.get<PagedResponse<LoteMedicamentoResponse>>(
+      `${this.apiUrl}/lotes-medicamento`, { params }
+    );
   }
 
-  actualizarLote(id: number, data: Partial<LoteMedicamento>): Observable<LoteMedicamento> {
-    if (environment.useMockApi) return mockActualizarLote(id, data);
-    return this.http.put<LoteMedicamento>(`${environment.apiUrl}/Lotes/${id}`, data);
+  obtenerLote(id: number): Observable<LoteMedicamentoResponse> {
+    return this.http.get<LoteMedicamentoResponse>(`${this.apiUrl}/lotes-medicamento/${id}`);
   }
 
-  /* ------------- iii. Entradas / salidas (movimientos) ---------- */
-
-  registrarMovimiento(data: MovimientoFormData): Observable<MovimientoInventario> {
-    if (!data.idLote || !data.cantidad || data.cantidad <= 0) {
-      throw new Error('Selecciona un lote e ingresa una cantidad mayor a cero');
-    }
-    const payload = {
-      idLote: data.idLote,
-      tipo: data.tipo,
-      motivo: data.motivo,
-      cantidad: data.cantidad,
-      referencia: data.referencia.trim(),
-    };
-    if (environment.useMockApi) return mockRegistrarMovimiento(payload);
-    return this.http.post<MovimientoInventario>(`${environment.apiUrl}/Movimientos`, payload);
+  crearLote(request: GuardarLoteMedicamentoRequest): Observable<LoteMedicamentoResponse> {
+    return this.http.post<LoteMedicamentoResponse>(`${this.apiUrl}/lotes-medicamento`, request);
   }
 
-  listarMovimientos(filtro?: { idLote?: number; tipo?: string }): Observable<MovimientoInventario[]> {
-    if (environment.useMockApi) return mockListarMovimientos(filtro);
-    let params = new HttpParams();
-    if (filtro?.idLote) params = params.set('idLote', filtro.idLote);
-    if (filtro?.tipo) params = params.set('tipo', filtro.tipo);
-    return this.http.get<MovimientoInventario[]>(`${environment.apiUrl}/Movimientos`, { params });
+  actualizarLote(id: number, request: ActualizarLoteMedicamentoRequest): Observable<LoteMedicamentoResponse> {
+    return this.http.put<LoteMedicamentoResponse>(`${this.apiUrl}/lotes-medicamento/${id}`, request);
   }
 
-  /* -------------------------- KPIs ------------------------------ */
-
-  resumen(): Observable<ResumenInventario> {
-    if (environment.useMockApi) return mockResumenInventario();
-    return this.http.get<ResumenInventario>(`${environment.apiUrl}/Inventario/Resumen`);
+  registrarEntrada(idLote: number, request: RegistrarEntradaInventarioRequest): Observable<EntradaInventarioResponse> {
+    return this.http.post<EntradaInventarioResponse>(
+      `${this.apiUrl}/lotes-medicamento/${idLote}/entradas`, request
+    );
   }
 
-  /* ------------------------- Privados --------------------------- */
+  eliminarLote(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/lotes-medicamento/${id}`);
+  }
 
-  /** Formulario -> entidad Medicamento (NULL donde la BD lo permite) */
-  private medToEntity(d: MedicamentoFormData): Omit<Medicamento, 'idMedicamento' | 'categoriaNombre' | 'marcaNombre'> {
-    return {
-      idCategoria: d.idCategoria!,
-      idMarca: d.idMarca!,
-      codigo: d.codigo.trim(),
-      nombre: d.nombre.trim(),
-      descripcion: d.descripcion.trim() || null,
-      precioVenta: d.precioVenta!,
-      imagenUrl: d.imagenUrl.trim() || null,
-      activo: d.activo,
-    };
+  // ==================== CATEGORÍAS ====================
+
+  listarCategorias(page = 1, pageSize = 100): Observable<PagedResponse<CategoriaResponse>> {
+    const params = new HttpParams()
+      .set('page', page.toString())
+      .set('pageSize', pageSize.toString());
+    return this.http.get<PagedResponse<CategoriaResponse>>(
+      `${this.apiUrl}/categorias`, { params }
+    );
+  }
+
+  crearCategoria(request: GuardarCatalogoFarmaciaRequest): Observable<CategoriaResponse> {
+    return this.http.post<CategoriaResponse>(`${this.apiUrl}/categorias`, request);
+  }
+
+  actualizarCategoria(id: number, request: GuardarCatalogoFarmaciaRequest): Observable<CategoriaResponse> {
+    return this.http.put<CategoriaResponse>(`${this.apiUrl}/categorias/${id}`, request);
+  }
+
+  desactivarCategoria(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/categorias/${id}`);
+  }
+
+  // ==================== MARCAS ====================
+
+  listarMarcas(page = 1, pageSize = 100): Observable<PagedResponse<MarcaResponse>> {
+    const params = new HttpParams()
+      .set('page', page.toString())
+      .set('pageSize', pageSize.toString());
+    return this.http.get<PagedResponse<MarcaResponse>>(
+      `${this.apiUrl}/marcas`, { params }
+    );
+  }
+
+  crearMarca(request: GuardarCatalogoFarmaciaRequest): Observable<MarcaResponse> {
+    return this.http.post<MarcaResponse>(`${this.apiUrl}/marcas`, request);
+  }
+
+  actualizarMarca(id: number, request: GuardarCatalogoFarmaciaRequest): Observable<MarcaResponse> {
+    return this.http.put<MarcaResponse>(`${this.apiUrl}/marcas/${id}`, request);
+  }
+
+  desactivarMarca(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/marcas/${id}`);
   }
 }

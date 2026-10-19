@@ -3,7 +3,6 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, of, shareReplay, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { MenuItem } from '../models/menu-item.model';
-import { MOCK_MENU } from '../mock/menu.mock';
 import { AuthService } from './auth.service';
 
 @Injectable({ providedIn: 'root' })
@@ -31,9 +30,6 @@ export class MenuService {
    */
   loadMenu(): Observable<MenuItem[]> {
     // MODO MOCK: devuelve el menu de desarrollo sin llamar a la API
-    if (environment.useMockApi) {
-      return of(MOCK_MENU).pipe(tap(items => this._items.set(items)));
-    }
     return this.http.get<MenuItem[]>(`${environment.apiUrl}/menu`).pipe(
       tap(items => this._items.set(items)),
       shareReplay(1),
