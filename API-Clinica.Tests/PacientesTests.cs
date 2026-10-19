@@ -66,7 +66,7 @@ public sealed class PacientesTests
         Assert.Equal(paciente.IdPaciente, almacenado.IdPaciente);
         Assert.Equal("CF", almacenado.Nit);
         Assert.Equal("Ana López", almacenado.NombreFacturacion);
-        Assert.Equal("imagen.png", almacenado.UrlFoto);
+        Assert.Null(almacenado.UrlFoto);
         Assert.True(almacenado.Activo);
     }
 

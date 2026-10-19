@@ -20,6 +20,9 @@ public sealed class GlobalExceptionHandler(
             ForbiddenException => (StatusCodes.Status403Forbidden, "Acceso prohibido", exception.Message),
             UnauthorizedException => (StatusCodes.Status401Unauthorized, "No autorizado", exception.Message),
             BusinessRuleException => (StatusCodes.Status422UnprocessableEntity, "Regla de negocio incumplida", exception.Message),
+            PayloadTooLargeException => (StatusCodes.Status413PayloadTooLarge, "Contenido demasiado grande", exception.Message),
+            UnsupportedMediaTypeException => (StatusCodes.Status415UnsupportedMediaType, "Formato no admitido", exception.Message),
+            ExternalDependencyException => (StatusCodes.Status503ServiceUnavailable, "Dependencia no disponible", exception.Message),
             _ => (StatusCodes.Status500InternalServerError, "Error interno", "Ocurrió un error inesperado.")
         };
 

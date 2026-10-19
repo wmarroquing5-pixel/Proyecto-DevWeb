@@ -105,7 +105,6 @@ public sealed class MedicamentoService(
         var codigo = FarmaciaValidation.RequiredText(request.Codigo, "Codigo", 50);
         var nombre = FarmaciaValidation.RequiredText(request.Nombre, "Nombre", 150);
         var descripcion = FarmaciaValidation.OptionalText(request.Descripcion, "Descripcion", 500);
-        var imagen = FarmaciaValidation.OptionalText(request.ImagenURL, "ImagenURL", 500);
         var precio = FarmaciaValidation.Price(request.PrecioVenta);
         var activo = request.Activo ?? true;
         await ValidarRelacionesAsync(request.IdCategoria, request.IdMarca, activo, cancellationToken);
@@ -115,7 +114,7 @@ public sealed class MedicamentoService(
         {
             IdCategoria = request.IdCategoria, IdMarca = request.IdMarca,
             Codigo = codigo, Nombre = nombre, Descripcion = descripcion,
-            PrecioVenta = precio, ImagenURL = imagen, Activo = activo
+            PrecioVenta = precio, ImagenURL = null, Activo = activo
         };
         context.Medicamentos.Add(medicine);
         await GuardarAsync(cancellationToken);
@@ -131,7 +130,6 @@ public sealed class MedicamentoService(
         var codigo = FarmaciaValidation.RequiredText(request.Codigo, "Codigo", 50);
         var nombre = FarmaciaValidation.RequiredText(request.Nombre, "Nombre", 150);
         var descripcion = FarmaciaValidation.OptionalText(request.Descripcion, "Descripcion", 500);
-        var imagen = FarmaciaValidation.OptionalText(request.ImagenURL, "ImagenURL", 500);
         var precio = FarmaciaValidation.Price(request.PrecioVenta);
         var activo = request.Activo ?? medicine.Activo;
         await ValidarRelacionesAsync(request.IdCategoria, request.IdMarca, activo, cancellationToken);
@@ -143,7 +141,6 @@ public sealed class MedicamentoService(
         medicine.Nombre = nombre;
         medicine.Descripcion = descripcion;
         medicine.PrecioVenta = precio;
-        medicine.ImagenURL = imagen;
         medicine.Activo = activo;
         await GuardarAsync(cancellationToken);
         return ToResponse(medicine);

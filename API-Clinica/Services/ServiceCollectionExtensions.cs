@@ -43,6 +43,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILoteMedicamentoService, LoteMedicamentoService>();
         services.AddScoped<IVentaService, VentaService>();
         services.AddScoped<IFacturaServiciosService, FacturaServiciosService>();
+        services.AddSingleton<PhotoOperationLockRegistry>();
+        services.AddScoped<PhotoOperationLock>();
+        services.AddSingleton<IPhotoStorageService, CloudflareR2PhotoStorageService>();
+        services.AddSingleton<IPhotoImageProcessor, PhotoImageProcessor>();
+        services.AddScoped<IPhotoService, PhotoService>();
+        services.AddOptions<R2Options>()
+            .BindConfiguration(R2Options.SectionName)
+            .Validate(options => options.IsValid(),
+                "R2 debe estar vacío o contener AccountId alfanumérico, AccessKeyId, SecretAccessKey y BucketName=clinica-fotos.")
+            .ValidateOnStart();
         services.AddHttpContextAccessor();
         services.AddExceptionHandler<GlobalExceptionHandler>();
         services.AddProblemDetails();

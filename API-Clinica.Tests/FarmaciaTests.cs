@@ -121,7 +121,7 @@ public sealed class FarmaciaTests
         Assert.Equal("Laboratorio", item.Marca);
         Assert.Equal("Analgésicos", item.Categoria);
         Assert.Equal("Tabletas", item.Descripcion);
-        Assert.Equal("https://example.test/med.png", item.ImagenURL);
+        Assert.Null(item.ImagenURL);
         Assert.Equal(7, item.ExistenciaTotal);
         var secondPage = await client.GetFromJsonAsync<PagedResponse<CatalogoMedicamentoResponse>>(
             "/api/medicamentos/catalogo?page=2&pageSize=1");

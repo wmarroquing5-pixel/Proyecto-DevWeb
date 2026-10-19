@@ -12,6 +12,12 @@ public sealed class UnauthorizedException(string message) : AppException(message
 
 public sealed class BusinessRuleException(string message) : AppException(message);
 
+public sealed class PayloadTooLargeException(string message) : AppException(message);
+
+public sealed class UnsupportedMediaTypeException(string message) : AppException(message);
+
+public sealed class ExternalDependencyException(string message) : AppException(message);
+
 public sealed class AppValidationException(
     string message,
     IReadOnlyDictionary<string, string[]> errors) : AppException(message)

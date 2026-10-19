@@ -101,7 +101,7 @@ public sealed class PacienteService(
         paciente.Nit = TextoOpcional(request.Nit, nameof(request.Nit), 50);
         paciente.NombreFacturacion = TextoOpcional(request.NombreFacturacion, nameof(request.NombreFacturacion), 150);
         paciente.Direccion = TextoOpcional(request.Direccion, nameof(request.Direccion), 150);
-        paciente.UrlFoto = TextoOpcional(request.UrlFoto, nameof(request.UrlFoto), 500);
+        // UrlFoto es propiedad del servidor y solo se modifica mediante /foto.
     }
 
     private static DateOnly FechaValida(DateOnly fecha)
