@@ -8,21 +8,46 @@
 const fs = require('fs');
 const path = require('path');
 const { parseTemplate } = require('@angular/compiler');
+const ts = require('typescript');
 
 function walk(dir, out) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, out);
-    else if (p.endsWith('.component.html')) out.push(p);
+    else if (p.endsWith('.component.html') || p.endsWith('.component.ts')) out.push(p);
   }
   return out;
 }
 
 const files = walk(path.join(__dirname, '..', 'src', 'app'), []);
+const templates = [];
+for (const f of files) {
+  const source = fs.readFileSync(f, 'utf8');
+  if (f.endsWith('.html')) {
+    templates.push({ file: f, html: source });
+    continue;
+  }
+  const ast = ts.createSourceFile(f, source, ts.ScriptTarget.Latest, true);
+  function visit(node) {
+    if (ts.isDecorator(node) && ts.isCallExpression(node.expression) &&
+        node.expression.expression.getText(ast) === 'Component') {
+      const metadata = node.expression.arguments[0];
+      if (metadata && ts.isObjectLiteralExpression(metadata)) {
+        for (const prop of metadata.properties) {
+          if (ts.isPropertyAssignment(prop) && prop.name.getText(ast) === 'template' &&
+              ts.isStringLiteralLike(prop.initializer)) {
+            templates.push({ file: f + ' (inline)', html: prop.initializer.text });
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+}
 let failed = 0;
 
-for (const f of files) {
-  const html = fs.readFileSync(f, 'utf8');
+for (const { file: f, html } of templates) {
   const problems = [];
 
   // Chequeos rapidos de antipatrones que rompieron builds anteriores
@@ -61,5 +86,5 @@ for (const f of files) {
   }
 }
 
-console.log(`\n${files.length} plantillas analizadas, ${failed} con problemas.`);
+console.log(`\n${templates.length} plantillas analizadas, ${failed} con problemas.`);
 process.exit(failed ? 1 : 0);

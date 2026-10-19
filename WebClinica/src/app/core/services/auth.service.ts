@@ -1,17 +1,15 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, of, tap } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { LoginResponse, User } from '../models/user.model';
-import { mockLogin } from '../mock/login.mock';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-
   readonly currentUser = signal<User | null>(this.readUser());
   readonly isAuthenticated = computed(() => !!this.currentUser() && !!this.token);
 
@@ -25,19 +23,31 @@ export class AuthService {
   }
 
   login(usuario: string, password: string): Observable<LoginResponse> {
-    // MODO MOCK: simula la respuesta del backend mientras no exista
-    if (environment.useMockApi) {
-      return mockLogin(usuario, password).pipe(tap(res => this.storeSession(res)));
-    }
     return this.http
-      .post<LoginResponse>(`${environment.apiUrl}/auth/login`, { usuario, password })
-      .pipe(tap(res => this.storeSession(res)));
+      .post<LoginResponse>(`${environment.apiUrl}/auth/login`, {
+        username: usuario,   // 👈 "username" coincide con LoginRequest.Username
+        password,
+      })
+      .pipe(tap(res => this.storeToken(res)));
   }
 
-  private storeSession(res: LoginResponse): void {
-    localStorage.setItem(TOKEN_KEY, res.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-    this.currentUser.set(res.user);
+  private storeToken(res: LoginResponse): void {
+    localStorage.setItem(TOKEN_KEY, res.accessToken);  // 👈 accessToken
+  }
+
+  /** Carga el usuario desde GET /api/auth/me */
+  loadCurrentUser(): Observable<User> {
+    return this.http.get<User>(`${environment.apiUrl}/auth/me`).pipe(
+      tap(user => {
+        const normalized: User = {
+          ...user,
+          id: user.idUsuario,
+          fullName: user.fullName ?? user.username,
+        };
+        localStorage.setItem(USER_KEY, JSON.stringify(normalized));
+        this.currentUser.set(normalized);
+      })
+    );
   }
 
   logout(): void {
@@ -50,7 +60,7 @@ export class AuthService {
   hasRole(roles: string[]): boolean {
     if (!roles || roles.length === 0) return true;
     const user = this.currentUser();
-    return !!user && roles.some(r => user.roles.includes(r));
+    return !!user && !!user.roles && roles.some(r => user.roles?.includes(r));
   }
 
   private readUser(): User | null {

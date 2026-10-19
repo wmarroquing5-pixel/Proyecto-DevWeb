@@ -1,6 +1,5 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { MenuService } from '../../core/services/menu.service';
-import { MenuItem } from '../../core/models/menu-item.model';
 
 @Component({
   selector: 'app-dashboard',

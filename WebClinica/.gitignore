@@ -3,3 +3,6 @@ dist/
 
 # Angular cache
 .angular/cache/
+
+# Local dependencies
+node_modules/
