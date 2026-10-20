@@ -30,6 +30,7 @@ const ICONOS_BOOTSTRAP_POR_CONTRATO: Readonly<Record<string, string>> = {
   'fa-users-cog': 'bi bi-people',
   'fa-user-tag': 'bi bi-person-badge',
   'fa-id-badge': 'bi bi-person-vcard',
+  'fa-shield-halved': 'bi bi-shield-lock-fill',
   'fa-chart-bar': 'bi bi-bar-chart-fill',
   'fa-calendar-day': 'bi bi-calendar-date',
   'fa-notes-medical': 'bi bi-file-medical',

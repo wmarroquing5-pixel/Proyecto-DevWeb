@@ -1,0 +1,163 @@
+<section class="page-shell" aria-labelledby="permisos-titulo">
+  <header class="page-header">
+    <div>
+      <h1 id="permisos-titulo">Administración de permisos</h1>
+      <p class="page-header__subtitle">Gestiona las operaciones habilitadas para cada rol y módulo.</p>
+    </div>
+    @if (autorizacion.puedeCrear(MODULOS.PERMISOS)) {
+      <button type="button" class="btn btn-primary" (click)="abrirCrear()"
+              [disabled]="cargandoCatalogos" title="Crear permiso">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i> Nuevo permiso
+      </button>
+    }
+  </header>
+
+  @if (aviso) {
+    <div class="alert alert-success" role="status">{{ aviso }}</div>
+  }
+
+  <div class="ui-card mb-4" aria-label="Filtros de permisos">
+    <div class="row g-3 align-items-end">
+      <div class="col-lg-4">
+        <label for="permiso-busqueda" class="form-label">Buscar en esta página</label>
+        <input id="permiso-busqueda" type="search" class="form-control"
+               placeholder="Rol o módulo" [(ngModel)]="busqueda">
+      </div>
+      <div class="col-md-4 col-lg-3">
+        <label for="permiso-rol" class="form-label">Rol</label>
+        <select id="permiso-rol" class="form-select" [(ngModel)]="filtroRol" (change)="aplicarFiltros()">
+          <option [ngValue]="null">Todos los roles</option>
+          @for (rol of roles; track rol.idRol) {
+            <option [ngValue]="rol.idRol">{{ nombreRol(rol.idRol) }}{{ rol.activo ? '' : ' (inactivo)' }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-md-4 col-lg-3">
+        <label for="permiso-modulo" class="form-label">Módulo</label>
+        <select id="permiso-modulo" class="form-select" [(ngModel)]="filtroModulo" (change)="aplicarFiltros()">
+          <option value="">Todos los módulos</option>
+          @for (modulo of modulos; track modulo) { <option [value]="modulo">{{ etiquetaModulo(modulo) }}</option> }
+        </select>
+      </div>
+      <div class="col-md-4 col-lg-2">
+        <button type="button" class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">
+          <i class="bi bi-x-lg" aria-hidden="true"></i> Limpiar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  @if (mostrarFormulario) {
+    <form #permisoForm="ngForm" class="ui-card ui-form mb-4" (ngSubmit)="guardar(permisoForm)" novalidate>
+      <h2 class="h5 mb-3">{{ permisoEditando ? 'Editar permiso' : 'Nuevo permiso' }}</h2>
+      @if (errorFormulario) { <div class="alert alert-danger" role="alert">{{ errorFormulario }}</div> }
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label for="form-rol" class="form-label required">Rol</label>
+          <select id="form-rol" name="idRol" class="form-select" required
+                  [(ngModel)]="formulario.idRol" [disabled]="guardando">
+            @for (rol of roles; track rol.idRol) {
+              <option [ngValue]="rol.idRol" [disabled]="!rol.activo">
+                {{ nombreRol(rol.idRol) }}{{ rol.activo ? '' : ' (inactivo)' }}
+              </option>
+            }
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="form-modulo" class="form-label required">Módulo</label>
+          <select id="form-modulo" name="modulo" class="form-select" required
+                  [ngModel]="formulario.modulo" (ngModelChange)="cambiarModulo($event)" [disabled]="guardando">
+            @for (modulo of modulos; track modulo) { <option [value]="modulo">{{ etiquetaModulo(modulo) }}</option> }
+          </select>
+        </div>
+        <fieldset class="col-12">
+          <legend class="form-label mb-2">Operaciones permitidas</legend>
+          <div class="d-flex flex-wrap gap-4">
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="puedeConsultar" [(ngModel)]="formulario.puedeConsultar" [attr.disabled]="guardando || !operacionDisponible(OPERACIONES.CONSULTAR) ? '' : null"> Consultar</label>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="puedeCrear" [(ngModel)]="formulario.puedeCrear" [attr.disabled]="guardando || !operacionDisponible(OPERACIONES.CREAR) ? '' : null"> Crear</label>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="puedeModificar" [(ngModel)]="formulario.puedeModificar" [attr.disabled]="guardando || !operacionDisponible(OPERACIONES.MODIFICAR) ? '' : null"> Modificar</label>
+            <label class="form-check"><input class="form-check-input" type="checkbox" name="puedeEliminar" [(ngModel)]="formulario.puedeEliminar" [attr.disabled]="guardando || !operacionDisponible(OPERACIONES.ELIMINAR) ? '' : null"> Eliminar</label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="ui-form__actions">
+        <button type="submit" class="btn btn-primary" [disabled]="permisoForm.invalid || guardando">
+          @if (guardando) { <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> }
+          {{ guardando ? 'Guardando…' : 'Guardar' }}
+        </button>
+        <button type="button" class="btn btn-outline-secondary" (click)="cerrarFormulario()" [disabled]="guardando">Cancelar</button>
+      </div>
+    </form>
+  }
+
+  @if (cargandoCatalogos || cargando) {
+    <app-ui-state kind="loading" title="Cargando permisos…" />
+  } @else if (error) {
+    <app-ui-state kind="error" title="No fue posible cargar los permisos" [description]="error"
+                  [retryable]="true" (retry)="cargarCatalogosYPermisos()" />
+  } @else if (asignacionesVisibles.length === 0) {
+    <app-ui-state kind="empty" title="No se encontraron permisos"
+                  description="Ajusta los filtros o crea una nueva asignación." />
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="table table-hover ui-table">
+        <thead>
+          <tr>
+            <th scope="col" class="ui-col-index">No.</th>
+            <th scope="col">Rol</th>
+            <th scope="col">Módulo</th>
+            <th scope="col" class="text-center">Consultar</th>
+            <th scope="col" class="text-center">Crear</th>
+            <th scope="col" class="text-center">Modificar</th>
+            <th scope="col" class="text-center">Eliminar</th>
+            <th scope="col" class="ui-col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (permiso of asignacionesVisibles; track permiso.idPermiso; let index = $index) {
+            <tr>
+              <td class="ui-col-index">{{ correlativo(index, page, pageSize) }}</td>
+              <td>{{ nombreRol(permiso.idRol) }} @if (!rolActivo(permiso.idRol)) { <span class="badge bg-secondary">Inactivo</span> }</td>
+              <td>{{ etiquetaModulo(permiso.modulo) }}</td>
+              <td class="text-center"><i [class]="permiso.puedeConsultar ? 'bi bi-check-circle-fill text-success' : 'bi bi-dash-circle text-secondary'" [attr.aria-label]="permiso.puedeConsultar ? 'Permitido' : 'No permitido'"></i></td>
+              <td class="text-center"><i [class]="permiso.puedeCrear ? 'bi bi-check-circle-fill text-success' : 'bi bi-dash-circle text-secondary'" [attr.aria-label]="permiso.puedeCrear ? 'Permitido' : 'No permitido'"></i></td>
+              <td class="text-center"><i [class]="permiso.puedeModificar ? 'bi bi-check-circle-fill text-success' : 'bi bi-dash-circle text-secondary'" [attr.aria-label]="permiso.puedeModificar ? 'Permitido' : 'No permitido'"></i></td>
+              <td class="text-center"><i [class]="permiso.puedeEliminar ? 'bi bi-check-circle-fill text-success' : 'bi bi-dash-circle text-secondary'" [attr.aria-label]="permiso.puedeEliminar ? 'Permitido' : 'No permitido'"></i></td>
+              <td class="ui-actions ui-col-actions">
+                @if (autorizacion.puedeModificar(MODULOS.PERMISOS)) {
+                  <button type="button" class="btn btn-sm btn-outline-primary ui-icon-button"
+                          (click)="abrirEditar(permiso)" aria-label="Editar permiso" title="Editar permiso">
+                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                  </button>
+                }
+                @if (autorizacion.puedeEliminar(MODULOS.PERMISOS)) {
+                  <button type="button" class="btn btn-sm btn-outline-danger ui-icon-button"
+                          (click)="solicitarEliminacion(permiso)" aria-label="Eliminar permiso" title="Eliminar permiso">
+                    <i class="bi bi-trash" aria-hidden="true"></i>
+                  </button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+      <span>Total: {{ total }} permisos</span>
+      <div>
+        <button type="button" class="btn btn-outline-secondary btn-sm me-2" (click)="cambiarPagina(page - 1)" [disabled]="page <= 1">Anterior</button>
+        <span class="mx-2">Página {{ page }} de {{ totalPages || 1 }}</span>
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages">Siguiente</button>
+      </div>
+    </div>
+  }
+
+  @if (permisoPendiente) {
+    <app-confirm-dialog title="Revocar permiso"
+      [description]="'¿Deseas revocar la asignación de ' + permisoPendiente.modulo + ' para ' + nombreRol(permisoPendiente.idRol) + '?'"
+      consequence="La autorización dinámica se actualizará inmediatamente para las sesiones vigentes."
+      confirmLabel="Revocar" [busy]="eliminando"
+      (confirmed)="confirmarEliminacion()" (cancelled)="cancelarEliminacion()" />
+  }
+</section>

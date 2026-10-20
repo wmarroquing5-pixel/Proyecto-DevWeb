@@ -16,7 +16,8 @@ public interface IAdministracionService
     Task<RolResponse> ActualizarRolAsync(int id, GuardarRolRequest request, CancellationToken cancellationToken);
     Task EliminarRolAsync(int id, CancellationToken cancellationToken);
 
-    Task<PagedResponse<PermisoResponse>> ListarPermisosAsync(int page, int pageSize, CancellationToken cancellationToken);
+    Task<PagedResponse<PermisoResponse>> ListarPermisosAsync(PermisoFiltroDto filtro, CancellationToken cancellationToken);
+    IReadOnlyList<string> ListarModulosPermiso();
     Task<PermisoResponse> ObtenerPermisoAsync(int id, CancellationToken cancellationToken);
     Task<PermisoResponse> CrearPermisoAsync(GuardarPermisoRequest request, CancellationToken cancellationToken);
     Task<PermisoResponse> ActualizarPermisoAsync(int id, GuardarPermisoRequest request, CancellationToken cancellationToken);

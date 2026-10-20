@@ -39,7 +39,8 @@ public sealed class MenuTests
         { "Ventas", "/ventas" },
         { "Usuarios", "/admin/usuarios" },
         { "Roles", "/admin/roles" },
-        { "Empleados", "/admin/empleados" }
+        { "Empleados", "/admin/empleados" },
+        { "Permisos", "/admin/permisos" }
     };
 
     [Fact]
@@ -51,7 +52,8 @@ public sealed class MenuTests
         {
             "/dashboard", "/pacientes", "/consultas", "/medicamentos",
             "/inventario/lotes", "/habitaciones", "/ventas",
-            "/admin/usuarios", "/admin/roles", "/admin/empleados"
+            "/admin/usuarios", "/admin/roles", "/admin/empleados",
+            "/admin/permisos"
         }, rutas);
         Assert.Equal(rutas.Length, rutas.Distinct(StringComparer.Ordinal).Count());
         Assert.DoesNotContain("/citas", rutas);

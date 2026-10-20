@@ -83,6 +83,13 @@ public static class MenuCompleto
                     Route = "/admin/empleados",
                     Icon = "fa-id-badge",
                     Roles = new[] { "Admin" }
+                },
+                new MenuItemDto
+                {
+                    Label = "Permisos",
+                    Route = "/admin/permisos",
+                    Icon = "fa-shield-halved",
+                    Roles = new[] { "Admin" }
                 }
             }
         }

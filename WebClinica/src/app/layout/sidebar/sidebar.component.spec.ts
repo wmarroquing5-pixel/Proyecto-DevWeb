@@ -97,6 +97,34 @@ describe('SidebarComponent', () => {
     expect(element.querySelector('.bi-grid-1x2-fill')).not.toBeNull();
   });
 
+  it('conserva los nodos del menú cuando la autorización reconstruye los objetos', () => {
+    const crearMenu = (): MenuItem[] => [
+      { label: 'Dashboard', route: '/dashboard', icon: 'fa-home' },
+      { label: 'Pacientes', route: '/pacientes' },
+      { label: 'Administración', children: [
+        { label: 'Usuarios', route: '/admin/usuarios' },
+        { label: 'Roles', route: '/admin/roles' },
+        { label: 'Empleados', route: '/admin/empleados' },
+        { label: 'Permisos', route: '/admin/permisos' },
+      ] },
+    ];
+    menuItems.set(crearMenu());
+    received.set(3);
+    component.toggle('Administración');
+    fixture.detectChanges();
+
+    const dashboardAntes = element.querySelector('[href="/dashboard"]');
+    const administracionAntes = element.querySelector('.submenu-toggle');
+    const permisosAntes = element.querySelector('[href="/admin/permisos"]');
+    menuItems.set(crearMenu());
+    fixture.detectChanges();
+
+    expect(element.querySelector('[href="/dashboard"]')).toBe(dashboardAntes);
+    expect(element.querySelector('.submenu-toggle')).toBe(administracionAntes);
+    expect(element.querySelector('[href="/admin/permisos"]')).toBe(permisosAntes);
+    expect(element.querySelectorAll('[href="/admin/permisos"]').length).toBe(1);
+  });
+
   it('abre y cierra el menú móvil al navegar', () => {
     menuItems.set([{ label: 'Pacientes', route: '/pacientes' }]);
     received.set(1);

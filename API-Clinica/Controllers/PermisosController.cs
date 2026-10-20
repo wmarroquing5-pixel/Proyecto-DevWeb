@@ -11,8 +11,12 @@ public sealed class PermisosController(IAdministracionService service) : Control
 {
     [HttpGet, PermisoRequerido("Permisos", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<PermisoResponse>>> Listar(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default) =>
-        Ok(await service.ListarPermisosAsync(page, pageSize, ct));
+        [FromQuery] PermisoFiltroDto filtro, CancellationToken ct) =>
+        Ok(await service.ListarPermisosAsync(filtro, ct));
+
+    [HttpGet("modulos"), PermisoRequerido("Permisos", Operacion.Consultar)]
+    public ActionResult<IReadOnlyList<string>> ListarModulos() =>
+        Ok(service.ListarModulosPermiso());
 
     [HttpGet("{id:int}"), PermisoRequerido("Permisos", Operacion.Consultar)]
     public async Task<ActionResult<PermisoResponse>> Obtener(int id, CancellationToken ct) =>

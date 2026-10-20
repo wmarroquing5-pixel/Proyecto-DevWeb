@@ -6,39 +6,40 @@ import { VentasService } from '../../core/services/venta.service';
 import { VentaConsultaResumenResponse, PagedResponse } from '../../core/models/venta.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
+import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
   selector: 'app-ventas-list',
   standalone: true,
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
-    <div class="container-fluid mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-shell">
+      <header class="page-header">
         <h2><i class="fa fa-cash-register"></i> Ventas de Farmacia</h2>
         @if (permisos.puedeCrear(MODULOS_PERMISO.VENTAS)) {
           <a routerLink="/ventas/nueva" class="btn btn-primary">
             <i class="fa fa-plus"></i> Nueva Venta
           </a>
         }
-      </div>
+      </header>
 
       <!-- Filtros -->
-      <div class="card p-3 mb-4">
+      <div class="ui-card ui-form mb-4">
         <div class="row g-3">
           <div class="col-md-3">
-            <label class="form-label">ID Venta</label>
-            <input type="number" class="form-control" [(ngModel)]="filtro.idVenta" (change)="buscar()">
+            <label for="venta-id" class="form-label">ID Venta</label>
+            <input id="venta-id" type="number" class="form-control" [(ngModel)]="filtro.idVenta" (change)="buscar()">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Desde</label>
-            <input type="date" class="form-control" [(ngModel)]="filtro.fechaDesde" (change)="buscar()">
+            <label for="venta-desde" class="form-label">Desde</label>
+            <input id="venta-desde" type="date" class="form-control" [(ngModel)]="filtro.fechaDesde" (change)="buscar()">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Hasta</label>
-            <input type="date" class="form-control" [(ngModel)]="filtro.fechaHasta" (change)="buscar()">
+            <label for="venta-hasta" class="form-label">Hasta</label>
+            <input id="venta-hasta" type="date" class="form-control" [(ngModel)]="filtro.fechaHasta" (change)="buscar()">
           </div>
           <div class="col-md-3 d-flex align-items-end">
-            <button class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">
+            <button type="button" class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">
               <i class="fa fa-times"></i> Limpiar
             </button>
           </div>
@@ -54,28 +55,28 @@ import { PermisosService } from '../../core/services/permisos.service';
       } @else if (ventas.length === 0) {
         <div class="alert alert-info text-center">No hay ventas registradas.</div>
       } @else {
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead class="table-dark">
+        <div class="ui-table-wrap">
+          <table class="table table-striped table-hover ui-table">
+            <thead>
               <tr>
-                <th>ID</th>
-                <th>Fecha</th>
+                <th class="ui-col-index">No.</th>
+                <th class="ui-col-date">Fecha</th>
                 <th>Sucursal</th>
                 <th>Usuario</th>
-                <th>Total</th>
-                <th>Acciones</th>
+                <th class="ui-col-number">Total</th>
+                <th class="ui-col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              @for (v of ventas; track v.idVenta) {
+              @for (v of ventas; track v.idVenta; let index = $index) {
                 <tr>
-                  <td>{{ v.idVenta }}</td>
-                  <td>{{ v.fechaVenta | date:'dd/MM/yyyy HH:mm' }}</td>
+                  <td class="ui-col-index">{{ correlativo(index, page, pageSize) }}</td>
+                  <td class="ui-col-date">{{ v.fechaVenta | date:'dd/MM/yyyy HH:mm' }}</td>
                   <td>{{ v.idSucursal }}</td>
                   <td>{{ v.idUsuario }}</td>
-                  <td class="fw-bold text-success">Q{{ v.total | number:'1.2-2' }}</td>
-                  <td>
-                    <a [routerLink]="['/ventas', v.idVenta]" class="btn btn-sm btn-info">
+                  <td class="fw-bold text-success ui-col-number">Q{{ v.total | number:'1.2-2' }}</td>
+                  <td class="ui-actions ui-col-actions">
+                    <a [routerLink]="['/ventas', v.idVenta]" class="btn btn-sm btn-outline-info" aria-label="Ver detalle de venta" title="Ver detalle">
                       <i class="fa fa-eye"></i> Ver
                     </a>
                   </td>
@@ -103,6 +104,7 @@ export class VentasListComponent implements OnInit {
   private service = inject(VentasService);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
+  readonly correlativo = correlativoPaginado;
 
   ventas: VentaConsultaResumenResponse[] = [];
   total = 0;

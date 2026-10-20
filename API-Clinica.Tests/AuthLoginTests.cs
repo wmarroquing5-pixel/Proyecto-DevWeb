@@ -571,6 +571,198 @@ public sealed class AuthLoginTests
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/roles/{role.IdRol}")).StatusCode);
     }
 
+    [Fact]
+    public async Task PermissionAdministrationFiltersAndUsesApiModuleCatalog()
+    {
+        using var factory = new AuthApiFactory();
+        var password = await factory.SeedUserAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            context.Roles.Add(new Rol { IdRol = 2, Nombre = "Destino", Activo = true });
+            context.Permisos.AddRange(
+                new Permiso
+                {
+                    IdRol = 1, Modulo = "Permisos", PuedeConsultar = true,
+                    PuedeCrear = true, PuedeModificar = true, PuedeEliminar = true
+                },
+                new Permiso { IdRol = 2, Modulo = "Pacientes", PuedeConsultar = true },
+                new Permiso { IdRol = 2, Modulo = "Medicamentos", PuedeConsultar = true });
+            await context.SaveChangesAsync();
+        }
+
+        using var client = factory.CreateClient();
+        await AuthenticateAsync(client, password);
+
+        var filteredResponse = await client.GetAsync(
+            "/api/permisos?idRol=2&modulo=Pac&page=1&pageSize=10");
+        Assert.Equal(HttpStatusCode.OK, filteredResponse.StatusCode);
+        var filtered = await filteredResponse.Content
+            .ReadFromJsonAsync<PagedResponse<PermisoResponse>>();
+        Assert.NotNull(filtered);
+        Assert.Single(filtered.Items);
+        Assert.Equal("Pacientes", filtered.Items[0].Modulo);
+
+        var modulesResponse = await client.GetAsync("/api/permisos/modulos");
+        Assert.Equal(HttpStatusCode.OK, modulesResponse.StatusCode);
+        var modules = await modulesResponse.Content.ReadFromJsonAsync<List<string>>();
+        Assert.NotNull(modules);
+        Assert.Contains("Permisos", modules);
+        Assert.Contains("Pacientes", modules);
+        Assert.Equal(modules.OrderBy(module => module, StringComparer.Ordinal), modules);
+
+        var invalid = await client.PostAsJsonAsync("/api/permisos", new GuardarPermisoRequest
+        {
+            IdRol = 2,
+            Modulo = "ModuloInventado",
+            PuedeConsultar = true
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task PermissionAdministrationRequiresJwtAndCurrentPermission()
+    {
+        using var factory = new AuthApiFactory();
+        var password = await factory.SeedUserAsync();
+        using var anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/permisos")).StatusCode);
+
+        using var authenticated = factory.CreateClient();
+        await AuthenticateAsync(authenticated, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await authenticated.GetAsync("/api/permisos")).StatusCode);
+
+        authenticated.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", "token-invalido");
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await authenticated.GetAsync("/api/permisos")).StatusCode);
+    }
+
+    [Fact]
+    public async Task CannotRevokeLastEffectivePermissionAdministrationCapability()
+    {
+        using var factory = new AuthApiFactory();
+        var password = await factory.SeedUserAsync();
+        int permissionId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            var permission = new Permiso
+            {
+                IdRol = 1,
+                Modulo = "Permisos",
+                PuedeConsultar = true,
+                PuedeCrear = true,
+                PuedeModificar = true,
+                PuedeEliminar = true
+            };
+            context.Permisos.Add(permission);
+            await context.SaveChangesAsync();
+            permissionId = permission.IdPermiso;
+        }
+
+        using var client = factory.CreateClient();
+        await AuthenticateAsync(client, password);
+
+        var update = await client.PutAsJsonAsync($"/api/permisos/{permissionId}",
+            new GuardarPermisoRequest
+            {
+                IdRol = 1,
+                Modulo = "Permisos",
+                PuedeConsultar = true,
+                PuedeCrear = true,
+                PuedeModificar = true,
+                PuedeEliminar = false
+            });
+        Assert.Equal(HttpStatusCode.Conflict, update.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.DeleteAsync($"/api/permisos/{permissionId}")).StatusCode);
+
+        using var verificationScope = factory.Services.CreateScope();
+        var stored = await verificationScope.ServiceProvider
+            .GetRequiredService<ClinicaDbContext>().Permisos.AsNoTracking()
+            .SingleAsync(permission => permission.IdPermiso == permissionId);
+        Assert.True(stored.PuedeConsultar);
+        Assert.True(stored.PuedeCrear);
+        Assert.True(stored.PuedeModificar);
+        Assert.True(stored.PuedeEliminar);
+    }
+
+    [Fact]
+    public async Task PermissionChangesAreAppliedByDynamicAuthorizationWithoutNewJwt()
+    {
+        using var factory = new AuthApiFactory();
+        var administratorPassword = await factory.SeedUserAsync();
+        var targetPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<Usuario>>();
+            context.Roles.Add(new Rol { IdRol = 2, Nombre = "Operador", Activo = true });
+            var target = new Usuario
+            {
+                IdUsuario = 2,
+                IdRol = 2,
+                Username = "operador.permisos",
+                Activo = true
+            };
+            target.PasswordHash = hasher.HashPassword(target, targetPassword);
+            context.Usuarios.Add(target);
+            context.Permisos.Add(new Permiso
+            {
+                IdRol = 1,
+                Modulo = "Permisos",
+                PuedeConsultar = true,
+                PuedeCrear = true,
+                PuedeModificar = true,
+                PuedeEliminar = true
+            });
+            await context.SaveChangesAsync();
+        }
+
+        using var administrator = factory.CreateClient();
+        using var targetClient = factory.CreateClient();
+        await AuthenticateAsync(administrator, administratorPassword);
+        var createdResponse = await administrator.PostAsJsonAsync(
+            "/api/permisos", new GuardarPermisoRequest
+            {
+                IdRol = 2,
+                Modulo = "Pacientes",
+                PuedeConsultar = true
+            });
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+        var created = await createdResponse.Content.ReadFromJsonAsync<PermisoResponse>();
+        Assert.NotNull(created);
+
+        var targetLogin = await targetClient.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest { Username = "operador.permisos", Password = targetPassword });
+        var targetToken = await targetLogin.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(targetToken);
+        targetClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", targetToken.AccessToken);
+        Assert.Equal(HttpStatusCode.OK,
+            (await targetClient.GetAsync("/api/pacientes")).StatusCode);
+
+        var revoke = await administrator.PutAsJsonAsync($"/api/permisos/{created.IdPermiso}",
+            new GuardarPermisoRequest { IdRol = 2, Modulo = "Pacientes" });
+        Assert.Equal(HttpStatusCode.OK, revoke.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await targetClient.GetAsync("/api/pacientes")).StatusCode);
+    }
+
+    private static async Task AuthenticateAsync(HttpClient client, string password)
+    {
+        var login = await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest { Username = "usuario.prueba", Password = password });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var token = await login.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(token);
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", token.AccessToken);
+    }
+
     private sealed class AuthApiFactory : WebApplicationFactory<Program>
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");

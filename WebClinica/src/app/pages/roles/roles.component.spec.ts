@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { NgForm } from '@angular/forms';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { PermisoRolResponse, RolResponse } from '../../core/models/rol.model';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { AutorizacionActualizacionService } from '../../core/services/autorizacion-actualizacion.service';
@@ -38,7 +38,8 @@ describe('RolesComponent', () => {
 
     rolesService = jasmine.createSpyObj<RolesService>('RolesService', [
       'listarRoles', 'crearRol', 'actualizarRol', 'eliminarRol',
-      'listarTodosPermisos', 'crearPermiso', 'actualizarPermiso', 'eliminarPermiso',
+      'listarTodosPermisos', 'listarModulosPermiso',
+      'crearPermiso', 'actualizarPermiso', 'eliminarPermiso',
     ]);
     rolesService.listarRoles.and.returnValue(of({
       items: [rol], page: 1, pageSize: 10, totalCount: 1, totalPages: 1,
@@ -47,6 +48,7 @@ describe('RolesComponent', () => {
     rolesService.actualizarRol.and.callFake((id, body) => of({ idRol: id, ...body }));
     rolesService.eliminarRol.and.returnValue(of(undefined));
     rolesService.listarTodosPermisos.and.returnValue(of([permiso]));
+    rolesService.listarModulosPermiso.and.returnValue(of(['Pacientes', 'Permisos']));
     rolesService.crearPermiso.and.callFake(body => of({ idPermiso: 9, ...body }));
     rolesService.actualizarPermiso.and.callFake((id, body) => of({ idPermiso: id, ...body }));
     rolesService.eliminarPermiso.and.returnValue(of(undefined));
@@ -90,23 +92,68 @@ describe('RolesComponent', () => {
   }
 
   function permissionRow(element: HTMLElement, module: string): HTMLTableRowElement {
-    const row = Array.from(element.querySelectorAll('tbody tr'))
-      .find(value => value.querySelector('th')?.textContent?.trim() === module);
+    const row = element.querySelector(`tbody tr[data-module="${module}"]`);
     if (!row) throw new Error(`No se encontró la fila ${module}`);
     return row as HTMLTableRowElement;
   }
 
   it('muestra el listado con permiso de consulta sin conceder acciones', () => {
     const element = render();
+    expect(element.querySelector('thead th')?.textContent?.trim()).toBe('No.');
+    expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('1');
     expect(element.textContent).toContain('Doctor');
     expect(element.textContent).not.toContain('Nuevo rol');
     expect(element.querySelector('[aria-label="Editar rol Doctor"]')).toBeNull();
     expect(element.querySelector('[aria-label="Eliminar rol Doctor"]')).toBeNull();
   });
 
+  it('identifica visualmente un rol heredado sin nombre y conserva su ID real', () => {
+    rolesService.listarRoles.and.returnValue(of({
+      items: [{ idRol: 7, nombre: '', activo: false }],
+      page: 1, pageSize: 10, totalCount: 1, totalPages: 1,
+    }));
+    roleModify = true;
+    const element = render();
+    expect(element.textContent).toContain('Rol sin nombre (ID 7)');
+    (element.querySelector('[aria-label="Editar rol Rol sin nombre (ID 7)"]') as HTMLButtonElement).click();
+    expect(fixture.componentInstance.rolEditando?.idRol).toBe(7);
+    expect(fixture.componentInstance.rolForm.nombre).toBe('');
+  });
+
+  it('mantiene el correlativo paginado y las operaciones con el ID real', () => {
+    rolesService.listarRoles.and.returnValue(of({
+      items: [{ ...rol, idRol: 47 }], page: 3, pageSize: 10, totalCount: 21, totalPages: 3,
+    }));
+    roleModify = true;
+    const element = render();
+    fixture.componentInstance.page = 3;
+    fixture.detectChanges();
+    expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('21');
+    (element.querySelector('[aria-label="Editar rol Doctor"]') as HTMLButtonElement).click();
+    expect(fixture.componentInstance.rolEditando?.idRol).toBe(47);
+  });
+
   it('muestra crear únicamente con Roles/Crear', () => {
     roleCreate = true;
     expect(render().textContent).toContain('Nuevo rol');
+  });
+
+  it('muestra una matriz vacía con el catálogo autorizado al abrir Nuevo rol', () => {
+    roleCreate = true;
+    permissionConsult = true;
+    permissionCreate = true;
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    element = fixture.nativeElement as HTMLElement;
+    expect(rolesService.listarModulosPermiso).toHaveBeenCalledTimes(1);
+    expect(element.textContent).toContain('Asignar permisos');
+    expect(element.textContent).toContain('Pacientes');
+    expect(element.textContent).toContain('Permisos');
+    expect(element.textContent).toContain('Guardar rol y permisos');
+    expect(Array.from(element.querySelectorAll<HTMLInputElement>(
+      '[aria-label$="para nuevo rol"]',
+    )).every(input => !input.checked)).toBeTrue();
   });
 
   it('muestra editar únicamente con Roles/Modificar', () => {
@@ -143,6 +190,160 @@ describe('RolesComponent', () => {
     const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
     fixture.componentInstance.guardarRol(form);
     expect(rolesService.crearRol).toHaveBeenCalledWith({ nombre: 'Auditor', activo: true });
+    expect(rolesService.crearPermiso).not.toHaveBeenCalled();
+  });
+
+  it('crea el rol y asigna permisos usando el IdRol real devuelto por la API', () => {
+    roleCreate = true;
+    permissionConsult = true;
+    permissionCreate = true;
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    fixture.componentInstance.rolForm.nombre = 'Coordinador';
+    fixture.componentInstance.filasNuevoRol.find(fila => fila.modulo === 'Pacientes')!.puedeConsultar = true;
+    fixture.detectChanges();
+    const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
+    fixture.componentInstance.guardarRol(form);
+    expect(rolesService.crearRol).toHaveBeenCalledOnceWith({ nombre: 'Coordinador', activo: true });
+    expect(rolesService.crearPermiso).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+      idRol: 3,
+      modulo: 'Pacientes',
+      puedeConsultar: true,
+    }));
+    expect(fixture.componentInstance.mostrarFormularioRol).toBeFalse();
+  });
+
+  it('permite crear un rol sin permisos aunque el usuario pueda asignarlos', () => {
+    roleCreate = true;
+    permissionConsult = true;
+    permissionCreate = true;
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    fixture.componentInstance.rolForm.nombre = 'Solo lectura futura';
+    fixture.detectChanges();
+    const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
+    fixture.componentInstance.guardarRol(form);
+    expect(rolesService.crearRol).toHaveBeenCalledTimes(1);
+    expect(rolesService.crearPermiso).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.mostrarFormularioRol).toBeFalse();
+  });
+
+  it('explica la limitación cuando puede crear roles pero no asignar permisos', () => {
+    roleCreate = true;
+    const element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('El rol se guardará sin asignaciones iniciales');
+    expect(rolesService.listarModulosPermiso).not.toHaveBeenCalled();
+  });
+
+  it('no crea el rol si falla la carga del catálogo requerido para el guardado conjunto', () => {
+    roleCreate = true;
+    permissionConsult = true;
+    permissionCreate = true;
+    rolesService.listarModulosPermiso.and.returnValue(throwError(() => new Error(
+      'Catálogo temporalmente no disponible.',
+    )));
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    fixture.componentInstance.rolForm.nombre = 'Auditor';
+    fixture.detectChanges();
+    const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
+    fixture.componentInstance.guardarRol(form);
+    expect(rolesService.crearRol).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('Catálogo temporalmente no disponible.');
+  });
+
+  it('no duplica el rol ante un doble envío mientras la creación está pendiente', () => {
+    roleCreate = true;
+    const pending = new Subject<RolResponse>();
+    rolesService.crearRol.and.returnValue(pending);
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    fixture.componentInstance.rolForm.nombre = 'Auditor';
+    fixture.detectChanges();
+    const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
+    fixture.componentInstance.guardarRol(form);
+    fixture.componentInstance.guardarRol(form);
+    expect(rolesService.crearRol).toHaveBeenCalledTimes(1);
+  });
+
+  it('muestra el conflicto de nombre duplicado sin intentar crear permisos', () => {
+    roleCreate = true;
+    rolesService.crearRol.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409,
+      error: { title: 'Conflicto', detail: 'El nombre del rol ya existe.' },
+    })));
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    fixture.componentInstance.rolForm.nombre = 'Doctor';
+    fixture.detectChanges();
+    const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
+    fixture.componentInstance.guardarRol(form);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('El nombre del rol ya existe.');
+    expect(rolesService.crearPermiso).not.toHaveBeenCalled();
+  });
+
+  it('conserva el rol y reintenta únicamente permisos pendientes tras un guardado parcial', () => {
+    roleCreate = true;
+    permissionConsult = true;
+    permissionCreate = true;
+    rolesService.listarModulosPermiso.and.returnValue(of(['Pacientes', 'Ventas']));
+    rolesService.crearPermiso.and.callFake(request => request.modulo === 'Ventas'
+      ? throwError(() => new HttpErrorResponse({
+        status: 409,
+        error: { title: 'Conflicto', detail: 'La asignación cambió.' },
+      }))
+      : of({ idPermiso: 30, ...request }));
+
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    fixture.componentInstance.rolForm.nombre = 'Coordinador';
+    for (const fila of fixture.componentInstance.filasNuevoRol) fila.puedeConsultar = true;
+    fixture.detectChanges();
+    const form = fixture.debugElement.query(By.directive(NgForm)).injector.get(NgForm);
+    fixture.componentInstance.guardarRol(form);
+    fixture.detectChanges();
+
+    expect(rolesService.crearRol).toHaveBeenCalledTimes(1);
+    expect(rolesService.crearPermiso).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.rolCreadoPendiente?.idRol).toBe(3);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Guardado parcial');
+    expect(fixture.componentInstance.filasNuevoRol.find(fila => fila.modulo === 'Pacientes')?.idPermiso)
+      .toBe(30);
+
+    rolesService.crearPermiso.and.callFake(request => of({ idPermiso: 31, ...request }));
+    fixture.componentInstance.guardarRol(form);
+    expect(rolesService.crearRol).toHaveBeenCalledTimes(1);
+    expect(rolesService.crearPermiso).toHaveBeenCalledTimes(3);
+    expect(rolesService.crearPermiso.calls.allArgs().filter(([request]) => request.modulo === 'Pacientes').length)
+      .toBe(1);
+    expect(fixture.componentInstance.mostrarFormularioRol).toBeFalse();
+  });
+
+  it('cancela y limpia la matriz sin ejecutar escrituras', () => {
+    roleCreate = true;
+    permissionConsult = true;
+    permissionCreate = true;
+    let element = render();
+    buttonByText(element, 'Nuevo rol').click();
+    fixture.detectChanges();
+    element = fixture.nativeElement as HTMLElement;
+    buttonByText(element, 'Cancelar').click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.filasNuevoRol).toEqual([]);
+    expect(fixture.componentInstance.mostrarFormularioRol).toBeFalse();
+    expect(rolesService.crearRol).not.toHaveBeenCalled();
+    expect(rolesService.crearPermiso).not.toHaveBeenCalled();
   });
 
   it('no envía un formulario de rol inválido', () => {
@@ -181,14 +382,16 @@ describe('RolesComponent', () => {
 
   it('construye la matriz solo con módulos devueltos por la API', () => {
     permissionConsult = true;
+    rolesService.listarModulosPermiso.and.returnValue(of(['Pacientes', 'Facturas']));
     rolesService.listarTodosPermisos.and.returnValue(of([
       permiso,
-      { ...permiso, idPermiso: 8, idRol: 3, modulo: 'Inventario' },
+      { ...permiso, idPermiso: 8, idRol: 3, modulo: 'Facturas' },
     ]));
     const element = openPermissions(render());
     expect(element.textContent).toContain('Pacientes');
-    expect(element.textContent).toContain('Inventario');
+    expect(element.textContent).toContain('Facturas');
     expect(element.textContent).not.toContain('Habitaciones');
+    expect(rolesService.listarModulosPermiso).toHaveBeenCalled();
   });
 
   it('actualiza una fila existente mediante un PUT individual', () => {
@@ -209,18 +412,19 @@ describe('RolesComponent', () => {
   it('crea una fila ausente mediante un POST individual', () => {
     permissionConsult = true;
     permissionCreate = true;
+    rolesService.listarModulosPermiso.and.returnValue(of(['Pacientes', 'Facturas']));
     rolesService.listarTodosPermisos.and.returnValue(of([
-      { ...permiso, idPermiso: 8, idRol: 3, modulo: 'Inventario' },
+      { ...permiso, idPermiso: 8, idRol: 3, modulo: 'Facturas' },
     ]));
     let element = openPermissions(render());
-    let row = permissionRow(element, 'Inventario');
-    (row.querySelector('[aria-label="Inventario: Consultar"]') as HTMLInputElement).click();
+    let row = permissionRow(element, 'Facturas');
+    (row.querySelector('[aria-label="Facturas: Consultar"]') as HTMLInputElement).click();
     fixture.detectChanges();
     element = fixture.nativeElement as HTMLElement;
-    row = permissionRow(element, 'Inventario');
+    row = permissionRow(element, 'Facturas');
     buttonByText(row, 'Guardar').click();
     expect(rolesService.crearPermiso).toHaveBeenCalledWith(jasmine.objectContaining({
-      idRol: 2, modulo: 'Inventario', puedeConsultar: true,
+      idRol: 2, modulo: 'Facturas', puedeConsultar: true,
     }));
   });
 
@@ -231,8 +435,9 @@ describe('RolesComponent', () => {
     rolesService.listarRoles.and.returnValue(of({
       items: [inactivo], page: 1, pageSize: 10, totalCount: 1, totalPages: 1,
     }));
+    rolesService.listarModulosPermiso.and.returnValue(of(['Pacientes', 'Facturas']));
     rolesService.listarTodosPermisos.and.returnValue(of([
-      { ...permiso, idPermiso: 8, idRol: 3, modulo: 'Inventario' },
+      { ...permiso, idPermiso: 8, idRol: 3, modulo: 'Facturas' },
     ]));
     let element = render();
     (element.querySelector('[aria-label="Administrar permisos de Suspendido"]') as HTMLButtonElement).click();
@@ -242,7 +447,28 @@ describe('RolesComponent', () => {
     element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('La API no permite asignarle módulos nuevos');
     expect(fixture.componentInstance.puedeEditarFila(fixture.componentInstance.filasPermisos[0])).toBeFalse();
-    expect((permissionRow(element, 'Inventario').querySelector('input') as HTMLInputElement).disabled).toBeTrue();
+    expect((permissionRow(element, 'Facturas').querySelector('input') as HTMLInputElement).disabled).toBeTrue();
+  });
+
+  it('deshabilita operaciones que no existen en el controlador del módulo', async () => {
+    permissionConsult = true;
+    permissionModify = true;
+    rolesService.listarModulosPermiso.and.returnValue(of(['ConsumoClinico']));
+    rolesService.listarTodosPermisos.and.returnValue(of([{
+      ...permiso,
+      modulo: 'ConsumoClinico',
+      puedeConsultar: false,
+      puedeCrear: true,
+    }]));
+    let element = openPermissions(render());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    element = fixture.nativeElement as HTMLElement;
+    const row = permissionRow(element, 'ConsumoClinico');
+    expect((row.querySelector('[aria-label="ConsumoClinico: Consultar"]') as HTMLInputElement).disabled).toBeTrue();
+    expect((row.querySelector('[aria-label="ConsumoClinico: Crear"]') as HTMLInputElement).disabled).toBeFalse();
+    expect((row.querySelector('[aria-label="ConsumoClinico: Modificar"]') as HTMLInputElement).disabled).toBeTrue();
+    expect((row.querySelector('[aria-label="ConsumoClinico: Eliminar"]') as HTMLInputElement).disabled).toBeTrue();
   });
 
   it('muestra ProblemDetails cuando falla el guardado de un permiso', () => {

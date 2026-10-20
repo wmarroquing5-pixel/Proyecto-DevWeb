@@ -1,11 +1,13 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { EMPTY, Observable, expand, map, reduce } from 'rxjs';
+import { EMPTY, Observable, expand, map, reduce, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { esModuloPermiso } from '../models/permiso.model';
 import {
   GuardarPermisoRolRequest,
   GuardarRolRequest,
   PagedResponse,
+  PermisoFiltro,
   PermisoRolResponse,
   RolResponse,
 } from '../models/rol.model';
@@ -21,6 +23,26 @@ export class RolesService {
     const params = this.paginationParams(page, pageSize);
     return this.http.get<unknown>(this.rolesUrl, { params }).pipe(
       map(response => this.readPage(response, value => this.readRol(value), page, pageSize)),
+    );
+  }
+
+  listarTodosRoles(): Observable<readonly RolResponse[]> {
+    const maxPages = 5;
+    return this.listarRoles(1, this.maxPageSize).pipe(
+      expand(page => {
+        if (page.totalPages > maxPages) {
+          return throwError(() => new Error(
+            'El catálogo de roles excede el límite seguro de consulta.',
+          ));
+        }
+        return page.page < page.totalPages
+          ? this.listarRoles(page.page + 1, this.maxPageSize)
+          : EMPTY;
+      }),
+      reduce(
+        (items, page) => [...items, ...page.items],
+        [] as RolResponse[],
+      ),
     );
   }
 
@@ -46,8 +68,15 @@ export class RolesService {
     return this.http.delete<void>(`${this.rolesUrl}/${id}`);
   }
 
-  listarPermisos(page = 1, pageSize = this.maxPageSize): Observable<PagedResponse<PermisoRolResponse>> {
-    const params = this.paginationParams(page, pageSize);
+  listarPermisos(
+    page = 1,
+    pageSize = this.maxPageSize,
+    filtro: PermisoFiltro = {},
+  ): Observable<PagedResponse<PermisoRolResponse>> {
+    let params = this.paginationParams(page, pageSize);
+    if (filtro.idRol !== undefined) params = params.set('idRol', filtro.idRol);
+    const modulo = filtro.modulo?.trim();
+    if (modulo) params = params.set('modulo', modulo);
     return this.http.get<unknown>(this.permisosUrl, { params }).pipe(
       map(response => this.readPage(
         response,
@@ -55,6 +84,12 @@ export class RolesService {
         page,
         pageSize,
       )),
+    );
+  }
+
+  listarModulosPermiso(): Observable<readonly string[]> {
+    return this.http.get<unknown>(`${this.permisosUrl}/modulos`).pipe(
+      map(response => this.readModules(response)),
     );
   }
 
@@ -140,7 +175,6 @@ export class RolesService {
     const source = value as Record<string, unknown>;
     if (!this.isPositiveInteger(source['idRol'])
       || typeof source['nombre'] !== 'string'
-      || !source['nombre'].trim()
       || typeof source['activo'] !== 'boolean') return null;
     return {
       idRol: source['idRol'] as number,
@@ -174,6 +208,19 @@ export class RolesService {
   private requireItem<T>(value: T | null, resource: string): T {
     if (!value) throw new Error(`La API devolvió un ${resource} no válido.`);
     return value;
+  }
+
+  private readModules(value: unknown): readonly string[] {
+    if (!Array.isArray(value)) {
+      throw new Error('La API devolvió un catálogo de módulos no válido.');
+    }
+    const modules = value.map(item => typeof item === 'string' ? item.trim() : '');
+    if (modules.some(item => !item)
+      || !modules.every(esModuloPermiso)
+      || new Set(modules.map(item => item.toLocaleLowerCase('en-US'))).size !== modules.length) {
+      throw new Error('La API devolvió un catálogo de módulos no válido.');
+    }
+    return modules;
   }
 
   private isPositiveInteger(value: unknown): value is number {

@@ -18,7 +18,8 @@ public sealed class MenuService(IAccesoActualService accesoActual) : IMenuServic
             ["/ventas"] = "Ventas",
             ["/admin/usuarios"] = "Usuarios",
             ["/admin/roles"] = "Roles",
-            ["/admin/empleados"] = "Empleados"
+            ["/admin/empleados"] = "Empleados",
+            ["/admin/permisos"] = "Permisos"
         };
 
     private static readonly IReadOnlySet<string> ModulosReconocidos =

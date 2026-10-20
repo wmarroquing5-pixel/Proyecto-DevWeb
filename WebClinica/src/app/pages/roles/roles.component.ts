@@ -2,17 +2,25 @@ import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
+import { forkJoin } from 'rxjs';
 import {
   GuardarPermisoRolRequest,
   GuardarRolRequest,
   PermisoRolResponse,
   RolResponse,
 } from '../../core/models/rol.model';
-import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import {
+  etiquetaModuloPermiso,
+  MODULOS_PERMISO,
+  OPERACIONES_PERMISO,
+  OperacionPermiso,
+  operacionDisponible,
+} from '../../core/models/permiso.model';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { AutorizacionActualizacionService } from '../../core/services/autorizacion-actualizacion.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { RolesService } from '../../core/services/roles.service';
+import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 interface EstadoPermisoFila {
   puedeConsultar: boolean;
@@ -41,6 +49,8 @@ export class RolesComponent implements OnInit {
   private readonly actualizacion = inject(AutorizacionActualizacionService);
   readonly permisos = inject(PermisosService);
   readonly MODULOS = MODULOS_PERMISO;
+  readonly OPERACIONES = OPERACIONES_PERMISO;
+  readonly correlativo = correlativoPaginado;
 
   roles: RolResponse[] = [];
   total = 0;
@@ -57,6 +67,10 @@ export class RolesComponent implements OnInit {
   rolForm: GuardarRolRequest = { nombre: '', activo: true };
   guardandoRol = false;
   errorRol = '';
+  filasNuevoRol: PermisoFila[] = [];
+  cargandoModulosNuevoRol = false;
+  errorModulosNuevoRol = '';
+  rolCreadoPendiente: RolResponse | null = null;
 
   rolPermisos: RolResponse | null = null;
   filasPermisos: PermisoFila[] = [];
@@ -70,8 +84,12 @@ export class RolesComponent implements OnInit {
   get rolesVisibles(): RolResponse[] {
     const filtro = this.filtro.trim().toLocaleLowerCase('es');
     return filtro
-      ? this.roles.filter(rol => rol.nombre.toLocaleLowerCase('es').includes(filtro))
+      ? this.roles.filter(rol => this.nombreRol(rol).toLocaleLowerCase('es').includes(filtro))
       : this.roles;
+  }
+
+  nombreRol(rol: RolResponse): string {
+    return rol.nombre || `Rol sin nombre (ID ${rol.idRol})`;
   }
 
   cargarRoles(): void {
@@ -100,15 +118,25 @@ export class RolesComponent implements OnInit {
 
   abrirCrearRol(): void {
     if (!this.permisos.puedeCrear(this.MODULOS.ROLES)) return;
+    if (this.filasPermisos.some(fila => fila.guardando)) return;
+    this.rolPermisos = null;
+    this.filasPermisos = [];
     this.rolEditando = null;
     this.rolForm = { nombre: '', activo: true };
     this.errorRol = '';
+    this.errorModulosNuevoRol = '';
+    this.rolCreadoPendiente = null;
+    this.filasNuevoRol = [];
     this.mostrarFormularioRol = true;
+    this.cargarMatrizNuevoRol();
   }
 
   abrirEditarRol(rol: RolResponse): void {
     if (!this.permisos.puedeModificar(this.MODULOS.ROLES)) return;
     this.rolEditando = rol;
+    this.rolCreadoPendiente = null;
+    this.filasNuevoRol = [];
+    this.errorModulosNuevoRol = '';
     this.rolForm = { nombre: rol.nombre, activo: rol.activo };
     this.errorRol = '';
     this.mostrarFormularioRol = true;
@@ -118,17 +146,55 @@ export class RolesComponent implements OnInit {
     if (this.guardandoRol) return;
     this.mostrarFormularioRol = false;
     this.rolEditando = null;
+    this.rolCreadoPendiente = null;
+    this.filasNuevoRol = [];
+    this.cargandoModulosNuevoRol = false;
+    this.errorModulosNuevoRol = '';
     this.errorRol = '';
   }
 
   puedeGuardarRol(): boolean {
+    if (this.rolCreadoPendiente) return this.puedeAsignarPermisosIniciales();
     return this.rolEditando
       ? this.permisos.puedeModificar(this.MODULOS.ROLES)
       : this.permisos.puedeCrear(this.MODULOS.ROLES);
   }
 
+  puedeAsignarPermisosIniciales(): boolean {
+    return this.permisos.puedeConsultar(this.MODULOS.PERMISOS)
+      && this.permisos.puedeCrear(this.MODULOS.PERMISOS);
+  }
+
+  puedeEnviarRol(): boolean {
+    return this.puedeGuardarRol()
+      && !this.guardandoRol
+      && (this.rolEditando !== null
+        || !this.puedeAsignarPermisosIniciales()
+        || (!this.cargandoModulosNuevoRol && !this.errorModulosNuevoRol));
+  }
+
+  cargarMatrizNuevoRol(): void {
+    if (this.rolEditando || this.rolCreadoPendiente || !this.puedeAsignarPermisosIniciales()) return;
+    this.cargandoModulosNuevoRol = true;
+    this.errorModulosNuevoRol = '';
+    this.rolesService.listarModulosPermiso().subscribe({
+      next: modulos => {
+        this.filasNuevoRol = this.crearMatrizVacia(modulos);
+        this.cargandoModulosNuevoRol = false;
+      },
+      error: error => {
+        this.filasNuevoRol = [];
+        this.cargandoModulosNuevoRol = false;
+        this.errorModulosNuevoRol = this.errorMessage(
+          error,
+          'No se pudo cargar el catálogo autorizado de módulos.',
+        );
+      },
+    });
+  }
+
   guardarRol(form: NgForm): void {
-    if (form.invalid || !this.puedeGuardarRol() || this.guardandoRol) {
+    if (form.invalid || !this.puedeEnviarRol()) {
       form.control.markAllAsTouched();
       return;
     }
@@ -142,23 +208,95 @@ export class RolesComponent implements OnInit {
     }
     this.guardandoRol = true;
     this.errorRol = '';
-    const request$ = this.rolEditando
-      ? this.rolesService.actualizarRol(this.rolEditando.idRol, request)
+    if (this.rolCreadoPendiente) {
+      this.guardarPermisosIniciales(this.rolCreadoPendiente);
+      return;
+    }
+    const editando = this.rolEditando;
+    const request$ = editando
+      ? this.rolesService.actualizarRol(editando.idRol, request)
       : this.rolesService.crearRol(request);
     request$.subscribe({
       next: rol => {
-        this.aviso = this.rolEditando
-          ? `Rol “${rol.nombre}” actualizado.`
-          : `Rol “${rol.nombre}” creado.`;
-        this.guardandoRol = false;
-        this.cerrarFormularioRol();
-        this.cargarRoles();
+        if (editando) {
+          this.aviso = `Rol “${rol.nombre}” actualizado.`;
+          this.guardandoRol = false;
+          this.cerrarFormularioRol();
+          this.cargarRoles();
+          return;
+        }
+        this.rolCreadoPendiente = rol;
+        this.rolForm = { nombre: rol.nombre, activo: rol.activo };
+        this.guardarPermisosIniciales(rol);
       },
       error: error => {
         this.errorRol = this.errorMessage(error, 'No se pudo guardar el rol.');
         this.guardandoRol = false;
       },
     });
+  }
+
+  private guardarPermisosIniciales(rol: RolResponse): void {
+    if (!this.puedeAsignarPermisosIniciales()) {
+      this.finalizarCreacionRol(rol);
+      return;
+    }
+    const pendientes = this.filasNuevoRol.filter(fila =>
+      fila.idPermiso === null && this.algunaOperacion(fila));
+    if (pendientes.length === 0) {
+      this.finalizarCreacionRol(rol);
+      return;
+    }
+    this.guardarPermisoInicialEnSecuencia(rol, pendientes, 0, 0);
+  }
+
+  private guardarPermisoInicialEnSecuencia(
+    rol: RolResponse,
+    pendientes: PermisoFila[],
+    indice: number,
+    fallidos: number,
+  ): void {
+    if (indice >= pendientes.length) {
+      if (fallidos === 0) {
+        this.finalizarCreacionRol(rol);
+      } else {
+        this.guardandoRol = false;
+        this.errorRol = `El rol “${rol.nombre}” fue creado, pero ${fallidos} asignación${fallidos === 1 ? '' : 'es'} no pudo${fallidos === 1 ? '' : 'ieron'} guardarse. Corrige el problema y reintenta únicamente los permisos pendientes.`;
+        this.aviso = 'Guardado parcial: las asignaciones confirmadas se conservaron.';
+        this.cargarRoles();
+      }
+      return;
+    }
+
+    const fila = pendientes[indice];
+    fila.guardando = true;
+    fila.error = '';
+    this.rolesService.crearPermiso(this.toPermissionRequest(rol.idRol, fila)).subscribe({
+      next: permiso => {
+        this.aplicarPermiso(fila, permiso);
+        fila.guardando = false;
+        this.guardarPermisoInicialEnSecuencia(rol, pendientes, indice + 1, fallidos);
+      },
+      error: error => {
+        fila.error = this.errorMessage(error, 'No se pudo guardar este permiso.');
+        fila.guardando = false;
+        this.guardarPermisoInicialEnSecuencia(rol, pendientes, indice + 1, fallidos + 1);
+      },
+    });
+  }
+
+  private finalizarCreacionRol(rol: RolResponse): void {
+    const guardoPermisos = this.filasNuevoRol.some(fila => fila.idPermiso !== null);
+    this.aviso = guardoPermisos
+      ? `Rol “${rol.nombre}” y permisos guardados correctamente.`
+      : `Rol “${rol.nombre}” creado sin asignaciones de permisos.`;
+    this.guardandoRol = false;
+    this.errorRol = '';
+    if (guardoPermisos) {
+      this.actualizacion.revalidarAhora().subscribe({ error: () => undefined });
+    }
+    this.cerrarFormularioRol();
+    this.cargarRoles();
   }
 
   eliminarRol(rol: RolResponse): void {
@@ -186,9 +324,17 @@ export class RolesComponent implements OnInit {
     this.filasPermisos = [];
     this.cargandoPermisos = true;
     this.errorPermisos = '';
-    this.rolesService.listarTodosPermisos().subscribe({
-      next: permisos => {
-        this.filasPermisos = this.crearMatriz(rol.idRol, permisos);
+    forkJoin({
+      modulos: this.rolesService.listarModulosPermiso(),
+      permisos: this.rolesService.listarTodosPermisos(),
+    }).subscribe({
+      next: ({ modulos, permisos }) => {
+        try {
+          this.filasPermisos = this.crearMatriz(rol.idRol, modulos, permisos);
+        } catch (error) {
+          this.filasPermisos = [];
+          this.errorPermisos = this.errorMessage(error, 'No se pudo construir la matriz de permisos.');
+        }
         this.cargandoPermisos = false;
       },
       error: error => {
@@ -217,6 +363,14 @@ export class RolesComponent implements OnInit {
       ? this.rolPermisos?.activo === true
         && this.permisos.puedeCrear(this.MODULOS.PERMISOS)
       : this.permisos.puedeModificar(this.MODULOS.PERMISOS);
+  }
+
+  etiquetaModulo(modulo: string): string {
+    return etiquetaModuloPermiso(modulo);
+  }
+
+  operacionDisponible(modulo: string, operacion: OperacionPermiso): boolean {
+    return operacionDisponible(modulo, operacion);
   }
 
   guardarPermiso(fila: PermisoFila): void {
@@ -283,12 +437,17 @@ export class RolesComponent implements OnInit {
 
   private crearMatriz(
     idRol: number,
+    catalogo: readonly string[],
     permisos: readonly PermisoRolResponse[],
   ): PermisoFila[] {
-    const modulos = new Map<string, string>();
-    for (const permiso of permisos) {
-      const key = permiso.modulo.toLocaleLowerCase('en-US');
-      if (!modulos.has(key)) modulos.set(key, permiso.modulo);
+    const modulos = new Map(
+      catalogo.map(modulo => [modulo.toLocaleLowerCase('en-US'), modulo]),
+    );
+    const desconocido = permisos.find(
+      permiso => !modulos.has(permiso.modulo.toLocaleLowerCase('en-US')),
+    );
+    if (desconocido) {
+      throw new Error(`La API devolvió una asignación para el módulo no reconocido “${desconocido.modulo}”.`);
     }
     const permisosRol = new Map(
       permisos.filter(permiso => permiso.idRol === idRol)
@@ -303,6 +462,27 @@ export class RolesComponent implements OnInit {
           : { puedeConsultar: false, puedeCrear: false, puedeModificar: false, puedeEliminar: false };
         return {
           idPermiso: permiso?.idPermiso ?? null,
+          modulo,
+          ...estado,
+          original: { ...estado },
+          guardando: false,
+          error: '',
+        };
+      });
+  }
+
+  private crearMatrizVacia(modulos: readonly string[]): PermisoFila[] {
+    return [...modulos]
+      .sort((a, b) => a.localeCompare(b, 'es'))
+      .map(modulo => {
+        const estado: EstadoPermisoFila = {
+          puedeConsultar: false,
+          puedeCrear: false,
+          puedeModificar: false,
+          puedeEliminar: false,
+        };
+        return {
+          idPermiso: null,
           modulo,
           ...estado,
           original: { ...estado },
@@ -336,7 +516,14 @@ export class RolesComponent implements OnInit {
     return {
       idRol,
       modulo: fila.modulo,
-      ...this.estadoFila(fila),
+      puedeConsultar: this.operacionDisponible(fila.modulo, this.OPERACIONES.CONSULTAR)
+        && fila.puedeConsultar,
+      puedeCrear: this.operacionDisponible(fila.modulo, this.OPERACIONES.CREAR)
+        && fila.puedeCrear,
+      puedeModificar: this.operacionDisponible(fila.modulo, this.OPERACIONES.MODIFICAR)
+        && fila.puedeModificar,
+      puedeEliminar: this.operacionDisponible(fila.modulo, this.OPERACIONES.ELIMINAR)
+        && fila.puedeEliminar,
     };
   }
 

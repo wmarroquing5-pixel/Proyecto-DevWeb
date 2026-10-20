@@ -30,4 +30,9 @@ export interface GuardarPermisoRolRequest {
   puedeEliminar: boolean;
 }
 
+export interface PermisoFiltro {
+  idRol?: number;
+  modulo?: string;
+}
+
 export type { PagedResponse };

@@ -22,6 +22,8 @@ export class SidebarComponent {
   readonly mobileOpen = signal(false);
   readonly reintentando = signal(false);
   readonly icono = resolverIconoMenu;
+  readonly claveMenu = (item: MenuItem): string =>
+    item.route ?? `grupo:${item.label.toLocaleLowerCase('es')}`;
 
   readonly estadoVacio = computed(() => {
     if (!this.auth.isAuthenticated()) {

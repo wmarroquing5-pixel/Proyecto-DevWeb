@@ -21,7 +21,7 @@
   </div>
 
   <ul class="menu">
-    @for (item of menuService.menu(); track item; let index = $index) {
+    @for (item of menuService.menu(); track claveMenu(item); let index = $index) {
       <li class="menu-item">
         @if (hasChildren(item)) {
           <button type="button" class="menu-link submenu-toggle"
@@ -36,7 +36,7 @@
 
           @if (open[item.label]) {
             <ul class="submenu" [id]="'submenu-' + index">
-              @for (child of item.children; track child) {
+              @for (child of item.children; track claveMenu(child)) {
                 <li>
                   <a [routerLink]="child.route" routerLinkActive="active"
                      class="menu-link child" (click)="closeMobile()">

@@ -12,10 +12,10 @@ import { PermisosService } from '../../core/services/permisos.service';
   standalone: true,
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
-    <div class="container-fluid mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-shell">
+      <header class="page-header">
         <h2><i class="fa fa-pills"></i> Inventario de Medicamentos</h2>
-        <div class="d-flex gap-2">
+        <div class="page-header__actions">
           @if (permisos.puedeCrear(MODULOS_PERMISO.MEDICAMENTOS)) {
             <a routerLink="/inventario/medicamentos/nuevo" class="btn btn-primary">
               <i class="fa fa-plus"></i> Nuevo Medicamento
@@ -27,19 +27,19 @@ import { PermisosService } from '../../core/services/permisos.service';
             </a>
           }
         </div>
-      </div>
+      </header>
 
       <!-- Filtros -->
-      <div class="card p-3 mb-4">
+      <div class="ui-card ui-form mb-4">
         <div class="row g-3">
           <div class="col-md-5">
-            <label class="form-label">Buscar por nombre</label>
-            <input type="text" class="form-control" placeholder="Nombre del medicamento..."
+            <label for="inventario-nombre" class="form-label">Buscar por nombre</label>
+            <input id="inventario-nombre" type="text" class="form-control" placeholder="Nombre del medicamento..."
                    [(ngModel)]="filtroNombre" (input)="buscar()">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Categoría</label>
-            <select class="form-select" [(ngModel)]="filtroCategoriaId" (change)="buscar()">
+            <label for="inventario-categoria" class="form-label">Categoría</label>
+            <select id="inventario-categoria" class="form-select" [(ngModel)]="filtroCategoriaId" (change)="buscar()">
               <option [ngValue]="null">Todas</option>
               @for (c of categorias; track c.idCategoria) {
                 <option [ngValue]="c.idCategoria">{{ c.nombre }}</option>
@@ -47,8 +47,8 @@ import { PermisosService } from '../../core/services/permisos.service';
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label">Marca</label>
-            <select class="form-select" [(ngModel)]="filtroMarcaId" (change)="buscar()">
+            <label for="inventario-marca" class="form-label">Marca</label>
+            <select id="inventario-marca" class="form-select" [(ngModel)]="filtroMarcaId" (change)="buscar()">
               <option [ngValue]="null">Todas</option>
               @for (m of marcas; track m.idMarca) {
                 <option [ngValue]="m.idMarca">{{ m.nombre }}</option>
@@ -56,7 +56,7 @@ import { PermisosService } from '../../core/services/permisos.service';
             </select>
           </div>
           <div class="col-md-1 d-flex align-items-end">
-            <button class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">
+            <button type="button" class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()" aria-label="Limpiar filtros" title="Limpiar filtros">
               <i class="fa fa-times"></i>
             </button>
           </div>
@@ -72,17 +72,17 @@ import { PermisosService } from '../../core/services/permisos.service';
       } @else if (medicamentos.length === 0) {
         <div class="alert alert-info text-center">No hay medicamentos registrados.</div>
       } @else {
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead class="table-dark">
+        <div class="ui-table-wrap">
+          <table class="table table-striped table-hover ui-table">
+            <thead>
               <tr>
                 <th>Código</th>
                 <th>Nombre</th>
                 <th>Categoría</th>
                 <th>Marca</th>
-                <th>Precio</th>
-                <th>Stock</th>
-                <th>Acciones</th>
+                <th class="ui-col-number">Precio</th>
+                <th class="ui-col-number">Stock</th>
+                <th class="ui-col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -92,8 +92,8 @@ import { PermisosService } from '../../core/services/permisos.service';
                   <td>{{ m.nombre }}</td>
                   <td>{{ m.categoria }}</td>
                   <td>{{ m.marca }}</td>
-                  <td>Q{{ m.precioVenta | number:'1.2-2' }}</td>
-                  <td>
+                  <td class="ui-col-number">Q{{ m.precioVenta | number:'1.2-2' }}</td>
+                  <td class="ui-col-number">
                     <span class="badge"
                           [class.bg-success]="m.existenciaTotal > 10"
                           [class.bg-warning]="m.existenciaTotal > 0 && m.existenciaTotal <= 10"
@@ -101,16 +101,16 @@ import { PermisosService } from '../../core/services/permisos.service';
                       {{ m.existenciaTotal }}
                     </span>
                   </td>
-                  <td>
+                  <td class="ui-actions ui-col-actions">
                     @if (permisos.puedeModificar(MODULOS_PERMISO.MEDICAMENTOS)) {
                       <a [routerLink]="['/inventario/medicamentos/editar', m.idMedicamento]"
-                         class="btn btn-sm btn-warning me-1" aria-label="Editar medicamento">
+                         class="btn btn-sm btn-outline-primary ui-icon-button" aria-label="Editar medicamento" title="Editar medicamento">
                         <i class="fa fa-edit"></i>
                       </a>
                     }
                     @if (permisos.puedeEliminar(MODULOS_PERMISO.MEDICAMENTOS)) {
-                      <button (click)="desactivar(m.idMedicamento)" class="btn btn-sm btn-danger"
-                              [disabled]="!m.existenciaTotal" aria-label="Eliminar medicamento">
+                      <button type="button" (click)="desactivar(m.idMedicamento)" class="btn btn-sm btn-outline-danger ui-icon-button"
+                              [disabled]="!m.existenciaTotal" aria-label="Eliminar medicamento" title="Eliminar medicamento">
                         <i class="fa fa-trash"></i>
                       </button>
                     }

@@ -6,30 +6,33 @@ import { EmpleadosService } from '../../core/services/empleado.service';
 import { EmpleadoListadoResponse, PagedResponse } from '../../core/models/empleado.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
+import { UiStateComponent } from '../../shared/components/ui-state.component';
+import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
   selector: 'app-empleados',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
+  imports: [CommonModule, RouterModule, FormsModule, ConfirmDialogComponent, UiStateComponent],
   template: `
-    <div class="container mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Gestión de Empleados</h2>
+    <div class="page-shell">
+      <header class="page-header">
+        <div><h1>Gestión de Empleados</h1><p class="page-header__subtitle">Administra el personal activo de la clínica.</p></div>
         @if (permisos.puedeCrear(MODULOS_PERMISO.EMPLEADOS)) {
-          <a routerLink="/admin/empleados/nuevo" class="btn btn-primary">
-            <i class="fa fa-plus"></i> Nuevo Empleado
+          <a routerLink="/admin/empleados/nuevo" class="btn btn-primary" title="Crear empleado">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> Nuevo Empleado
           </a>
         }
-      </div>
+      </header>
 
       <!-- Filtros -->
-      <div class="card p-3 mb-4">
+      <div class="ui-card mb-4" aria-label="Filtros de empleados">
         <div class="row g-3">
           <div class="col-md-4">
-            <input type="text" class="form-control" placeholder="Buscar por nombre..." [(ngModel)]="filtroNombre" (input)="buscar()">
+            <label for="empleado-nombre" class="form-label">Nombre</label><input id="empleado-nombre" type="text" class="form-control" placeholder="Buscar por nombre..." [(ngModel)]="filtroNombre" (input)="buscar()">
           </div>
           <div class="col-md-3">
-            <select class="form-select" [(ngModel)]="filtroTipo" (change)="buscar()">
+            <label for="empleado-tipo" class="form-label">Tipo</label><select id="empleado-tipo" class="form-select" [(ngModel)]="filtroTipo" (change)="buscar()">
               <option value="">Todos los tipos</option>
               <option value="Medico">Médico</option>
               <option value="Enfermera">Enfermera</option>
@@ -38,43 +41,41 @@ import { PermisosService } from '../../core/services/permisos.service';
             </select>
           </div>
           <div class="col-md-3">
-            <select class="form-select" [(ngModel)]="filtroActivo" (change)="buscar()">
+            <label for="empleado-estado" class="form-label">Estado</label><select id="empleado-estado" class="form-select" [(ngModel)]="filtroActivo" (change)="buscar()">
               <option [ngValue]="undefined">Todos</option>
               <option [ngValue]="true">Activos</option>
               <option [ngValue]="false">Inactivos</option>
             </select>
           </div>
           <div class="col-md-2">
-            <button class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">Limpiar</button>
+            <button type="button" class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()" title="Limpiar filtros"><i class="bi bi-x-lg" aria-hidden="true"></i> Limpiar</button>
           </div>
         </div>
       </div>
 
       @if (cargando) {
-        <div class="text-center py-4">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Cargando...</span>
-          </div>
-        </div>
+        <app-ui-state kind="loading" title="Cargando empleados…" />
       } @else if (error) {
-        <div class="alert alert-danger">{{ error }}</div>
+        <app-ui-state kind="error" title="No fue posible cargar los empleados" [description]="error" [retryable]="true" (retry)="cargarEmpleados()" />
+      } @else if (empleados.length === 0) {
+        <app-ui-state kind="empty" title="No se encontraron empleados" description="Ajusta los filtros o registra un nuevo empleado." />
       } @else {
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead class="table-dark">
+        <div class="ui-table-wrap">
+          <table class="table table-hover ui-table">
+            <thead>
               <tr>
-                <th>ID</th>
+                <th scope="col" class="ui-col-index">No.</th>
                 <th>Nombre Completo</th>
                 <th>Sucursal</th>
                 <th>Tipo</th>
                 <th>Estado</th>
-                <th>Acciones</th>
+                <th scope="col" class="ui-col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              @for (emp of empleados; track emp.idEmpleado) {
+              @for (emp of empleados; track emp.idEmpleado; let index = $index) {
                 <tr>
-                  <td>{{ emp.idEmpleado }}</td>
+                  <td class="ui-col-index">{{ correlativo(index, page, pageSize) }}</td>
                   <td>{{ emp.nombres }} {{ emp.apellidos }}</td>
                   <td>{{ emp.idSucursal }}</td>
                   <td>
@@ -85,15 +86,15 @@ import { PermisosService } from '../../core/services/permisos.service';
                       {{ emp.activo ? 'Activo' : 'Inactivo' }}
                     </span>
                   </td>
-                  <td>
+                  <td class="ui-actions ui-col-actions">
                     @if (permisos.puedeModificar(MODULOS_PERMISO.EMPLEADOS)) {
-                      <a [routerLink]="['/admin/empleados/editar', emp.idEmpleado]" class="btn btn-sm btn-warning me-1" aria-label="Editar empleado">
-                        <i class="fa fa-edit"></i>
+                      <a [routerLink]="['/admin/empleados/editar', emp.idEmpleado]" class="btn btn-sm btn-outline-primary ui-icon-button" aria-label="Editar empleado" title="Editar empleado">
+                        <i class="bi bi-pencil" aria-hidden="true"></i>
                       </a>
                     }
                     @if (permisos.puedeEliminar(MODULOS_PERMISO.EMPLEADOS)) {
-                      <button (click)="eliminar(emp.idEmpleado)" class="btn btn-sm btn-danger" [disabled]="!emp.activo" aria-label="Eliminar empleado">
-                        <i class="fa fa-trash"></i>
+                      <button type="button" (click)="solicitarEliminacion(emp)" class="btn btn-sm btn-outline-danger ui-icon-button" [disabled]="!emp.activo || eliminandoId === emp.idEmpleado" aria-label="Eliminar empleado" title="Eliminar empleado">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
                       </button>
                     }
                   </td>
@@ -111,11 +112,19 @@ import { PermisosService } from '../../core/services/permisos.service';
               Anterior
             </button>
             <span class="mx-2">Página {{ page }}</span>
-            <button class="btn btn-outline-secondary btn-sm" (click)="cambiarPagina(page + 1)" [disabled]="empleados.length < pageSize">
+            <button class="btn btn-outline-secondary btn-sm" (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages">
               Siguiente
             </button>
           </div>
         </div>
+      }
+
+      @if (empleadoPendiente) {
+        <app-confirm-dialog title="Eliminar empleado"
+          [description]="'¿Deseas eliminar a ' + empleadoPendiente.nombres + ' ' + empleadoPendiente.apellidos + '?'"
+          consequence="La API aplicará la eliminación definida para este empleado."
+          [busy]="eliminandoId === empleadoPendiente.idEmpleado"
+          (confirmed)="confirmarEliminacion()" (cancelled)="cancelarEliminacion()" />
       }
     </div>
   `
@@ -124,13 +133,17 @@ export class EmpleadosComponent implements OnInit {
   private service = inject(EmpleadosService);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
+  readonly correlativo = correlativoPaginado;
 
   empleados: EmpleadoListadoResponse[] = [];
   total = 0;
+  totalPages = 0;
   page = 1;
   pageSize = 10;
   cargando = false;
   error = '';
+  empleadoPendiente: EmpleadoListadoResponse | null = null;
+  eliminandoId: number | null = null;
 
   filtroNombre = '';
   filtroTipo = '';
@@ -154,6 +167,7 @@ export class EmpleadosComponent implements OnInit {
       next: (res: PagedResponse<EmpleadoListadoResponse>) => {
         this.empleados = res.items;
         this.total = res.totalCount;
+        this.totalPages = res.totalPages;
         this.cargando = false;
       },
       error: () => {
@@ -176,18 +190,36 @@ export class EmpleadosComponent implements OnInit {
   }
 
   cambiarPagina(nuevaPagina: number) {
-    if (nuevaPagina > 0) {
+    if (nuevaPagina > 0 && nuevaPagina <= Math.max(this.totalPages, 1)) {
       this.page = nuevaPagina;
       this.cargarEmpleados();
     }
   }
 
-  eliminar(id: number) {
-    if (confirm('¿Estás seguro de eliminar este empleado?')) {
-      this.service.eliminar(id).subscribe({
-        next: () => this.cargarEmpleados(),
-        error: () => alert('No se pudo eliminar el empleado.')
-      });
-    }
+  solicitarEliminacion(empleado: EmpleadoListadoResponse): void {
+    if (!empleado.activo || !this.permisos.puedeEliminar(MODULOS_PERMISO.EMPLEADOS)) return;
+    this.empleadoPendiente = empleado;
+  }
+
+  cancelarEliminacion(): void {
+    if (this.eliminandoId === null) this.empleadoPendiente = null;
+  }
+
+  confirmarEliminacion(): void {
+    const empleado = this.empleadoPendiente;
+    if (!empleado || this.eliminandoId !== null) return;
+    this.eliminandoId = empleado.idEmpleado;
+    this.service.eliminar(empleado.idEmpleado).subscribe({
+      next: () => {
+        this.eliminandoId = null;
+        this.empleadoPendiente = null;
+        this.cargarEmpleados();
+      },
+      error: () => {
+        this.eliminandoId = null;
+        this.empleadoPendiente = null;
+        this.error = 'No se pudo eliminar el empleado.';
+      },
+    });
   }
 }

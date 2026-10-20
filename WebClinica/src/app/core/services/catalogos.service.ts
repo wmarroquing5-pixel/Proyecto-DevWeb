@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, map } from 'rxjs';
+import { EMPTY, Observable, expand, reduce, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   Sucursal,
@@ -13,19 +13,15 @@ import {
 export class CatalogosService {
   private http = inject(HttpClient);
   private apiUrl = `${environment.apiUrl}`;
+  private readonly pageSize = 100;
+  private readonly maxPages = 5;
 
   /**
    * Obtiene todas las sucursales activas.
    * GET /api/sucursales?page=1&pageSize=100
    */
   getSucursales(): Observable<Sucursal[]> {
-    const params = new HttpParams()
-      .set('page', '1')
-      .set('pageSize', '100');
-
-    return this.http
-      .get<PagedResponse<Sucursal>>(`${this.apiUrl}/sucursales`, { params })
-      .pipe(map(res => res.items));
+    return this.getCatalogoCompleto<Sucursal>('sucursales');
   }
 
   /**
@@ -33,13 +29,7 @@ export class CatalogosService {
    * GET /api/especialidades?page=1&pageSize=100
    */
   getEspecialidades(): Observable<Especialidad[]> {
-    const params = new HttpParams()
-      .set('page', '1')
-      .set('pageSize', '100');
-
-    return this.http
-      .get<PagedResponse<Especialidad>>(`${this.apiUrl}/especialidades`, { params })
-      .pipe(map(res => res.items));
+    return this.getCatalogoCompleto<Especialidad>('especialidades');
   }
 
   /**
@@ -47,12 +37,31 @@ export class CatalogosService {
    * GET /api/turnos?page=1&pageSize=100
    */
   getTurnos(): Observable<Turno[]> {
+    return this.getCatalogoCompleto<Turno>('turnos');
+  }
+
+  private getCatalogoCompleto<T>(ruta: string): Observable<T[]> {
+    return this.getPagina<T>(ruta, 1).pipe(
+      expand(page => {
+        if (page.totalPages > this.maxPages) {
+          return throwError(() => new Error(
+            `El catálogo ${ruta} excede el límite seguro de consulta.`,
+          ));
+        }
+        return page.page < page.totalPages
+          ? this.getPagina<T>(ruta, page.page + 1)
+          : EMPTY;
+      }),
+      reduce((items, page) => [...items, ...page.items], [] as T[]),
+    );
+  }
+
+  private getPagina<T>(ruta: string, page: number): Observable<PagedResponse<T>> {
     const params = new HttpParams()
-      .set('page', '1')
-      .set('pageSize', '100');
+      .set('page', page)
+      .set('pageSize', this.pageSize);
 
     return this.http
-      .get<PagedResponse<Turno>>(`${this.apiUrl}/turnos`, { params })
-      .pipe(map(res => res.items));
+      .get<PagedResponse<T>>(`${this.apiUrl}/${ruta}`, { params });
   }
 }

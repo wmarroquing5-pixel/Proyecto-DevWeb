@@ -32,6 +32,7 @@ describe('MenuService: actualización dinámica', () => {
       { label: 'Usuarios', route: '/admin/usuarios', icon: 'fa-users-cog', hidden: false, roles: ['Admin'], children: null },
       { label: 'Roles', route: '/admin/roles', icon: 'fa-user-tag', hidden: false, roles: ['Admin'], children: null },
       { label: 'Empleados', route: '/admin/empleados', icon: 'fa-id-badge', hidden: false, roles: ['Admin'], children: null },
+      { label: 'Permisos', route: '/admin/permisos', icon: 'fa-shield-halved', hidden: false, roles: ['Admin'], children: null },
     ] },
   ];
 
@@ -161,7 +162,7 @@ describe('MenuService: actualización dinámica', () => {
     expect(routes).toEqual([
       '/dashboard', '/pacientes', '/consultas', '/medicamentos',
       '/inventario/lotes', '/habitaciones', '/ventas',
-      '/admin/usuarios', '/admin/roles', '/admin/empleados',
+      '/admin/usuarios', '/admin/roles', '/admin/empleados', '/admin/permisos',
     ]);
     expect(service.estado()).toBe('cargado');
   });
@@ -170,6 +171,7 @@ describe('MenuService: actualización dinámica', () => {
     ['/inventario/lotes', MODULOS_PERMISO.LOTES_MEDICAMENTO],
     ['/habitaciones', MODULOS_PERMISO.HABITACIONES],
     ['/ventas', MODULOS_PERMISO.VENTAS],
+    ['/admin/permisos', MODULOS_PERMISO.PERMISOS],
   ].forEach(([route, module]) => {
     it(`conserva ${route} únicamente con ${module}/Consultar`, () => {
       configure(); authenticated.set(true);

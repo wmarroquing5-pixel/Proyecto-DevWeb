@@ -10,6 +10,7 @@ import { ApiErrorService } from '../../core/services/api-error.service';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { HistorialService } from '../../core/services/historial.service';
 import { PermisosService } from '../../core/services/permisos.service';
+import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 interface FiltrosConsultaForm {
   idPaciente: number | null;
@@ -42,6 +43,7 @@ export class ConsultasListComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
+  readonly correlativo = correlativoPaginado;
 
   filtros = filtrosVacios();
   consultas: ConsultaListadoDto[] = [];

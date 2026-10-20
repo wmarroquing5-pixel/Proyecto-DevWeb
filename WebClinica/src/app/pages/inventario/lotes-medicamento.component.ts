@@ -16,6 +16,7 @@ import { ApiErrorService } from '../../core/services/api-error.service';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { PermisosService } from '../../core/services/permisos.service';
+import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
   idSucursal: 0,
@@ -28,13 +29,13 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
   standalone: true,
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
-    <div class="container-fluid mt-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div class="page-shell">
+      <header class="page-header">
         <div>
           <h2 class="mb-1"><i class="fa fa-boxes"></i> Gestión de Lotes</h2>
           <p class="text-muted mb-0">Consulta existencias por lote y registra entradas confirmadas por la API.</p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="page-header__actions">
           <a routerLink="/inventario" class="btn btn-secondary">
             <i class="fa fa-arrow-left"></i> Volver a Medicamentos
           </a>
@@ -44,7 +45,7 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
             </a>
           }
         </div>
-      </div>
+      </header>
 
       @if (aviso) {
         <div class="alert alert-success alert-dismissible" role="status">
@@ -68,32 +69,32 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
       } @else if (lotes.length === 0) {
         <div class="alert alert-info text-center">No hay lotes registrados.</div>
       } @else {
-        <div class="table-responsive">
-          <table class="table table-striped table-hover align-middle">
-            <thead class="table-dark">
+        <div class="ui-table-wrap">
+          <table class="table table-striped table-hover ui-table">
+            <thead>
               <tr>
-                <th>#</th>
+                <th scope="col" class="ui-col-index">No.</th>
                 <th>Número de lote</th>
                 <th>Medicamento</th>
-                <th>Fecha de ingreso</th>
-                <th>Fecha de vencimiento</th>
-                <th class="text-end">Existencia</th>
-                <th>Acciones</th>
+                <th class="ui-col-date">Fecha de ingreso</th>
+                <th class="ui-col-date">Fecha de vencimiento</th>
+                <th class="ui-col-number">Existencia</th>
+                <th class="ui-col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              @for (lote of lotes; track lote.idLote) {
+              @for (lote of lotes; track lote.idLote; let index = $index) {
                 <tr>
-                  <td>{{ lote.idLote }}</td>
+                  <td class="ui-col-index">{{ correlativo(index, page, pageSize) }}</td>
                   <td><code>{{ lote.numeroLote }}</code></td>
                   <td>#{{ lote.idMedicamento }}</td>
-                  <td>{{ lote.fechaIngreso | date:'dd/MM/yyyy' }}</td>
-                  <td>
+                  <td class="ui-col-date">{{ lote.fechaIngreso | date:'dd/MM/yyyy' }}</td>
+                  <td class="ui-col-date">
                     <span [class.text-danger]="isVencido(lote.fechaVencimiento)">
                       {{ lote.fechaVencimiento | date:'dd/MM/yyyy' }}
                     </span>
                   </td>
-                  <td class="text-end">
+                  <td class="ui-col-number">
                     <span class="badge"
                           [class.bg-success]="lote.cantidadDisponible > 10"
                           [class.bg-warning]="lote.cantidadDisponible > 0 && lote.cantidadDisponible <= 10"
@@ -101,19 +102,19 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
                       {{ lote.cantidadDisponible }}
                     </span>
                   </td>
-                  <td>
+                  <td class="ui-actions ui-col-actions">
                     @if (permisos.puedeModificar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
-                      <button type="button" (click)="abrirEntrada(lote)" class="btn btn-sm btn-success me-1">
+                      <button type="button" (click)="abrirEntrada(lote)" class="btn btn-sm btn-success" aria-label="Registrar entrada de lote" title="Registrar entrada">
                         <i class="fa fa-plus"></i> Entrada
                       </button>
                       <a [routerLink]="['/inventario/lotes/editar', lote.idLote]"
-                         class="btn btn-sm btn-warning me-1" aria-label="Editar lote">
+                         class="btn btn-sm btn-outline-primary ui-icon-button" aria-label="Editar lote" title="Editar lote">
                         <i class="fa fa-edit"></i>
                       </a>
                     }
                     @if (permisos.puedeEliminar(MODULOS_PERMISO.LOTES_MEDICAMENTO)) {
-                      <button type="button" (click)="eliminar(lote.idLote)" class="btn btn-sm btn-danger"
-                              aria-label="Eliminar lote">
+                      <button type="button" (click)="eliminar(lote.idLote)" class="btn btn-sm btn-outline-danger ui-icon-button"
+                              aria-label="Eliminar lote" title="Eliminar lote">
                         <i class="fa fa-trash"></i>
                       </button>
                     }
@@ -206,6 +207,7 @@ export class LotesMedicamentoComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
+  readonly correlativo = correlativoPaginado;
 
   lotes: LoteMedicamentoResponse[] = [];
   total = 0;

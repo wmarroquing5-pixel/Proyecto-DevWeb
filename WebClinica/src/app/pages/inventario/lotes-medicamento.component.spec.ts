@@ -116,6 +116,19 @@ describe('LotesMedicamentoComponent', () => {
     expect(component.lotes).toEqual([lote]);
     expect(component.total).toBe(21);
     expect(component.totalPages).toBe(3);
+    expect((fixture.nativeElement as HTMLElement).querySelector('thead th')?.textContent?.trim()).toBe('No.');
+    expect((fixture.nativeElement as HTMLElement).querySelector('tbody td')?.textContent?.trim()).toBe('1');
+  });
+
+  it('continúa el correlativo y conserva el ID real en edición y entradas', () => {
+    listarLotes.and.returnValue(of(pagina([{ ...lote, idLote: 93 }], 3, 10, 21)));
+    const component = render();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('21');
+    expect(element.querySelector<HTMLAnchorElement>('[aria-label="Editar lote"]')?.getAttribute('href'))
+      .toBe('/inventario/lotes/editar/93');
+    (element.querySelector('[aria-label="Registrar entrada de lote"]') as HTMLButtonElement).click();
+    expect(component.loteSeleccionado?.idLote).toBe(93);
   });
 
   it('muestra el estado vacío sin fabricar movimientos', () => {

@@ -139,18 +139,33 @@ public sealed class AdministracionService(
         await SaveAsync(ct);
     }
 
-    public async Task<PagedResponse<PermisoResponse>> ListarPermisosAsync(int page, int pageSize, CancellationToken ct)
+    public async Task<PagedResponse<PermisoResponse>> ListarPermisosAsync(
+        PermisoFiltroDto filtro, CancellationToken ct)
     {
-        var pagination = parameterValidator.ValidatePagination(page, pageSize);
-        var query = context.Permisos.AsNoTracking();
+        if (filtro.IdRol is <= 0)
+            throw Invalid(nameof(filtro.IdRol), "Debe ser un identificador positivo.");
+
+        var modulo = filtro.Modulo?.Trim();
+        if (modulo?.Length > 50)
+            throw Invalid(nameof(filtro.Modulo), "No puede exceder 50 caracteres.");
+
+        var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
+        var query = context.Permisos.AsNoTracking().AsQueryable();
+        if (filtro.IdRol.HasValue)
+            query = query.Where(p => p.IdRol == filtro.IdRol.Value);
+        if (!string.IsNullOrWhiteSpace(modulo))
+            query = query.Where(p => p.Modulo.Contains(modulo));
+
         var total = await query.LongCountAsync(ct);
         var items = await query.OrderBy(p => p.IdPermiso)
             .Skip(pagination.Skip).Take(pagination.PageSize)
             .Select(p => new PermisoResponse(p.IdPermiso, p.IdRol, p.Modulo,
                 p.PuedeConsultar, p.PuedeCrear, p.PuedeModificar, p.PuedeEliminar))
             .ToListAsync(ct);
-        return new(items, page, pageSize, total);
+        return new(items, filtro.Page, filtro.PageSize, total);
     }
+
+    public IReadOnlyList<string> ListarModulosPermiso() => PermisoModuleCatalog.All;
 
     public async Task<PermisoResponse> ObtenerPermisoAsync(int id, CancellationToken ct) =>
         await context.Permisos.AsNoTracking().Where(p => p.IdPermiso == id)
@@ -161,60 +176,49 @@ public sealed class AdministracionService(
 
     public async Task<PermisoResponse> CrearPermisoAsync(GuardarPermisoRequest request, CancellationToken ct)
     {
-        var modulo = RequiredText(request.Modulo, nameof(request.Modulo));
-
-        if (!context.Database.IsSqlServer())
-            return await CrearPermisoCoreAsync(request, modulo, ct);
-
-        try
-        {
-            await using var transaction = await context.Database.BeginTransactionAsync(
-                IsolationLevel.Serializable, ct);
-            try
-            {
-                await LockPermissionsTableAsync(ct);
-                var response = await CrearPermisoCoreAsync(request, modulo, ct);
-                await transaction.CommitAsync(ct);
-                return response;
-            }
-            catch
-            {
-                await transaction.RollbackAsync(CancellationToken.None);
-                throw;
-            }
-        }
-        catch (SqlException ex) when (ex.Number is 1205 or 1222)
-        {
-            throw new ConflictException(
-                "Los permisos están siendo modificados. Intente nuevamente.");
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
-            sql.Number is 2601 or 2627 or 547)
-        {
-            throw new ConflictException(
-                "La operación entra en conflicto con una restricción de la base de datos.");
-        }
+        var modulo = AllowedModule(request.Modulo);
+        return await ExecutePermissionMutationAsync(
+            token => CrearPermisoCoreAsync(request, modulo, token), ct);
     }
 
     public async Task<PermisoResponse> ActualizarPermisoAsync(int id, GuardarPermisoRequest request, CancellationToken ct)
     {
-        var permiso = await context.Permisos.SingleOrDefaultAsync(p => p.IdPermiso == id, ct)
-            ?? throw new NotFoundException("Permiso no encontrado.");
-        var modulo = RequiredText(request.Modulo, nameof(request.Modulo));
-        await ValidatePermissionReferences(request.IdRol, modulo, id, ct);
-        permiso.IdRol = request.IdRol;
-        permiso.Modulo = modulo;
-        SetPermissionFlags(permiso, request);
-        await SaveAsync(ct);
-        return ToResponse(permiso);
+        if (id <= 0)
+            throw Invalid(nameof(id), "Debe ser un identificador positivo.");
+
+        var modulo = AllowedModule(request.Modulo);
+        return await ExecutePermissionMutationAsync(async token =>
+        {
+            var permiso = await context.Permisos.SingleOrDefaultAsync(
+                p => p.IdPermiso == id, token)
+                ?? throw new NotFoundException("Permiso no encontrado.");
+            await ValidatePermissionReferences(request.IdRol, modulo, id, token);
+            await EnsurePermissionAdministrationPreservedAsync(
+                permiso, request, modulo, deleting: false, token);
+            permiso.IdRol = request.IdRol;
+            permiso.Modulo = modulo;
+            SetPermissionFlags(permiso, request);
+            await SaveAsync(token);
+            return ToResponse(permiso);
+        }, ct);
     }
 
     public async Task EliminarPermisoAsync(int id, CancellationToken ct)
     {
-        var permiso = await context.Permisos.SingleOrDefaultAsync(p => p.IdPermiso == id, ct)
-            ?? throw new NotFoundException("Permiso no encontrado.");
-        context.Permisos.Remove(permiso);
-        await SaveAsync(ct);
+        if (id <= 0)
+            throw Invalid(nameof(id), "Debe ser un identificador positivo.");
+
+        await ExecutePermissionMutationAsync(async token =>
+        {
+            var permiso = await context.Permisos.SingleOrDefaultAsync(
+                p => p.IdPermiso == id, token)
+                ?? throw new NotFoundException("Permiso no encontrado.");
+            await EnsurePermissionAdministrationPreservedAsync(
+                permiso, replacement: null, modulo: null, deleting: true, token);
+            context.Permisos.Remove(permiso);
+            await SaveAsync(token);
+            return true;
+        }, ct);
     }
 
     private async Task ValidateUserReferences(int idRol, int? idEmpleado, CancellationToken ct)
@@ -235,8 +239,8 @@ public sealed class AdministracionService(
 
     private async Task ValidatePermissionReferences(int idRol, string modulo, int? id, CancellationToken ct)
     {
-        if (!await context.Roles.AnyAsync(r => r.IdRol == idRol, ct))
-            throw Invalid("IdRol", "El rol no existe.");
+        if (!await context.Roles.AnyAsync(r => r.IdRol == idRol && r.Activo, ct))
+            throw Invalid("IdRol", "El rol no existe o está inactivo.");
         if (await context.Permisos.AnyAsync(p => p.IdRol == idRol && p.Modulo == modulo &&
             (!id.HasValue || p.IdPermiso != id.Value), ct))
             throw new ConflictException("Ya existe un permiso para ese rol y módulo.");
@@ -258,10 +262,118 @@ public sealed class AdministracionService(
         return ToResponse(permiso);
     }
 
+    private async Task<T> ExecutePermissionMutationAsync<T>(
+        Func<CancellationToken, Task<T>> operation, CancellationToken ct)
+    {
+        if (!context.Database.IsSqlServer())
+            return await operation(ct);
+
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, ct);
+            try
+            {
+                await LockPermissionsTableAsync(ct);
+                var result = await operation(ct);
+                await transaction.CommitAsync(ct);
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+        }
+        catch (SqlException ex) when (ex.Number is 1205 or 1222)
+        {
+            throw new ConflictException(
+                "Los permisos están siendo modificados. Intente nuevamente.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException(
+                "El permiso cambió durante la operación. Consulte el estado actual e intente nuevamente.");
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number is 2601 or 2627 or 547)
+        {
+            throw new ConflictException(
+                "La operación entra en conflicto con una restricción de la base de datos.");
+        }
+    }
+
+    private async Task EnsurePermissionAdministrationPreservedAsync(
+        Permiso current,
+        GuardarPermisoRequest? replacement,
+        string? modulo,
+        bool deleting,
+        CancellationToken ct)
+    {
+        if (!string.Equals(current.Modulo, "Permisos", StringComparison.OrdinalIgnoreCase) ||
+            !await RoleHasActiveUserAsync(current.IdRol, ct))
+            return;
+
+        var replacementIsEffective = !deleting &&
+            string.Equals(modulo, "Permisos", StringComparison.Ordinal) &&
+            replacement is not null &&
+            await RoleHasActiveUserAsync(replacement.IdRol, ct);
+
+        await EnsureOperationPreservedAsync(
+            current.IdPermiso, current.PuedeConsultar,
+            replacementIsEffective && replacement!.PuedeConsultar, Operacion.Consultar, ct);
+        await EnsureOperationPreservedAsync(
+            current.IdPermiso, current.PuedeCrear,
+            replacementIsEffective && replacement!.PuedeCrear, Operacion.Crear, ct);
+        await EnsureOperationPreservedAsync(
+            current.IdPermiso, current.PuedeModificar,
+            replacementIsEffective && replacement!.PuedeModificar, Operacion.Modificar, ct);
+        await EnsureOperationPreservedAsync(
+            current.IdPermiso, current.PuedeEliminar,
+            replacementIsEffective && replacement!.PuedeEliminar, Operacion.Eliminar, ct);
+    }
+
+    private async Task EnsureOperationPreservedAsync(
+        int currentPermissionId,
+        bool currentlyGranted,
+        bool remainsGranted,
+        Operacion operation,
+        CancellationToken ct)
+    {
+        if (!currentlyGranted || remainsGranted)
+            return;
+
+        var alternatives = context.Permisos.AsNoTracking().Where(permission =>
+            permission.IdPermiso != currentPermissionId && permission.Modulo == "Permisos");
+        alternatives = operation switch
+        {
+            Operacion.Consultar => alternatives.Where(permission => permission.PuedeConsultar),
+            Operacion.Crear => alternatives.Where(permission => permission.PuedeCrear),
+            Operacion.Modificar => alternatives.Where(permission => permission.PuedeModificar),
+            Operacion.Eliminar => alternatives.Where(permission => permission.PuedeEliminar),
+            _ => alternatives.Where(_ => false)
+        };
+
+        var hasAlternative = await alternatives.AnyAsync(permission =>
+            context.Roles.Any(role => role.IdRol == permission.IdRol && role.Activo) &&
+            context.Usuarios.Any(user => user.IdRol == permission.IdRol && user.Activo), ct);
+        if (!hasAlternative)
+            throw new ConflictException(
+                $"No se puede revocar la última capacidad efectiva para {operation} permisos.");
+    }
+
+    private async Task<bool> RoleHasActiveUserAsync(int idRol, CancellationToken ct)
+    {
+        if (!await context.Roles.AnyAsync(role => role.IdRol == idRol && role.Activo, ct))
+            return false;
+        return await context.Usuarios.AnyAsync(
+            user => user.IdRol == idRol && user.Activo, ct);
+    }
+
     private async Task LockPermissionsTableAsync(CancellationToken ct)
     {
         var transaction = context.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("La creación SQL de permisos requiere una transacción activa.");
+            ?? throw new InvalidOperationException("La modificación SQL de permisos requiere una transacción activa.");
         await using var command = context.Database.GetDbConnection().CreateCommand();
         command.Transaction = transaction.GetDbTransaction();
         command.CommandText =
@@ -285,6 +397,15 @@ public sealed class AdministracionService(
         if (string.IsNullOrWhiteSpace(text) || text.Length > 50)
             throw Invalid(name, "Debe contener entre 1 y 50 caracteres.");
         return text;
+    }
+
+    private static string AllowedModule(string? value)
+    {
+        _ = RequiredText(value, nameof(GuardarPermisoRequest.Modulo));
+        if (!PermisoModuleCatalog.TryNormalize(value, out var module))
+            throw Invalid(nameof(GuardarPermisoRequest.Modulo),
+                "El módulo no corresponde a una política de autorización de la API.");
+        return module;
     }
 
     private static AppValidationException Invalid(string name, string message) =>

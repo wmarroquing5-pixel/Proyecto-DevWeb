@@ -11,14 +11,11 @@ const permiso = (modulo: string, operacion: PermisoRequerido['operacion']): Perm
 
 const rutaPendiente = (
   path: string,
-  modulo: string,
   titulo: string,
   descripcion: string,
 ): Route => ({
   path,
-  canActivate: [permisoGuard],
   data: {
-    permisos: [permiso(modulo, OPERACIONES_PERMISO.CONSULTAR)],
     titulo,
     descripcion,
   },
@@ -53,7 +50,6 @@ export const routes: Routes = [
       // Rutas anunciadas por el menú de la API cuya pantalla funcional sigue pendiente.
       rutaPendiente(
         'citas',
-        MODULOS_PERMISO.CITAS,
         'Citas médicas',
         'La gestión de citas se encuentra en preparación.',
       ),
@@ -74,13 +70,11 @@ export const routes: Routes = [
       },
       rutaPendiente(
         'reportes/citas',
-        MODULOS_PERMISO.REPORTES,
         'Reporte de citas del día',
         'El reporte de citas se encuentra en preparación.',
       ),
       rutaPendiente(
         'reportes/pacientes',
-        MODULOS_PERMISO.REPORTES,
         'Reporte de pacientes atendidos',
         'El reporte de pacientes se encuentra en preparación.',
       ),
@@ -158,7 +152,11 @@ export const routes: Routes = [
       {
         path: 'admin/usuarios/nuevo',
         canActivate: [permisoGuard],
-        data: { permisos: [permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.CREAR)] },
+        data: { permisos: [
+          permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.CREAR),
+          permiso(MODULOS_PERMISO.ROLES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.EMPLEADOS, OPERACIONES_PERMISO.CONSULTAR),
+        ] },
         loadComponent: () =>
           import('./pages/usuarios/usuario-form.component').then(m => m.UsuarioFormComponent),
       },
@@ -168,6 +166,8 @@ export const routes: Routes = [
         data: { permisos: [
           permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.CONSULTAR),
           permiso(MODULOS_PERMISO.USUARIOS, OPERACIONES_PERMISO.MODIFICAR),
+          permiso(MODULOS_PERMISO.ROLES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.EMPLEADOS, OPERACIONES_PERMISO.CONSULTAR),
         ] },
         loadComponent: () =>
           import('./pages/usuarios/usuario-form.component').then(m => m.UsuarioFormComponent),
@@ -313,7 +313,13 @@ export const routes: Routes = [
 },
 
       // ---------- Módulo Permisos ----------
-
+      {
+        path: 'admin/permisos',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.PERMISOS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/permisos/permisos.component').then(m => m.PermisosComponent),
+      },
 
       {
         path: 'acceso-denegado',

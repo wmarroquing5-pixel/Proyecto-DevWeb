@@ -25,28 +25,28 @@ interface ItemCarrito {
   standalone: true,
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
-    <div class="container-fluid mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-shell">
+      <header class="page-header">
         <h2><i class="fa fa-plus-circle"></i> Nueva Venta de Farmacia</h2>
         <a routerLink="/ventas" class="btn btn-secondary">
           <i class="fa fa-arrow-left"></i> Volver
         </a>
-      </div>
+      </header>
 
       @if (error) { <div class="alert alert-danger">{{ error }}</div> }
 
       <div class="row g-4">
         <!-- Panel izquierdo: Búsqueda de medicamentos -->
         <div class="col-md-5">
-          <div class="card p-3 shadow-sm">
+          <div class="ui-card ui-form">
             <h5><i class="fa fa-search"></i> Buscar Medicamento</h5>
             <div class="mb-3">
-              <label class="form-label">ID Sucursal *</label>
-              <input type="number" class="form-control" [(ngModel)]="idSucursal" min="1" required>
+              <label for="venta-sucursal" class="form-label">ID Sucursal *</label>
+              <input id="venta-sucursal" type="number" class="form-control" [(ngModel)]="idSucursal" min="1" required>
             </div>
             <div class="mb-3">
-              <label class="form-label">Buscar por nombre</label>
-              <input type="text" class="form-control" [(ngModel)]="busqueda"
+              <label for="venta-busqueda" class="form-label">Buscar por nombre</label>
+              <input id="venta-busqueda" type="text" class="form-control" [(ngModel)]="busqueda"
                      (input)="buscarMedicamentos()" placeholder="Ej: Paracetamol...">
             </div>
 
@@ -88,7 +88,7 @@ interface ItemCarrito {
 
         <!-- Panel derecho: Carrito de venta -->
         <div class="col-md-7">
-          <div class="card p-3 shadow-sm">
+          <div class="ui-card">
             <h5><i class="fa fa-shopping-cart"></i> Carrito de Venta</h5>
 
             @if (carrito.length === 0) {
@@ -96,15 +96,15 @@ interface ItemCarrito {
                 Agrega medicamentos desde el panel de búsqueda.
               </div>
             } @else {
-              <div class="table-responsive">
-                <table class="table table-sm">
-                  <thead class="table-light">
+              <div class="ui-table-wrap">
+                <table class="table table-sm ui-table">
+                  <thead>
                     <tr>
                       <th>Medicamento</th>
-                      <th>Precio</th>
-                      <th>Cantidad</th>
-                      <th>Subtotal</th>
-                      <th></th>
+                      <th class="ui-col-number">Precio</th>
+                      <th class="ui-col-number">Cantidad</th>
+                      <th class="ui-col-number">Subtotal</th>
+                      <th class="ui-col-actions"><span class="visually-hidden">Acciones</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -114,20 +114,20 @@ interface ItemCarrito {
                           <strong>{{ item.nombre }}</strong>
                           <br><small class="text-muted">{{ item.codigo }}</small>
                         </td>
-                        <td>Q{{ item.precioUnitario | number:'1.2-2' }}</td>
-                        <td>
+                        <td class="ui-col-number">Q{{ item.precioUnitario | number:'1.2-2' }}</td>
+                        <td class="ui-col-number">
                           <div class="input-group input-group-sm">
-                            <button class="btn btn-outline-secondary" (click)="cambiarCantidad(item, -1)">-</button>
+                            <button type="button" class="btn btn-outline-secondary" (click)="cambiarCantidad(item, -1)" aria-label="Disminuir cantidad" title="Disminuir cantidad">-</button>
                             <input type="number" class="form-control text-center"
                                    [(ngModel)]="item.cantidad" min="1" [max]="item.existenciaTotal"
                                    (change)="recalcularSubtotal(item)" style="max-width: 60px;">
-                            <button class="btn btn-outline-secondary" (click)="cambiarCantidad(item, 1)">+</button>
+                            <button type="button" class="btn btn-outline-secondary" (click)="cambiarCantidad(item, 1)" aria-label="Aumentar cantidad" title="Aumentar cantidad">+</button>
                           </div>
                           <small class="text-muted">Stock: {{ item.existenciaTotal }}</small>
                         </td>
-                        <td class="fw-bold">Q{{ item.subtotal | number:'1.2-2' }}</td>
-                        <td>
-                          <button class="btn btn-sm btn-danger" (click)="eliminarDelCarrito(item)">
+                        <td class="fw-bold ui-col-number">Q{{ item.subtotal | number:'1.2-2' }}</td>
+                        <td class="ui-actions ui-col-actions">
+                          <button type="button" class="btn btn-sm btn-outline-danger ui-icon-button" (click)="eliminarDelCarrito(item)" aria-label="Quitar medicamento" title="Quitar medicamento">
                             <i class="fa fa-trash"></i>
                           </button>
                         </td>

@@ -38,6 +38,18 @@ public sealed class GuardarRolRequest
 public sealed record PermisoResponse(int IdPermiso, int IdRol, string Modulo,
     bool PuedeConsultar, bool PuedeCrear, bool PuedeModificar, bool PuedeEliminar);
 
+public sealed class PermisoFiltroDto
+{
+    [Range(1, int.MaxValue)]
+    public int? IdRol { get; init; }
+    [StringLength(50)]
+    public string? Modulo { get; init; }
+    [Range(1, int.MaxValue)]
+    public int Page { get; init; } = 1;
+    [Range(1, 100)]
+    public int PageSize { get; init; } = 20;
+}
+
 public sealed class GuardarPermisoRequest
 {
     [Range(1, int.MaxValue)]

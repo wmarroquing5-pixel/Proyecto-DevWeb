@@ -1,1 +1,38 @@
-/* You can add global styles to this file, and also import other style files */
+:root { --ui-surface: #fff; --ui-canvas: #f4f7fa; --ui-border: #d9e2ec; --ui-muted: #5f6b76; --ui-heading: #17324d; --ui-shadow: 0 .25rem .8rem rgba(23, 50, 77, .08); }
+body { background: var(--ui-canvas); color: #243746; }
+.page-shell { width: 100%; max-width: 1440px; margin-inline: auto; padding: 1.5rem 0 2rem; }
+.page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+.page-header h1, .page-header h2 { color: var(--ui-heading); margin-bottom: .25rem; }
+.page-header__subtitle { color: var(--ui-muted); margin: 0; }
+.page-header__actions, .ui-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ui-card { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: .75rem; box-shadow: var(--ui-shadow); padding: 1rem; }
+.ui-table-wrap { overflow-x: auto; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: .75rem; }
+.ui-table { margin-bottom: 0; vertical-align: middle; }
+.ui-table > :not(caption) > * > * { padding: .75rem 1rem; }
+.ui-table thead th { background: #edf3f8; border-bottom-width: 1px; color: var(--ui-heading); font-size: .875rem; white-space: nowrap; }
+.ui-table td:last-child, .ui-table th:last-child { white-space: nowrap; }
+.ui-table .ui-col-index { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-table .ui-col-actions { text-align: end; white-space: nowrap; }
+.ui-table .ui-col-date, .ui-table .ui-col-number { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-table .ui-col-number { text-align: end; }
+.ui-table td.ui-actions { display: table-cell; }
+.ui-table td.ui-actions > * + * { margin-inline-start: .5rem; }
+.ui-form .form-label { color: var(--ui-heading); font-weight: 600; margin-bottom: .35rem; }
+.ui-form .form-label.required::after { color: #b42318; content: ' *'; }
+.ui-form__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.5rem; }
+.ui-icon-button { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; min-height: 2rem; }
+.ui-state { display: flex; align-items: center; justify-content: center; gap: .8rem; min-height: 9rem; padding: 1.5rem; text-align: center; background: var(--ui-surface); border: 1px dashed var(--ui-border); border-radius: .75rem; color: var(--ui-muted); }
+.ui-state > i { color: #276a9a; font-size: 1.5rem; }
+.ui-state--error { border-color: #f2b8b5; color: #842029; }
+.ui-state--error > i { color: #b42318; }
+.ui-state--compact { justify-content: flex-start; min-height: auto; margin-top: .5rem; padding: .75rem; text-align: start; }
+.ui-state--compact > i { font-size: 1.1rem; }
+.ui-catalog-meta { color: var(--ui-muted); font-size: .875rem; margin-top: .5rem; }
+.ui-dialog-backdrop { position: fixed; inset: 0; z-index: 1050; background: rgba(15, 23, 42, .52); }
+.ui-dialog { position: fixed; z-index: 1055; top: 50%; left: 50%; width: min(92vw, 32rem); transform: translate(-50%, -50%); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: .75rem; box-shadow: 0 1rem 3rem rgba(15, 23, 42, .28); }
+.ui-dialog__content { padding: 1.25rem 1.25rem .5rem; }
+.ui-dialog__consequence { color: #842029; font-size: .9rem; }
+.ui-dialog__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; padding: 1rem 1.25rem 1.25rem; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #0d6efd; outline-offset: 2px; }
+@media (max-width: 575.98px) { .page-shell { padding-top: 1rem; } .page-header__actions { width: 100%; } .page-header__actions > .btn { flex: 1; } }
+@media (prefers-reduced-motion: reduce) { *, ::before, ::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

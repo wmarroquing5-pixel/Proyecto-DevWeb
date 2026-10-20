@@ -6,37 +6,38 @@ import { HistorialService } from '../../core/services/historial.service';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.model';
+import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
   selector: 'app-historial-paciente',
   standalone: true,
   imports: [CommonModule, RouterModule, FormsModule],
   template: `
-    <div class="container mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-shell">
+      <header class="page-header">
         <div>
           <h2>Historial Médico</h2>
           <p class="text-muted mb-0">Paciente ID: {{ idPaciente }}</p>
         </div>
         @if (permisos.puedeCrear(MODULOS_PERMISO.CONSULTAS)) {
-          <a [routerLink]="['/historial', idPaciente, 'nueva-consulta']" class="btn btn-primary">
-            <i class="fa fa-plus"></i> Nueva Consulta
+          <a [routerLink]="['/historial', idPaciente, 'nueva-consulta']" class="btn btn-primary" title="Crear consulta">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> Nueva Consulta
           </a>
         }
-      </div>
+      </header>
 
-      <div class="card p-3 mb-4">
+      <div class="ui-card ui-form mb-4">
         <div class="row g-3">
           <div class="col-md-4">
-            <label class="form-label">Desde</label>
-            <input type="date" class="form-control" [(ngModel)]="filtroDesde" (change)="buscar()">
+            <label for="historial-desde" class="form-label">Desde</label>
+            <input id="historial-desde" type="date" class="form-control" [(ngModel)]="filtroDesde" (change)="buscar()">
           </div>
           <div class="col-md-4">
-            <label class="form-label">Hasta</label>
-            <input type="date" class="form-control" [(ngModel)]="filtroHasta" (change)="buscar()">
+            <label for="historial-hasta" class="form-label">Hasta</label>
+            <input id="historial-hasta" type="date" class="form-control" [(ngModel)]="filtroHasta" (change)="buscar()">
           </div>
           <div class="col-md-4 d-flex align-items-end">
-            <button class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">Limpiar</button>
+            <button type="button" class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()">Limpiar</button>
           </div>
         </div>
       </div>
@@ -50,30 +51,29 @@ import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.m
       } @else if (consultas.length === 0) {
         <div class="alert alert-info text-center">No hay consultas registradas para este paciente.</div>
       } @else {
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead class="table-dark">
+        <div class="ui-table-wrap">
+          <table class="table table-striped table-hover ui-table">
+            <thead>
               <tr>
-                <th>#</th>
-                <th>Fecha</th>
+                <th scope="col" class="ui-col-index">No.</th>
+                <th scope="col" class="ui-col-date">Fecha</th>
                 <th>Médico</th>
                 <th>Sucursal</th>
-                <th>Motivo</th>
-                <th>Acciones</th>
+                <th scope="col" class="ui-col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              @for (c of consultas; track c.idConsulta) {
+              @for (c of consultas; track c.idConsulta; let index = $index) {
                 <tr>
-                  <td>{{ c.idConsulta }}</td>
-                  <td>{{ c.fechaConsulta | date:'dd/MM/yyyy HH:mm' }}</td>
+                  <td class="ui-col-index">{{ correlativo(index, page, pageSize) }}</td>
+                  <td class="ui-col-date">{{ c.fechaConsulta | date:'dd/MM/yyyy HH:mm' }}</td>
                   <td>{{ c.idMedico }}</td>
                   <td>{{ c.idSucursal }}</td>
-                  <td>
+                  <td class="ui-actions ui-col-actions">
                     @if (permisos.puedeConsultar(MODULOS_PERMISO.HISTORIAL)) {
                       <a [routerLink]="['/historial', idPaciente, 'consulta', c.idConsulta]"
-                         class="btn btn-sm btn-info me-1">
-                        <i class="fa fa-eye"></i> Ver
+                         class="btn btn-sm btn-outline-info" aria-label="Ver detalle de consulta" title="Ver detalle">
+                        <i class="bi bi-eye" aria-hidden="true"></i> Ver
                       </a>
                     }
                   </td>
@@ -103,6 +103,7 @@ export class HistorialPacienteComponent implements OnInit {
   private router = inject(Router);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
+  readonly correlativo = correlativoPaginado;
 
   idPaciente!: number;
   consultas: ConsultaListadoDto[] = [];

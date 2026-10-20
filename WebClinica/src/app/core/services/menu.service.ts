@@ -17,6 +17,7 @@ const MODULO_POR_RUTA: Readonly<Record<string, string>> = {
   '/admin/usuarios': MODULOS_PERMISO.USUARIOS,
   '/admin/roles': MODULOS_PERMISO.ROLES,
   '/admin/empleados': MODULOS_PERMISO.EMPLEADOS,
+  '/admin/permisos': MODULOS_PERMISO.PERMISOS,
 };
 
 export type EstadoMenu = 'no-cargado' | 'cargando' | 'cargado' | 'error';

@@ -83,13 +83,21 @@ describe('ConsultasListComponent', () => {
 
   it('presenta únicamente los campos disponibles en ConsultaListadoDto', () => {
     render();
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('17');
+    const element = fixture.nativeElement as HTMLElement;
+    const text = element.textContent ?? '';
+    expect(element.querySelector('thead th')?.textContent?.trim()).toBe('No.');
+    expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('1');
     expect(text).toContain('11');
     expect(text).toContain('8');
     expect(text).toContain('3');
     expect(text).not.toContain('Motivo');
     expect(text).not.toContain('Síntomas');
+  });
+
+  it('calcula el correlativo con la página y tamaño devueltos por la API', () => {
+    listarConsultas.and.returnValue(of(page([{ ...consulta, idConsulta: 901 }], 3, 10, 21)));
+    render();
+    expect((fixture.nativeElement as HTMLElement).querySelector('tbody td')?.textContent?.trim()).toBe('21');
   });
 
   it('muestra estado vacío', () => {

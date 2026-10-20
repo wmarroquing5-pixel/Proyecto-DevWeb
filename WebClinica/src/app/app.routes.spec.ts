@@ -36,21 +36,10 @@ describe('rutas de navegación', () => {
     expect(paths).toContain('reportes/pacientes');
   });
 
-  it('protege las rutas pendientes con el guard de permisos', () => {
+  it('mantiene las rutas informativas bajo la autenticación del layout sin inventar políticas RBAC', () => {
     for (const path of ['citas', 'reportes/citas', 'reportes/pacientes']) {
-      expect(route(path).canActivate).toContain(permisoGuard);
-    }
-  });
-
-  it('asocia cada ruta pendiente al permiso Consultar anunciado por el menú', () => {
-    const expected: Record<string, string> = {
-      'citas': MODULOS_PERMISO.CITAS,
-      'reportes/citas': MODULOS_PERMISO.REPORTES,
-      'reportes/pacientes': MODULOS_PERMISO.REPORTES,
-    };
-    for (const [path, modulo] of Object.entries(expected)) {
-      const permisos = route(path).data?.['permisos'] as PermisoRequerido[];
-      expect(permisos).toEqual([{ modulo, operacion: OPERACIONES_PERMISO.CONSULTAR }]);
+      expect(route(path).canActivate).toBeUndefined();
+      expect(route(path).data?.['permisos']).toBeUndefined();
     }
   });
 
@@ -82,6 +71,30 @@ describe('rutas de navegación', () => {
       operacion: OPERACIONES_PERMISO.CONSULTAR,
     }]);
     expect(roles.data?.['titulo']).toBeUndefined();
+  });
+
+  it('registra permisos como pantalla funcional protegida', () => {
+    const permisos = route('admin/permisos');
+    expect(permisos.canActivate).toContain(permisoGuard);
+    expect(permisos.loadComponent).toBeDefined();
+    expect(permisos.data?.['permisos']).toEqual([{
+      modulo: MODULOS_PERMISO.PERMISOS,
+      operacion: OPERACIONES_PERMISO.CONSULTAR,
+    }]);
+  });
+
+  it('protege formularios de usuario con los permisos reales de sus catálogos', () => {
+    for (const path of ['admin/usuarios/nuevo', 'admin/usuarios/editar/:id']) {
+      const permisos = route(path).data?.['permisos'] as PermisoRequerido[];
+      expect(permisos).toContain({
+        modulo: MODULOS_PERMISO.ROLES,
+        operacion: OPERACIONES_PERMISO.CONSULTAR,
+      });
+      expect(permisos).toContain({
+        modulo: MODULOS_PERMISO.EMPLEADOS,
+        operacion: OPERACIONES_PERMISO.CONSULTAR,
+      });
+    }
   });
 
   it('integra entradas en la ruta real de lotes protegida por Consultar', () => {

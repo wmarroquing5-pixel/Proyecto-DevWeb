@@ -3,19 +3,20 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { VentasService } from '../../core/services/venta.service';
 import { VentaConsultaResponse } from '../../core/models/venta.model';
+import { correlativoLista } from '../../shared/utils/correlativo';
 
 @Component({
   selector: 'app-venta-detalle',
   standalone: true,
   imports: [CommonModule, RouterModule],
   template: `
-    <div class="container mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-shell">
+      <header class="page-header">
         <h2><i class="fa fa-receipt"></i> Detalle de Venta #{{ idVenta }}</h2>
         <a routerLink="/ventas" class="btn btn-secondary">
           <i class="fa fa-arrow-left"></i> Volver
         </a>
-      </div>
+      </header>
 
       @if (cargando) {
         <div class="text-center py-5">
@@ -25,7 +26,7 @@ import { VentaConsultaResponse } from '../../core/models/venta.model';
         <div class="alert alert-danger">{{ error }}</div>
       } @else if (venta) {
         <!-- Información general -->
-        <div class="card mb-4">
+        <div class="ui-card mb-4">
           <div class="card-body">
             <div class="row">
               <div class="col-md-3">
@@ -49,32 +50,32 @@ import { VentaConsultaResponse } from '../../core/models/venta.model';
         </div>
 
         <!-- Detalle de productos -->
-        <div class="card">
+        <div class="card ui-card">
           <div class="card-header bg-primary text-white">
             <h5 class="mb-0">Productos Vendidos</h5>
           </div>
           <div class="card-body">
-            <div class="table-responsive">
-              <table class="table table-striped">
-                <thead class="table-dark">
+            <div class="ui-table-wrap">
+              <table class="table table-striped ui-table">
+                <thead>
                   <tr>
-                    <th>#</th>
+                    <th class="ui-col-index">No.</th>
                     <th>ID Medicamento</th>
                     <th>ID Lote</th>
-                    <th>Cantidad</th>
-                    <th>Precio Unitario</th>
-                    <th>Subtotal</th>
+                    <th class="ui-col-number">Cantidad</th>
+                    <th class="ui-col-number">Precio Unitario</th>
+                    <th class="ui-col-number">Subtotal</th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (d of venta.detalles; track d.idDetalle; let i = $index) {
                     <tr>
-                      <td>{{ i + 1 }}</td>
+                      <td class="ui-col-index">{{ correlativo(i) }}</td>
                       <td>{{ d.idMedicamento }}</td>
                       <td>{{ d.idLote }}</td>
-                      <td>{{ d.cantidad }}</td>
-                      <td>Q{{ d.precioUnitario | number:'1.2-2' }}</td>
-                      <td class="fw-bold">Q{{ d.subtotal | number:'1.2-2' }}</td>
+                      <td class="ui-col-number">{{ d.cantidad }}</td>
+                      <td class="ui-col-number">Q{{ d.precioUnitario | number:'1.2-2' }}</td>
+                      <td class="fw-bold ui-col-number">Q{{ d.subtotal | number:'1.2-2' }}</td>
                     </tr>
                   }
                 </tbody>
@@ -95,6 +96,7 @@ import { VentaConsultaResponse } from '../../core/models/venta.model';
 export class VentaDetalleComponent implements OnInit {
   private service = inject(VentasService);
   private route = inject(ActivatedRoute);
+  readonly correlativo = correlativoLista;
 
   idVenta!: number;
   venta: VentaConsultaResponse | null = null;
