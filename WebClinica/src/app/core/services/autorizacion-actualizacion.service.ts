@@ -1,5 +1,5 @@
-import { DOCUMENT } from '@angular/common';
-import { DestroyRef, Injectable, effect, inject, signal } from '@angular/core';
+
+import { DestroyRef, Injectable, effect, inject, signal, DOCUMENT } from '@angular/core';
 import { ActivatedRouteSnapshot, Router } from '@angular/router';
 import { Observable, catchError, finalize, map, of, shareReplay, switchMap, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -56,7 +56,7 @@ export class AutorizacionActualizacionService {
         this.identidadObservada = null;
         this.detenerRecursos();
       }
-    }, { allowSignalWrites: true });
+    });
 
     effect(() => {
       const revision = this.apiErrors.authorizationRefreshRevision();
@@ -64,7 +64,7 @@ export class AutorizacionActualizacionService {
         this.revisionForbiddenObservada = revision;
         if (this.identidadActual()) this.dispararRevalidacion();
       }
-    }, { allowSignalWrites: true });
+    });
 
     this.destroyRef.onDestroy(() => this.detenerRecursos());
   }

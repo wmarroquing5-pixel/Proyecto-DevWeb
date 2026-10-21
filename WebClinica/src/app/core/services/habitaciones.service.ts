@@ -81,7 +81,7 @@ export class HabitacionesService implements OnDestroy {
     this.aplicarAutorizacionActual();
     this.sessionEffect = effect(() => {
       this.aplicarAutorizacionActual();
-    }, { allowSignalWrites: true });
+    });
   }
 
   private aplicarAutorizacionActual(): void {

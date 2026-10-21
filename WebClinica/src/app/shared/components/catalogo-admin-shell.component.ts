@@ -6,10 +6,9 @@ import { ConfirmDialogComponent } from './confirm-dialog.component';
 import { UiStateComponent } from './ui-state.component';
 
 @Component({
-  selector: 'app-catalogo-admin-shell',
-  standalone: true,
-  imports: [UiStateComponent, ConfirmDialogComponent],
-  template: `
+    selector: 'app-catalogo-admin-shell',
+    imports: [UiStateComponent, ConfirmDialogComponent],
+    template: `
     <section class="container-fluid py-3" [attr.aria-busy]="loading || processing">
       <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
         <div>
@@ -148,7 +147,7 @@ import { UiStateComponent } from './ui-state.component';
                           (confirmed)="confirmDeactivation()"
                           (cancelled)="pendingDeactivation = null" />
     }
-  `,
+  `
 })
 export class CatalogoAdminShellComponent implements OnChanges {
   readonly permissions = inject(PermisosService);

@@ -8,11 +8,10 @@ import { PermisosService } from '../../core/services/permisos.service';
 const RUTAS_PENDIENTES = new Set(['/citas', '/reportes/citas', '/reportes/pacientes']);
 
 @Component({
-  selector: 'app-dashboard',
-  standalone: true,
-  imports: [RouterLink],
-  templateUrl: './dashboard.component.html',
-  styleUrl: './dashboard.component.css',
+    selector: 'app-dashboard',
+    imports: [RouterLink],
+    templateUrl: './dashboard.component.html',
+    styleUrl: './dashboard.component.css'
 })
 export class DashboardComponent {
   private readonly menu = inject(MenuService);

@@ -8,10 +8,9 @@ import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
-  selector: 'app-inventario-list',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-inventario-list',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <h2><i class="fa fa-pills"></i> Inventario de Medicamentos</h2>

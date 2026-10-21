@@ -1,0 +1,237 @@
+{
+  "specFiles": 58,
+  "suites": [
+    {
+      "file": "WebClinica/src/app/app.component.spec.ts",
+      "suite": "AppComponent"
+    },
+    {
+      "file": "WebClinica/src/app/app.routes.spec.ts",
+      "suite": "rutas de navegación"
+    },
+    {
+      "file": "WebClinica/src/app/core/guards/auth.guard.spec.ts",
+      "suite": "authGuard"
+    },
+    {
+      "file": "WebClinica/src/app/core/guards/permiso.guard.spec.ts",
+      "suite": "permisoGuard"
+    },
+    {
+      "file": "WebClinica/src/app/core/interceptors/auth.interceptor.spec.ts",
+      "suite": "authInterceptor"
+    },
+    {
+      "file": "WebClinica/src/app/core/models/permiso.model.spec.ts",
+      "suite": "catálogo RBAC canónico"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/auth.service.spec.ts",
+      "suite": "AuthService: ciclo de vida de la sesión JWT"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/autorizacion-actualizacion.service.spec.ts",
+      "suite": "AutorizacionActualizacionService"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/catalogos.service.spec.ts",
+      "suite": "CatalogosService"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/factura.service.spec.ts",
+      "suite": "FacturaService"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/habitaciones.service.spec.ts",
+      "suite": "HabitacionesService: recuperación y SignalR"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/historial.service.spec.ts",
+      "suite": "HistorialService: listado global de consultas"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/inventario.service.spec.ts",
+      "suite": "InventarioService"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/menu.service.spec.ts",
+      "suite": "MenuService: actualización dinámica"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/permisos.service.spec.ts",
+      "suite": "PermisosService"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/roles.service.spec.ts",
+      "suite": "RolesService"
+    },
+    {
+      "file": "WebClinica/src/app/core/services/venta.service.spec.ts",
+      "suite": "VentasService: integración de inventario"
+    },
+    {
+      "file": "WebClinica/src/app/layout/sidebar/sidebar.component.spec.ts",
+      "suite": "SidebarComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/acceso-denegado/acceso-denegado.component.spec.ts",
+      "suite": "AccesoDenegadoComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/categorias-admin.component.spec.ts",
+      "suite": "CategoriasAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/clinicas-admin.component.spec.ts",
+      "suite": "ClinicasAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/especialidades-admin.component.spec.ts",
+      "suite": "EspecialidadesAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/marcas-admin.component.spec.ts",
+      "suite": "MarcasAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/servicios-admin.component.spec.ts",
+      "suite": "ServiciosAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/sucursales-admin.component.spec.ts",
+      "suite": "SucursalesAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/catalogos/turnos-admin.component.spec.ts",
+      "suite": "TurnosAdminComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/dashboard/dashboard.component.spec.ts",
+      "suite": "DashboardComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/empleados/empleado-form.component.spec.ts",
+      "suite": "EmpleadoFormComponent: catálogos descriptivos"
+    },
+    {
+      "file": "WebClinica/src/app/pages/empleados/empleados.component.spec.ts",
+      "suite": "EmpleadosComponent WEB-UX-01C1"
+    },
+    {
+      "file": "WebClinica/src/app/pages/facturas/factura-detalle.component.spec.ts",
+      "suite": "FacturaDetalleComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/facturas/factura-nueva.component.spec.ts",
+      "suite": "FacturaNuevaComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/facturas/facturas-list.component.spec.ts",
+      "suite": "FacturasListComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/funcionalidad-pendiente/funcionalidad-pendiente.component.spec.ts",
+      "suite": "FuncionalidadPendienteComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/habitaciones/asignar-paciente-modal.component.spec.ts",
+      "suite": "AsignarPacienteModalComponent selector de paciente"
+    },
+    {
+      "file": "WebClinica/src/app/pages/habitaciones/crear-habitacion-modal.component.spec.ts",
+      "suite": "CrearHabitacionModalComponent selector de sucursal"
+    },
+    {
+      "file": "WebClinica/src/app/pages/habitaciones/habitaciones-board.component.spec.ts",
+      "suite": "HabitacionesBoardComponent: estado de sincronización"
+    },
+    {
+      "file": "WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+      "suite": "ConsultaDetalleComponent: consumo clínico"
+    },
+    {
+      "file": "WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+      "suite": "ConsultaNuevaComponent catálogos activos"
+    },
+    {
+      "file": "WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+      "suite": "ConsultasListComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/historial/historial-paciente.component.spec.ts",
+      "suite": "HistorialPacienteComponent WEB-UX-01C2"
+    },
+    {
+      "file": "WebClinica/src/app/pages/inventario/inventario-list.component.spec.ts",
+      "suite": "InventarioListComponent WEB-UX-01C2"
+    },
+    {
+      "file": "WebClinica/src/app/pages/inventario/lote-form.component.spec.ts",
+      "suite": "LoteFormComponent: ajuste de existencia"
+    },
+    {
+      "file": "WebClinica/src/app/pages/inventario/lotes-medicamento.component.spec.ts",
+      "suite": "LotesMedicamentoComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/inventario/medicamento-form.component.spec.ts",
+      "suite": "MedicamentoFormComponent catálogos activos"
+    },
+    {
+      "file": "WebClinica/src/app/pages/login/login.component.spec.ts",
+      "suite": "LoginComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/pacientes/pacientes.component.spec.ts",
+      "suite": "PacientesComponent WEB-UX-01C1"
+    },
+    {
+      "file": "WebClinica/src/app/pages/pagina-no-encontrada/pagina-no-encontrada.component.spec.ts",
+      "suite": "PaginaNoEncontradaComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/permisos/permisos.component.spec.ts",
+      "suite": "PermisosComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/roles/roles.component.spec.ts",
+      "suite": "RolesComponent"
+    },
+    {
+      "file": "WebClinica/src/app/pages/usuarios/usuario-form.component.spec.ts",
+      "suite": "UsuarioFormComponent: selectores descriptivos"
+    },
+    {
+      "file": "WebClinica/src/app/pages/usuarios/usuarios.component.spec.ts",
+      "suite": "UsuariosComponent: descripciones relacionadas"
+    },
+    {
+      "file": "WebClinica/src/app/pages/ventas/venta-detalle.component.spec.ts",
+      "suite": "VentaDetalleComponent WEB-UX-01C2"
+    },
+    {
+      "file": "WebClinica/src/app/pages/ventas/ventas-list.component.spec.ts",
+      "suite": "VentasListComponent WEB-UX-01C2"
+    },
+    {
+      "file": "WebClinica/src/app/pages/ventas/ventas-nueva.component.spec.ts",
+      "suite": "VentasNuevaComponent WEB-UX-01C2"
+    },
+    {
+      "file": "WebClinica/src/app/shared/components/catalogo-admin-shell.component.spec.ts",
+      "suite": "CatalogoAdminShellComponent"
+    },
+    {
+      "file": "WebClinica/src/app/shared/components/confirm-dialog.component.spec.ts",
+      "suite": "ConfirmDialogComponent"
+    },
+    {
+      "file": "WebClinica/src/app/shared/components/ui-state.component.spec.ts",
+      "suite": "UiStateComponent"
+    },
+    {
+      "file": "WebClinica/src/app/shared/utils/correlativo.spec.ts",
+      "suite": "Correlativos visuales"
+    }
+  ]
+}

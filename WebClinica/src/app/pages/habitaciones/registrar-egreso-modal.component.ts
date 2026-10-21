@@ -1,13 +1,12 @@
 import { Component, inject, Input, Output, EventEmitter } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { HabitacionesService } from '../../core/services/habitaciones.service';
 import { HabitacionResponse } from '../../core/models/habitacion.model';
 
 @Component({
-  selector: 'app-registrar-egreso-modal',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-registrar-egreso-modal',
+    imports: [],
+    template: `
     <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">

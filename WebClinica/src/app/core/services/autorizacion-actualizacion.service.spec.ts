@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, signal, WritableSignal } from '@angular/core';
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { NavigationEnd, provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { firstValueFrom, Observable, of, Subject, throwError } from 'rxjs';
+import { filter, firstValueFrom, Observable, of, Subject, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { MODULOS_PERMISO, OPERACIONES_PERMISO, PermisoActual } from '../models/permiso.model';
 import { ApiErrorService } from './api-error.service';
@@ -175,9 +175,12 @@ describe('AutorizacionActualizacionService', () => {
 
   it('redirige una ruta abierta cuando se confirma la revocación', async () => {
     const harness = await RouterTestingHarness.create('/protegida');
+    const redirected = firstValueFrom(TestBed.inject(Router).events.pipe(
+      filter(event => event instanceof NavigationEnd),
+    ));
     allowed = false;
     await firstValueFrom(service.revalidarAhora());
-    await Promise.resolve();
+    await redirected;
     expect(TestBed.inject(Router).url).toBe('/acceso-denegado');
     expect(authenticated()).toBeTrue();
     expect(harness).toBeTruthy();

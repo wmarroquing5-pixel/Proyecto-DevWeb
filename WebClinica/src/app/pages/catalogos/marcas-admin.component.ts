@@ -11,10 +11,9 @@ import { InventarioService } from '../../core/services/inventario.service';
 import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-admin-shell.component';
 
 @Component({
-  selector: 'app-marcas-admin',
-  standalone: true,
-  imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
-  template: `
+    selector: 'app-marcas-admin',
+    imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
+    template: `
     <app-catalogo-admin-shell
       title="Marcas"
       description="Administra las marcas utilizadas por el catálogo de medicamentos."
@@ -53,7 +52,7 @@ import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-ad
         }
       </div>
     </app-catalogo-admin-shell>
-  `,
+  `
 })
 export class MarcasAdminComponent implements OnInit {
   private readonly service = inject(InventarioService);

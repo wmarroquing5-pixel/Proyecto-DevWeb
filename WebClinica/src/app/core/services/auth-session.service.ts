@@ -1,5 +1,5 @@
-import { DOCUMENT } from '@angular/common';
-import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
+
+import { DestroyRef, Injectable, computed, inject, signal, DOCUMENT } from '@angular/core';
 import { Router } from '@angular/router';
 import { LoginResponse, User } from '../models/user.model';
 

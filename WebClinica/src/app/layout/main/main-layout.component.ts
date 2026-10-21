@@ -4,10 +4,9 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
 import { AutorizacionActualizacionService } from '../../core/services/autorizacion-actualizacion.service';
 
 @Component({
-  selector: 'app-main-layout',
-  standalone: true,
-  imports: [SidebarComponent, RouterOutlet],
-  template: `
+    selector: 'app-main-layout',
+    imports: [SidebarComponent, RouterOutlet],
+    template: `
     <div class="layout">
       <app-sidebar />
       <main class="content">
@@ -15,7 +14,7 @@ import { AutorizacionActualizacionService } from '../../core/services/autorizaci
       </main>
     </div>
   `,
-  styles: [`
+    styles: [`
     .layout {
       display: flex;
       min-height: 100vh;

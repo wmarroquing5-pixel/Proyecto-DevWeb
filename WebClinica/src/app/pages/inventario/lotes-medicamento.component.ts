@@ -27,10 +27,9 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
 });
 
 @Component({
-  selector: 'app-lotes-medicamento',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-lotes-medicamento',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>
@@ -204,7 +203,7 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
         </div>
       }
     </div>
-  `,
+  `
 })
 export class LotesMedicamentoComponent implements OnInit {
   private readonly service = inject(InventarioService);
@@ -261,7 +260,7 @@ export class LotesMedicamentoComponent implements OnInit {
         this.limpiarDatosProtegidos();
         this.cargarLotes();
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   ngOnInit(): void {

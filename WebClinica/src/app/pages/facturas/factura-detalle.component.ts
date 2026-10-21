@@ -9,10 +9,9 @@ import { UiStateComponent } from '../../shared/components/ui-state.component';
 import { correlativoLista } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-factura-detalle',
-  standalone: true,
-  imports: [CommonModule, RouterModule, UiStateComponent],
-  template: `
+    selector: 'app-factura-detalle',
+    imports: [CommonModule, RouterModule, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>
@@ -64,7 +63,7 @@ import { correlativoLista } from '../../shared/utils/correlativo';
         </section>
       }
     </div>
-  `,
+  `
 })
 export class FacturaDetalleComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

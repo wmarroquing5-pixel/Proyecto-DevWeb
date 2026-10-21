@@ -12,17 +12,16 @@ import { PermisosService } from '../../core/services/permisos.service';
 import { finalize } from 'rxjs';
 
 @Component({
-  selector: 'app-habitaciones-board',
-  standalone: true,
-  providers: [HabitacionesService],
-  imports: [
-    CommonModule,
-    FormsModule,
-    AsignarPacienteModalComponent,
-    RegistrarEgresoModalComponent,
-    CrearHabitacionModalComponent
-  ],
-  template: `
+    selector: 'app-habitaciones-board',
+    providers: [HabitacionesService],
+    imports: [
+        CommonModule,
+        FormsModule,
+        AsignarPacienteModalComponent,
+        RegistrarEgresoModalComponent,
+        CrearHabitacionModalComponent
+    ],
+    template: `
     <div class="container-fluid mt-4">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="fa fa-bed"></i> Tablero de Habitaciones</h2>
@@ -145,7 +144,7 @@ import { finalize } from 'rxjs';
       </app-crear-habitacion-modal>
     }
   `,
-  styles: [`
+    styles: [`
     .card { transition: all 0.3s ease; cursor: pointer; }
     .card:hover { transform: translateY(-3px); }
     .bg-libre { border-left: 5px solid #198754; }

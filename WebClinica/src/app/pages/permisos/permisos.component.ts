@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
@@ -24,10 +24,9 @@ import { UiStateComponent } from '../../shared/components/ui-state.component';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-permisos-admin',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ConfirmDialogComponent, UiStateComponent],
-  templateUrl: './permisos.component.html',
+    selector: 'app-permisos-admin',
+    imports: [FormsModule, ConfirmDialogComponent, UiStateComponent],
+    templateUrl: './permisos.component.html'
 })
 export class PermisosComponent implements OnInit {
   private readonly rolesService = inject(RolesService);

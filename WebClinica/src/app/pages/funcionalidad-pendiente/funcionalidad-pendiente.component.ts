@@ -2,10 +2,9 @@ import { Component, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 @Component({
-  selector: 'app-funcionalidad-pendiente',
-  standalone: true,
-  imports: [RouterLink],
-  templateUrl: './funcionalidad-pendiente.component.html',
+    selector: 'app-funcionalidad-pendiente',
+    imports: [RouterLink],
+    templateUrl: './funcionalidad-pendiente.component.html'
 })
 export class FuncionalidadPendienteComponent {
   private readonly route = inject(ActivatedRoute);

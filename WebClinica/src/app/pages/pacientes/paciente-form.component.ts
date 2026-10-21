@@ -1,15 +1,14 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { PacientesService } from '../../core/services/paciente.service';
 import { GuardarPacienteRequest, PacienteResponse } from '../../core/models/paciente.model';
 
 @Component({
-  selector: 'app-paciente-form',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-paciente-form',
+    imports: [RouterModule, FormsModule],
+    template: `
     <div class="container mt-4">
       <h2>{{ esEdicion ? 'Editar Paciente' : 'Nuevo Paciente' }}</h2>
 

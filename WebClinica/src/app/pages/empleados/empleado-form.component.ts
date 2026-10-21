@@ -39,10 +39,9 @@ interface EmpleadoFormData {
 }
 
 @Component({
-  selector: 'app-empleado-form',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, UiStateComponent],
-  template: `
+    selector: 'app-empleado-form',
+    imports: [CommonModule, RouterModule, FormsModule, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>
@@ -192,7 +191,7 @@ interface EmpleadoFormData {
         }
       </ng-template>
     </div>
-  `,
+  `
 })
 export class EmpleadoFormComponent implements OnInit {
   private readonly empleadosService = inject(EmpleadosService);
@@ -247,7 +246,7 @@ export class EmpleadoFormComponent implements OnInit {
           ? 'La sesión cambió durante la edición.'
           : 'No tienes autorización para consultar los catálogos requeridos.');
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   get sucursalesDisponibles(): Sucursal[] {

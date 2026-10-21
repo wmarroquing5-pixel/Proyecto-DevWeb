@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { PacientesService } from '../../core/services/paciente.service';
@@ -11,10 +11,9 @@ import { UiStateComponent } from '../../shared/components/ui-state.component';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-pacientes',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, ConfirmDialogComponent, UiStateComponent],
-  template: `
+    selector: 'app-pacientes',
+    imports: [RouterModule, FormsModule, ConfirmDialogComponent, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>

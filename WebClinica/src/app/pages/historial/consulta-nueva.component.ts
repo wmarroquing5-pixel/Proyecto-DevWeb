@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HistorialService } from '../../core/services/historial.service';
@@ -8,10 +8,9 @@ import { ConsultaCreateDto, ConsultaDetalleDto } from '../../core/models/histori
 import { Sucursal } from '../../core/models/catalogos.model';
 
 @Component({
-  selector: 'app-consulta-nueva',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-consulta-nueva',
+    imports: [RouterModule, FormsModule],
+    template: `
     <div class="container mt-4">
       <h2>Nueva Consulta Médica</h2>
       <p class="text-muted">Paciente ID: {{ idPaciente }}</p>

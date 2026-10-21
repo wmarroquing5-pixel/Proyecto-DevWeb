@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -18,10 +18,9 @@ import { Sucursal } from '../../core/models/catalogos.model';
 import { CatalogosService } from '../../core/services/catalogos.service';
 
 @Component({
-  selector: 'app-lote-form',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-lote-form',
+    imports: [RouterModule, FormsModule],
+    template: `
     <div class="container mt-4">
       <h2>{{ esEdicion ? 'Editar Lote' : 'Nuevo Lote' }}</h2>
 

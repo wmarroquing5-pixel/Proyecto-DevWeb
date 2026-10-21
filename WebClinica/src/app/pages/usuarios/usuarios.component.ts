@@ -1,5 +1,5 @@
 import { Component, DestroyRef, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Observable, catchError, forkJoin, map, of, switchMap } from 'rxjs';
@@ -28,10 +28,9 @@ const CATALOG_PAGE_SIZE = 100;
 const MAX_CATALOG_PAGES = 5;
 
 @Component({
-  selector: 'app-usuarios',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, ConfirmDialogComponent, UiStateComponent],
-  template: `
+    selector: 'app-usuarios',
+    imports: [RouterModule, FormsModule, ConfirmDialogComponent, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>

@@ -1,0 +1,8 @@
+{
+  "backupFiles": 217,
+  "invalidCopies": [],
+  "nonDocumentationChangesSinceBackup": [
+    "WebClinica/src/app/core/services/auth-session.service.ts",
+    "WebClinica/src/app/core/services/autorizacion-actualizacion.service.ts"
+  ]
+}

@@ -1,0 +1,186 @@
+[
+  {
+    "file": "WebClinica/package-lock.json",
+    "sha256": "2a016614fea85ee78cf1ea46e50e90f573336f12c4ebb77f32d3e370f3944172"
+  },
+  {
+    "file": "WebClinica/package.json",
+    "sha256": "1edca8e25b4976ef8d9831450d5cfa7952083e8201cf2c382c74fc9f5f292d12"
+  },
+  {
+    "file": "WebClinica/src/app/app.component.ts",
+    "sha256": "92e66c1a4dc2b507385108868cd89918c119e156ef25b333f418aee067cc393a"
+  },
+  {
+    "file": "WebClinica/src/app/layout/main/main-layout.component.ts",
+    "sha256": "df45d530e1d537990cb65a9a8201657fea896e77c18688f432dbf7f28eea3068"
+  },
+  {
+    "file": "WebClinica/src/app/layout/sidebar/sidebar.component.ts",
+    "sha256": "2c57a4eba92fcc27d3cf259a6b53c4b8f50427e86f1352d07433c3f67bf45f15"
+  },
+  {
+    "file": "WebClinica/src/app/pages/acceso-denegado/acceso-denegado.component.ts",
+    "sha256": "4b64bc5c10933b1f68c6738242d5616f27f7e25b0e93181a18256c95a9935509"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/categorias-admin.component.ts",
+    "sha256": "4beac21464a094c0da5a88b34fd9d43a94ff72f009a604569d83533e1e3e997d"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/clinicas-admin.component.ts",
+    "sha256": "c98732ee481ca0eaeae5838e74276414bf690a90273bdc783a82c4af268c7775"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/especialidades-admin.component.ts",
+    "sha256": "10364f8e5d0274772dcd1fee9d5cb9eb55275804e9648d3ace4e0ed816b7cb08"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/marcas-admin.component.ts",
+    "sha256": "ee8ed1af99c069178226218152882c2da79693d34fd90821a969a51c4961f2aa"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/servicios-admin.component.ts",
+    "sha256": "0ca0657012bbf48466697a1e1d026b83f184cd9fb366590655749f6c4e645e63"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/sucursales-admin.component.ts",
+    "sha256": "6fb2b0077139a009b22c72ec2d4d6cea81c4b806d5afcde595ceea2958417c0e"
+  },
+  {
+    "file": "WebClinica/src/app/pages/catalogos/turnos-admin.component.ts",
+    "sha256": "abca7e01104540a82043154901836e641250d4e45ea821e51f24991574dbd2a4"
+  },
+  {
+    "file": "WebClinica/src/app/pages/dashboard/dashboard.component.ts",
+    "sha256": "ee16a54731fcd61c519071f110c2031db2de14235bab4d5b08e5eca13cb23471"
+  },
+  {
+    "file": "WebClinica/src/app/pages/empleados/empleado-form.component.ts",
+    "sha256": "7fb1fc57b0aff59a2f069d793a024fd88a963641281478e4afe82888a73218b0"
+  },
+  {
+    "file": "WebClinica/src/app/pages/empleados/empleados.component.ts",
+    "sha256": "262b05ca1edfd8bb731b678a2f462fdad0f4f7e31f8394941f3220426e820f7c"
+  },
+  {
+    "file": "WebClinica/src/app/pages/facturas/factura-detalle.component.ts",
+    "sha256": "2aef54597eb414f4e287f73d8f623c9d82fbebad06b8b4c6c3117861292e2398"
+  },
+  {
+    "file": "WebClinica/src/app/pages/facturas/factura-nueva.component.ts",
+    "sha256": "e3f777cf0b72b2eef86ab0c8b600d6884a15e6c3d53626e5c939a68acd10f974"
+  },
+  {
+    "file": "WebClinica/src/app/pages/facturas/facturas-list.component.ts",
+    "sha256": "95758d0549b6ef23156b427b40d40852c477492a81b2d8fd653e67be31696162"
+  },
+  {
+    "file": "WebClinica/src/app/pages/funcionalidad-pendiente/funcionalidad-pendiente.component.ts",
+    "sha256": "d9d9667217f892d125ac27f530a132d7f0162474e965317570f2c02b259fe2b3"
+  },
+  {
+    "file": "WebClinica/src/app/pages/habitaciones/asignar-paciente-modal.component.ts",
+    "sha256": "4fb198f539a68f893c9b727d226e1ba66142eddf96de18767ac9824ea5ea01ca"
+  },
+  {
+    "file": "WebClinica/src/app/pages/habitaciones/crear-habitacion-modal.component.ts",
+    "sha256": "fe4fc41fd2325f24c1770cd570ca6bbbb535725ba808792eb0417e3dea671a82"
+  },
+  {
+    "file": "WebClinica/src/app/pages/habitaciones/habitaciones-board.component.ts",
+    "sha256": "3fd1eeeb3b4d8e760254fa93a530c7daf6f4295b743296e0e3a00af804c2f9a3"
+  },
+  {
+    "file": "WebClinica/src/app/pages/habitaciones/registrar-egreso-modal.component.ts",
+    "sha256": "5a9410c8f7cb8a56385f463173ead4df83c0407741b7d71be6f79ed65ce4ad2a"
+  },
+  {
+    "file": "WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+    "sha256": "cb838b2e1226b4be9cc794de017b24f4d2d01b8da3bd80740cb0fdb180b6c4e4"
+  },
+  {
+    "file": "WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+    "sha256": "3f4e127db2d733fc4504bf051642791759f61ca5b19c6f89f8d21843287f8817"
+  },
+  {
+    "file": "WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+    "sha256": "ccfd302597110db0d2291859ec3dbc36c65649e0e7363b7439581a9a646bb004"
+  },
+  {
+    "file": "WebClinica/src/app/pages/historial/consultas-list.component.ts",
+    "sha256": "1a14440394462484da7085fe16b9041dbf0d1bb63f524ef4e808ad58d9a74d24"
+  },
+  {
+    "file": "WebClinica/src/app/pages/historial/historial-paciente.component.ts",
+    "sha256": "842428550aefec082646ca9dcaca26c20ce8318a0a82f3235914d3ce5fc18d9d"
+  },
+  {
+    "file": "WebClinica/src/app/pages/inventario/inventario-list.component.ts",
+    "sha256": "b30f7be88f94fa985d8601472b11b90e08b1f4927019f0f11e7318b8b721a628"
+  },
+  {
+    "file": "WebClinica/src/app/pages/inventario/lote-form.component.ts",
+    "sha256": "d6d710054e6a96a98f4e3f5625849d3f64ca0d2ab065f9e07e021d082ec82e25"
+  },
+  {
+    "file": "WebClinica/src/app/pages/inventario/lotes-medicamento.component.spec.ts",
+    "sha256": "615640b0b417a56a73a78287ab3c558ff114b79021d07df90c2b3d90bcbd5f6c"
+  },
+  {
+    "file": "WebClinica/src/app/pages/inventario/lotes-medicamento.component.ts",
+    "sha256": "6224e2ae09700294f6135c7eaaaebbb0a84ae1d99a53dddaf48d4b113de78469"
+  },
+  {
+    "file": "WebClinica/src/app/pages/inventario/medicamento-form.component.ts",
+    "sha256": "1a2b0acb6607b58a1e249b64244b4a5fb45e846ec98c29b2602f1d9d94a2d044"
+  },
+  {
+    "file": "WebClinica/src/app/pages/login/login.component.ts",
+    "sha256": "16aa765c3e22a0cd06a0dc84c5e7692e959610c17169d9b03a84656d7c061109"
+  },
+  {
+    "file": "WebClinica/src/app/pages/pacientes/paciente-form.component.ts",
+    "sha256": "f01a4dfcd1c0ad0915e620a09b672839f27e41d6da0ce99c6b39bc008eaa60fe"
+  },
+  {
+    "file": "WebClinica/src/app/pages/pacientes/pacientes.component.ts",
+    "sha256": "b17dcbbc5148d729d6fb0b02f858a237af98a3698b412d39254e0065f2ea4775"
+  },
+  {
+    "file": "WebClinica/src/app/pages/pagina-no-encontrada/pagina-no-encontrada.component.ts",
+    "sha256": "7911ad652ddd50eee3aeebfe906593ade8d3b6dd6314bf3d1a46e99fbf03926e"
+  },
+  {
+    "file": "WebClinica/src/app/pages/permisos/permisos.component.ts",
+    "sha256": "360d1a496af40a613546073a3b061b4255419e78f6e9b78a7bdce3cfc0d491c9"
+  },
+  {
+    "file": "WebClinica/src/app/pages/roles/roles.component.ts",
+    "sha256": "131901077c40d8fc01068d80e81e0e21cba5f63da521655714fda868cf5390cf"
+  },
+  {
+    "file": "WebClinica/src/app/pages/usuarios/usuario-form.component.ts",
+    "sha256": "fbf645eabc7d97d9cd0201466f274fe962f51c4ae03e8d7f1bac0bd350006594"
+  },
+  {
+    "file": "WebClinica/src/app/pages/usuarios/usuarios.component.ts",
+    "sha256": "c60c795c30bc9dca9e661db311bf1dfbc33a3d1917f1fa572fad64cc70274745"
+  },
+  {
+    "file": "WebClinica/src/app/pages/ventas/venta-detalle.component.ts",
+    "sha256": "d97587bcb7be406d2717e2122812a55878fea29d2cc0111544fb5b6be92125be"
+  },
+  {
+    "file": "WebClinica/src/app/pages/ventas/ventas-list.component.ts",
+    "sha256": "fd36d671fa3f8563d80fc210e565cd25ce907c67da40f214154b8809e5634078"
+  },
+  {
+    "file": "WebClinica/src/app/pages/ventas/ventas-nueva.component.ts",
+    "sha256": "13854c7c7aa7dc49108f0fff40958f584dcac39c3b98f7198bee8dd5602e799f"
+  },
+  {
+    "file": "WebClinica/src/app/shared/components/catalogo-admin-shell.component.ts",
+    "sha256": "872e989bca9dc63d0d0b6c908ec6c9f4f993003a5ca82e9a5bed2142c88246e6"
+  }
+]

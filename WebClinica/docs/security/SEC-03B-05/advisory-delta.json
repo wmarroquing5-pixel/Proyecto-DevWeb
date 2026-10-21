@@ -1,0 +1,7 @@
+{
+  "advisories": 11,
+  "newSince04": [
+    "https://github.com/advisories/GHSA-9jrq-w75r-8gcw",
+    "https://github.com/advisories/GHSA-rq7h-c2jc-7f22"
+  ]
+}

@@ -9,10 +9,9 @@ import { PermisosService } from '../../core/services/permisos.service';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-ventas-list',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-ventas-list',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <h2><i class="fa fa-cash-register"></i> Ventas de Farmacia</h2>

@@ -12,10 +12,9 @@ import { UiStateComponent } from '../../shared/components/ui-state.component';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-facturas-list',
-  standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, UiStateComponent],
-  template: `
+    selector: 'app-facturas-list',
+    imports: [CommonModule, FormsModule, RouterModule, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>
@@ -107,7 +106,7 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
         </div>
       }
     </div>
-  `,
+  `
 })
 export class FacturasListComponent implements OnInit {
   private readonly facturasService = inject(FacturaService);

@@ -265,7 +265,7 @@ describe('LotesMedicamentoComponent', () => {
     const component = render();
     abrirEntrada(component);
     modificar.set(false);
-    TestBed.flushEffects();
+    fixture.detectChanges();
     component.registrarEntrada(true);
     expect(component.loteSeleccionado).toBeNull();
     expect(registrarEntrada).not.toHaveBeenCalled();
@@ -274,11 +274,11 @@ describe('LotesMedicamentoComponent', () => {
   it('limpia lotes al revocarse Consultar o finalizar la sesión', () => {
     const component = render();
     consultar.set(false);
-    TestBed.flushEffects();
+    fixture.detectChanges();
     expect(component.lotes).toEqual([]);
     consultar.set(true);
     authenticated.set(false);
-    TestBed.flushEffects();
+    fixture.detectChanges();
     expect(component.lotes).toEqual([]);
   });
 
@@ -289,7 +289,7 @@ describe('LotesMedicamentoComponent', () => {
     userId.set(8);
     token = 'session-two';
     listarLotes.and.returnValue(of(pagina([], 1, 10, 0)));
-    TestBed.flushEffects();
+    fixture.detectChanges();
     pending.next(pagina([lote]));
     pending.complete();
     expect(component.lotes).toEqual([]);

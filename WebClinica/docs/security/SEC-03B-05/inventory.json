@@ -1,0 +1,219 @@
+{
+  "@angular/animations": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/core": "21.2.25"
+    }
+  },
+  "@angular/common": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/core": "21.2.25",
+      "rxjs": "^6.5.3 || ^7.4.0"
+    }
+  },
+  "@angular/compiler": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    }
+  },
+  "@angular/core": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/compiler": "21.2.25",
+      "rxjs": "^6.5.3 || ^7.4.0",
+      "zone.js": "~0.15.0 || ~0.16.0"
+    }
+  },
+  "@angular/forms": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/common": "21.2.25",
+      "@angular/core": "21.2.25",
+      "@angular/platform-browser": "21.2.25",
+      "rxjs": "^6.5.3 || ^7.4.0"
+    }
+  },
+  "@angular/platform-browser": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/animations": "21.2.25",
+      "@angular/common": "21.2.25",
+      "@angular/core": "21.2.25"
+    }
+  },
+  "@angular/platform-browser-dynamic": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/common": "21.2.25",
+      "@angular/compiler": "21.2.25",
+      "@angular/core": "21.2.25",
+      "@angular/platform-browser": "21.2.25"
+    }
+  },
+  "@angular/router": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/common": "21.2.25",
+      "@angular/core": "21.2.25",
+      "@angular/platform-browser": "21.2.25",
+      "rxjs": "^6.5.3 || ^7.4.0"
+    }
+  },
+  "@microsoft/signalr": {
+    "declared": "^10.0.11",
+    "installed": "10.0.11"
+  },
+  "bootstrap": {
+    "declared": "^5.3.8",
+    "installed": "5.3.8",
+    "peers": {
+      "@popperjs/core": "^2.11.8"
+    }
+  },
+  "bootstrap-icons": {
+    "declared": "^1.13.1",
+    "installed": "1.13.1"
+  },
+  "rxjs": {
+    "declared": "~7.8.0",
+    "installed": "7.8.2"
+  },
+  "tslib": {
+    "declared": "^2.3.0",
+    "installed": "2.8.1"
+  },
+  "zone.js": {
+    "declared": "~0.15.1",
+    "installed": "0.15.1"
+  },
+  "@angular-devkit/build-angular": {
+    "declared": "^21.2.27",
+    "installed": "21.2.27",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
+      "npm": "^6.11.0 || ^7.5.6 || >=8.0.0",
+      "yarn": ">= 1.13.0"
+    },
+    "peers": {
+      "@angular/compiler-cli": "^21.0.0",
+      "@angular/core": "^21.0.0",
+      "@angular/localize": "^21.0.0",
+      "@angular/platform-browser": "^21.0.0",
+      "@angular/platform-server": "^21.0.0",
+      "@angular/service-worker": "^21.0.0",
+      "@angular/ssr": "^21.2.27",
+      "@web/test-runner": "^0.20.0",
+      "browser-sync": "^3.0.2",
+      "jest": "^30.2.0",
+      "jest-environment-jsdom": "^30.2.0",
+      "karma": "^6.3.0",
+      "ng-packagr": "^21.0.0",
+      "protractor": "^7.0.0",
+      "tailwindcss": "^2.0.0 || ^3.0.0 || ^4.0.0",
+      "typescript": ">=5.9 <6.0"
+    }
+  },
+  "@angular/cli": {
+    "declared": "^21.2.27",
+    "installed": "21.2.27",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
+      "npm": "^6.11.0 || ^7.5.6 || >=8.0.0",
+      "yarn": ">= 1.13.0"
+    }
+  },
+  "@angular/compiler-cli": {
+    "declared": "^21.2.25",
+    "installed": "21.2.25",
+    "engines": {
+      "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+    },
+    "peers": {
+      "@angular/compiler": "21.2.25",
+      "typescript": ">=5.9 <6.1"
+    }
+  },
+  "@types/jasmine": {
+    "declared": "~5.1.0",
+    "installed": "5.1.15"
+  },
+  "jasmine-core": {
+    "declared": "~5.2.0",
+    "installed": "5.2.0"
+  },
+  "karma": {
+    "declared": "~6.4.0",
+    "installed": "6.4.4",
+    "engines": {
+      "node": ">= 10"
+    }
+  },
+  "karma-chrome-launcher": {
+    "declared": "~3.2.0",
+    "installed": "3.2.0"
+  },
+  "karma-coverage": {
+    "declared": "~2.2.0",
+    "installed": "2.2.1",
+    "engines": {
+      "node": ">=10.0.0"
+    }
+  },
+  "karma-jasmine": {
+    "declared": "~5.1.0",
+    "installed": "5.1.0",
+    "engines": {
+      "node": ">=12"
+    },
+    "peers": {
+      "karma": "^6.0.0"
+    }
+  },
+  "karma-jasmine-html-reporter": {
+    "declared": "~2.1.0",
+    "installed": "2.1.0",
+    "peers": {
+      "jasmine-core": "^4.0.0 || ^5.0.0",
+      "karma": "^6.0.0",
+      "karma-jasmine": "^5.0.0"
+    }
+  },
+  "typescript": {
+    "declared": "~5.9.3",
+    "installed": "5.9.3",
+    "engines": {
+      "node": ">=14.17"
+    }
+  }
+}

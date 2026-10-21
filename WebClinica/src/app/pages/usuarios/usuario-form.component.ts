@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, OnInit, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -30,10 +30,9 @@ interface UsuarioFormData {
 const EMPLOYEE_PAGE_SIZE = 20;
 
 @Component({
-  selector: 'app-usuario-form',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, UiStateComponent],
-  template: `
+    selector: 'app-usuario-form',
+    imports: [RouterModule, FormsModule, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>
@@ -151,7 +150,7 @@ const EMPLOYEE_PAGE_SIZE = 20;
         </div>
       </form>
     </div>
-  `,
+  `
 })
 export class UsuarioFormComponent implements OnInit {
   private readonly service = inject(UsuariosService);
@@ -212,7 +211,7 @@ export class UsuarioFormComponent implements OnInit {
           ? 'La sesión cambió durante la edición.'
           : 'No tienes autorización para consultar los catálogos requeridos.');
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   get rolesDisponibles(): RolResponse[] {

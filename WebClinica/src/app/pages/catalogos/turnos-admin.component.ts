@@ -11,10 +11,9 @@ import { CatalogosService } from '../../core/services/catalogos.service';
 import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-admin-shell.component';
 
 @Component({
-  selector: 'app-turnos-admin',
-  standalone: true,
-  imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
-  template: `
+    selector: 'app-turnos-admin',
+    imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
+    template: `
     <app-catalogo-admin-shell
       title="Turnos"
       description="Administra los horarios laborales y su jornada."
@@ -78,7 +77,7 @@ import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-ad
         </div>
       </div>
     </app-catalogo-admin-shell>
-  `,
+  `
 })
 export class TurnosAdminComponent implements OnInit {
   private readonly service = inject(CatalogosService);

@@ -1,0 +1,881 @@
+[
+  {
+    "number": 1,
+    "package": "@angular-devkit/build-angular",
+    "versions": [
+      {
+        "path": "node_modules/@angular-devkit/build-angular",
+        "version": "21.2.27"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      },
+      {
+        "id": "GHSA-w5hq-g745-h8pq",
+        "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+        "severity": "moderate",
+        "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+      },
+      {
+        "id": "GHSA-698v-4r3x-3vcv",
+        "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv",
+        "severity": "moderate",
+        "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows"
+      },
+      {
+        "id": "GHSA-r825-w8mm-5pxw",
+        "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw",
+        "severity": "moderate",
+        "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors"
+      },
+      {
+        "id": "GHSA-587h-7wmj-h5pm",
+        "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+        "severity": "high",
+        "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows"
+      },
+      {
+        "id": "GHSA-9jrq-w75r-8gcw",
+        "url": "https://github.com/advisories/GHSA-9jrq-w75r-8gcw",
+        "severity": "low",
+        "title": "Vite: Cross origin script execution through Vite custom middleware"
+      },
+      {
+        "id": "GHSA-rq7h-c2jc-7f22",
+        "url": "https://github.com/advisories/GHSA-rq7h-c2jc-7f22",
+        "severity": "moderate",
+        "title": "Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "WebClinica",
+        "kind": "devDependencies",
+        "range": "^21.2.27"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      },
+      {
+        "family": "UUID",
+        "condition": "v3/v5/v6 con buffer u offset externo; sockjs inspeccionado usa v4() sin argumentos.",
+        "fix": "11.1.1 (o ramas 12.0.1/13.0.1).",
+        "compatibility": "Salto mayor desde 8.3.2, fuera de ^8.3.2 de sockjs.",
+        "classification": "D en ruta comprobada; alternativa B",
+        "mitigation": "Conservar llamada v4 sin buffer; reevaluar si cambian consumidores.",
+        "risk": "Bajo en la ruta comprobada; alerta permanece en el inventario."
+      },
+      {
+        "family": "VITE",
+        "condition": "Windows/editor o middleware HTML custom; hay también un aviso solo no-Windows y servidor expuesto.",
+        "fix": "Vite 7.3.7; launch-editor 2.14.2 para sus tres avisos.",
+        "compatibility": "Mismo patch de Vite 7.3; Node compatible, pero @angular/build fija 7.3.6. Compatibilidad integrada no probada.",
+        "classification": "C con pin actual; candidato A condicionado; D parcial",
+        "mitigation": "No exponer dev server; no usar apertura de editor con rutas no confiables. Windows no cumple el aviso no-Windows.",
+        "risk": "Condicional para middleware/custom/editor; investigar antes de ampliar exposición."
+      }
+    ]
+  },
+  {
+    "number": 2,
+    "package": "@angular-devkit/build-webpack",
+    "versions": [
+      {
+        "path": "node_modules/@angular-devkit/build-webpack",
+        "version": "0.2102.27"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      },
+      {
+        "id": "GHSA-w5hq-g745-h8pq",
+        "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+        "severity": "moderate",
+        "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular-devkit/build-angular",
+        "kind": "dependencies",
+        "range": "0.2102.27"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      },
+      {
+        "family": "UUID",
+        "condition": "v3/v5/v6 con buffer u offset externo; sockjs inspeccionado usa v4() sin argumentos.",
+        "fix": "11.1.1 (o ramas 12.0.1/13.0.1).",
+        "compatibility": "Salto mayor desde 8.3.2, fuera de ^8.3.2 de sockjs.",
+        "classification": "D en ruta comprobada; alternativa B",
+        "mitigation": "Conservar llamada v4 sin buffer; reevaluar si cambian consumidores.",
+        "risk": "Bajo en la ruta comprobada; alerta permanece en el inventario."
+      }
+    ]
+  },
+  {
+    "number": 3,
+    "package": "@angular/build",
+    "versions": [
+      {
+        "path": "node_modules/@angular/build",
+        "version": "21.2.27"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      },
+      {
+        "id": "GHSA-698v-4r3x-3vcv",
+        "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv",
+        "severity": "moderate",
+        "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows"
+      },
+      {
+        "id": "GHSA-r825-w8mm-5pxw",
+        "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw",
+        "severity": "moderate",
+        "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors"
+      },
+      {
+        "id": "GHSA-587h-7wmj-h5pm",
+        "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+        "severity": "high",
+        "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows"
+      },
+      {
+        "id": "GHSA-9jrq-w75r-8gcw",
+        "url": "https://github.com/advisories/GHSA-9jrq-w75r-8gcw",
+        "severity": "low",
+        "title": "Vite: Cross origin script execution through Vite custom middleware"
+      },
+      {
+        "id": "GHSA-rq7h-c2jc-7f22",
+        "url": "https://github.com/advisories/GHSA-rq7h-c2jc-7f22",
+        "severity": "moderate",
+        "title": "Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular-devkit/build-angular",
+        "kind": "dependencies",
+        "range": "21.2.27"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      },
+      {
+        "family": "VITE",
+        "condition": "Windows/editor o middleware HTML custom; hay también un aviso solo no-Windows y servidor expuesto.",
+        "fix": "Vite 7.3.7; launch-editor 2.14.2 para sus tres avisos.",
+        "compatibility": "Mismo patch de Vite 7.3; Node compatible, pero @angular/build fija 7.3.6. Compatibilidad integrada no probada.",
+        "classification": "C con pin actual; candidato A condicionado; D parcial",
+        "mitigation": "No exponer dev server; no usar apertura de editor con rutas no confiables. Windows no cumple el aviso no-Windows.",
+        "risk": "Condicional para middleware/custom/editor; investigar antes de ampliar exposición."
+      }
+    ]
+  },
+  {
+    "number": 4,
+    "package": "@angular/cli",
+    "versions": [
+      {
+        "path": "node_modules/@angular/cli",
+        "version": "21.2.27"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-22jm-h49p-29qw",
+        "url": "https://github.com/advisories/GHSA-22jm-h49p-29qw",
+        "severity": "high",
+        "title": "MCP TypeScript SDK: Experimental tasks were not tied to the session that created them"
+      },
+      {
+        "id": "GHSA-6prh-2h8m-c8cw",
+        "url": "https://github.com/advisories/GHSA-6prh-2h8m-c8cw",
+        "severity": "moderate",
+        "title": "MCP TypeScript client SDK: HTTP client transports and OAuth requests followed cross-origin redirects and re-sent custom headers and request bodies"
+      },
+      {
+        "id": "GHSA-46jr-4wx8-v453",
+        "url": "https://github.com/advisories/GHSA-46jr-4wx8-v453",
+        "severity": "high",
+        "title": "MCP TypeScript SDK: One HTTP request within the default size limit could exhaust server memory during validation"
+      },
+      {
+        "id": "GHSA-rvq5-wwqv-78pq",
+        "url": "https://github.com/advisories/GHSA-rvq5-wwqv-78pq",
+        "severity": "moderate",
+        "title": "MCP TypeScript SDK: Server bearer authentication accepted tokens issued for another service"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "WebClinica",
+        "kind": "devDependencies",
+        "range": "^21.2.27"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "MCP",
+        "condition": "HTTP/tasks/OAuth o bearer del SDK; CLI inspeccionada usa stdio y no taskStore.",
+        "fix": "1.32.0; límites y expectedResource adicionales si se habilita HTTP.",
+        "compatibility": "Node >=18; CLI fija 1.31.0. Override dirigido requiere autorización y validación.",
+        "classification": "D en flujo actual; candidato A condicionado",
+        "mitigation": "No habilitar MCP HTTP/tasks/OAuth. Mantener transporte stdio inspeccionado.",
+        "risk": "Latente si se amplía el uso del SDK; no se descarta para otros consumidores."
+      }
+    ]
+  },
+  {
+    "number": 5,
+    "package": "@modelcontextprotocol/sdk",
+    "versions": [
+      {
+        "path": "node_modules/@modelcontextprotocol/sdk",
+        "version": "1.31.0"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-22jm-h49p-29qw",
+        "url": "https://github.com/advisories/GHSA-22jm-h49p-29qw",
+        "severity": "high",
+        "title": "MCP TypeScript SDK: Experimental tasks were not tied to the session that created them"
+      },
+      {
+        "id": "GHSA-6prh-2h8m-c8cw",
+        "url": "https://github.com/advisories/GHSA-6prh-2h8m-c8cw",
+        "severity": "moderate",
+        "title": "MCP TypeScript client SDK: HTTP client transports and OAuth requests followed cross-origin redirects and re-sent custom headers and request bodies"
+      },
+      {
+        "id": "GHSA-46jr-4wx8-v453",
+        "url": "https://github.com/advisories/GHSA-46jr-4wx8-v453",
+        "severity": "high",
+        "title": "MCP TypeScript SDK: One HTTP request within the default size limit could exhaust server memory during validation"
+      },
+      {
+        "id": "GHSA-rvq5-wwqv-78pq",
+        "url": "https://github.com/advisories/GHSA-rvq5-wwqv-78pq",
+        "severity": "moderate",
+        "title": "MCP TypeScript SDK: Server bearer authentication accepted tokens issued for another service"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular/cli",
+        "kind": "dependencies",
+        "range": "1.31.0"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "MCP",
+        "condition": "HTTP/tasks/OAuth o bearer del SDK; CLI inspeccionada usa stdio y no taskStore.",
+        "fix": "1.32.0; límites y expectedResource adicionales si se habilita HTTP.",
+        "compatibility": "Node >=18; CLI fija 1.31.0. Override dirigido requiere autorización y validación.",
+        "classification": "D en flujo actual; candidato A condicionado",
+        "mitigation": "No habilitar MCP HTTP/tasks/OAuth. Mantener transporte stdio inspeccionado.",
+        "risk": "Latente si se amplía el uso del SDK; no se descarta para otros consumidores."
+      }
+    ]
+  },
+  {
+    "number": 6,
+    "package": "braces",
+    "versions": [
+      {
+        "path": "node_modules/braces",
+        "version": "3.0.3"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "karma",
+        "kind": "dependencies",
+        "range": "^3.0.2"
+      },
+      {
+        "package": "chokidar",
+        "kind": "dependencies",
+        "range": "~3.0.2"
+      },
+      {
+        "package": "micromatch",
+        "kind": "dependencies",
+        "range": "^3.0.3"
+      },
+      {
+        "package": "chokidar",
+        "kind": "dependencies",
+        "range": "~3.0.2"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 7,
+    "package": "chokidar",
+    "versions": [
+      {
+        "path": "node_modules/karma/node_modules/chokidar",
+        "version": "3.6.0"
+      },
+      {
+        "path": "node_modules/webpack-dev-server/node_modules/chokidar",
+        "version": "3.6.0"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular-devkit/core",
+        "kind": "peerDependencies",
+        "range": "^5.0.0"
+      },
+      {
+        "package": "@angular/compiler-cli",
+        "kind": "dependencies",
+        "range": "^5.0.0"
+      },
+      {
+        "package": "karma",
+        "kind": "dependencies",
+        "range": "^3.5.1"
+      },
+      {
+        "package": "sass",
+        "kind": "dependencies",
+        "range": "^4.0.0"
+      },
+      {
+        "package": "webpack-dev-server",
+        "kind": "dependencies",
+        "range": "^3.6.0"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 8,
+    "package": "http-proxy-middleware",
+    "versions": [
+      {
+        "path": "node_modules/http-proxy-middleware",
+        "version": "3.0.7"
+      },
+      {
+        "path": "node_modules/webpack-dev-server/node_modules/http-proxy-middleware",
+        "version": "2.0.10"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular-devkit/build-angular",
+        "kind": "dependencies",
+        "range": "3.0.7"
+      },
+      {
+        "package": "webpack-dev-server",
+        "kind": "dependencies",
+        "range": "^2.0.9"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 9,
+    "package": "karma",
+    "versions": [
+      {
+        "path": "node_modules/karma",
+        "version": "6.4.4"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "WebClinica",
+        "kind": "devDependencies",
+        "range": "~6.4.0"
+      },
+      {
+        "package": "@angular-devkit/build-angular",
+        "kind": "peerDependencies",
+        "range": "^6.3.0"
+      },
+      {
+        "package": "@angular/build",
+        "kind": "peerDependencies",
+        "range": "^6.4.0"
+      },
+      {
+        "package": "karma-jasmine",
+        "kind": "peerDependencies",
+        "range": "^6.0.0"
+      },
+      {
+        "package": "karma-jasmine-html-reporter",
+        "kind": "peerDependencies",
+        "range": "^6.0.0"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 10,
+    "package": "karma-jasmine",
+    "versions": [
+      {
+        "path": "node_modules/karma-jasmine",
+        "version": "5.1.0"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "WebClinica",
+        "kind": "devDependencies",
+        "range": "~5.1.0"
+      },
+      {
+        "package": "karma-jasmine-html-reporter",
+        "kind": "peerDependencies",
+        "range": "^5.0.0"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 11,
+    "package": "karma-jasmine-html-reporter",
+    "versions": [
+      {
+        "path": "node_modules/karma-jasmine-html-reporter",
+        "version": "2.1.0"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "WebClinica",
+        "kind": "devDependencies",
+        "range": "~2.1.0"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 12,
+    "package": "micromatch",
+    "versions": [
+      {
+        "path": "node_modules/micromatch",
+        "version": "4.0.8"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "http-proxy-middleware",
+        "kind": "dependencies",
+        "range": "^4.0.8"
+      },
+      {
+        "package": "http-proxy-middleware",
+        "kind": "dependencies",
+        "range": "^4.0.2"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      }
+    ]
+  },
+  {
+    "number": 13,
+    "package": "sockjs",
+    "versions": [
+      {
+        "path": "node_modules/sockjs",
+        "version": "0.3.24"
+      }
+    ],
+    "severity": "moderate",
+    "advisories": [
+      {
+        "id": "GHSA-w5hq-g745-h8pq",
+        "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+        "severity": "moderate",
+        "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "webpack-dev-server",
+        "kind": "dependencies",
+        "range": "^0.3.24"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "UUID",
+        "condition": "v3/v5/v6 con buffer u offset externo; sockjs inspeccionado usa v4() sin argumentos.",
+        "fix": "11.1.1 (o ramas 12.0.1/13.0.1).",
+        "compatibility": "Salto mayor desde 8.3.2, fuera de ^8.3.2 de sockjs.",
+        "classification": "D en ruta comprobada; alternativa B",
+        "mitigation": "Conservar llamada v4 sin buffer; reevaluar si cambian consumidores.",
+        "risk": "Bajo en la ruta comprobada; alerta permanece en el inventario."
+      }
+    ]
+  },
+  {
+    "number": 14,
+    "package": "uuid",
+    "versions": [
+      {
+        "path": "node_modules/uuid",
+        "version": "8.3.2"
+      }
+    ],
+    "severity": "moderate",
+    "advisories": [
+      {
+        "id": "GHSA-w5hq-g745-h8pq",
+        "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+        "severity": "moderate",
+        "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "sockjs",
+        "kind": "dependencies",
+        "range": "^8.3.2"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "UUID",
+        "condition": "v3/v5/v6 con buffer u offset externo; sockjs inspeccionado usa v4() sin argumentos.",
+        "fix": "11.1.1 (o ramas 12.0.1/13.0.1).",
+        "compatibility": "Salto mayor desde 8.3.2, fuera de ^8.3.2 de sockjs.",
+        "classification": "D en ruta comprobada; alternativa B",
+        "mitigation": "Conservar llamada v4 sin buffer; reevaluar si cambian consumidores.",
+        "risk": "Bajo en la ruta comprobada; alerta permanece en el inventario."
+      }
+    ]
+  },
+  {
+    "number": 15,
+    "package": "vite",
+    "versions": [
+      {
+        "path": "node_modules/vite",
+        "version": "7.3.6"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-698v-4r3x-3vcv",
+        "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv",
+        "severity": "moderate",
+        "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows"
+      },
+      {
+        "id": "GHSA-r825-w8mm-5pxw",
+        "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw",
+        "severity": "moderate",
+        "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors"
+      },
+      {
+        "id": "GHSA-587h-7wmj-h5pm",
+        "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+        "severity": "high",
+        "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows"
+      },
+      {
+        "id": "GHSA-9jrq-w75r-8gcw",
+        "url": "https://github.com/advisories/GHSA-9jrq-w75r-8gcw",
+        "severity": "low",
+        "title": "Vite: Cross origin script execution through Vite custom middleware"
+      },
+      {
+        "id": "GHSA-rq7h-c2jc-7f22",
+        "url": "https://github.com/advisories/GHSA-rq7h-c2jc-7f22",
+        "severity": "moderate",
+        "title": "Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular/build",
+        "kind": "dependencies",
+        "range": "7.3.6"
+      },
+      {
+        "package": "@vitejs/plugin-basic-ssl",
+        "kind": "peerDependencies",
+        "range": "^6.0.0 || ^7.0.0"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "VITE",
+        "condition": "Windows/editor o middleware HTML custom; hay también un aviso solo no-Windows y servidor expuesto.",
+        "fix": "Vite 7.3.7; launch-editor 2.14.2 para sus tres avisos.",
+        "compatibility": "Mismo patch de Vite 7.3; Node compatible, pero @angular/build fija 7.3.6. Compatibilidad integrada no probada.",
+        "classification": "C con pin actual; candidato A condicionado; D parcial",
+        "mitigation": "No exponer dev server; no usar apertura de editor con rutas no confiables. Windows no cumple el aviso no-Windows.",
+        "risk": "Condicional para middleware/custom/editor; investigar antes de ampliar exposición."
+      }
+    ]
+  },
+  {
+    "number": 16,
+    "package": "webpack-dev-server",
+    "versions": [
+      {
+        "path": "node_modules/webpack-dev-server",
+        "version": "5.2.6"
+      }
+    ],
+    "severity": "high",
+    "advisories": [
+      {
+        "id": "GHSA-vfj7-8cjw-p6xm",
+        "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        "severity": "high",
+        "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+      },
+      {
+        "id": "GHSA-w5hq-g745-h8pq",
+        "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+        "severity": "moderate",
+        "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+      }
+    ],
+    "introducedBy": [
+      {
+        "package": "@angular-devkit/build-angular",
+        "kind": "dependencies",
+        "range": "5.2.6"
+      },
+      {
+        "package": "@angular-devkit/build-webpack",
+        "kind": "peerDependencies",
+        "range": "^5.0.2"
+      }
+    ],
+    "environment": "Desarrollo/test; no incluido entre inputs del bundle ni en audit producción",
+    "assessment": [
+      {
+        "family": "BRACES",
+        "condition": "Patrones de braces anidados y no confiables en watchers/globs.",
+        "fix": "Sin parche publicado para <=3.0.3.",
+        "compatibility": "Karma y webpack conservan ramas afectadas; cambiar runner solo no basta si se conserva webpack.",
+        "classification": "C; alternativa B",
+        "mitigation": "No ejecutar scripts/globs de proyectos no confiables; no exponer servidores de desarrollo.",
+        "risk": "DoS del proceso de herramientas si un patrón controlado alcanza el parser."
+      },
+      {
+        "family": "UUID",
+        "condition": "v3/v5/v6 con buffer u offset externo; sockjs inspeccionado usa v4() sin argumentos.",
+        "fix": "11.1.1 (o ramas 12.0.1/13.0.1).",
+        "compatibility": "Salto mayor desde 8.3.2, fuera de ^8.3.2 de sockjs.",
+        "classification": "D en ruta comprobada; alternativa B",
+        "mitigation": "Conservar llamada v4 sin buffer; reevaluar si cambian consumidores.",
+        "risk": "Bajo en la ruta comprobada; alerta permanece en el inventario."
+      }
+    ]
+  }
+]

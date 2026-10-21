@@ -31,10 +31,9 @@ const filtrosVacios = (): FiltrosConsultaForm => ({
 });
 
 @Component({
-  selector: 'app-consultas-list',
-  standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
-  templateUrl: './consultas-list.component.html',
+    selector: 'app-consultas-list',
+    imports: [CommonModule, FormsModule, RouterModule],
+    templateUrl: './consultas-list.component.html'
 })
 export class ConsultasListComponent implements OnInit {
   private readonly service = inject(HistorialService);
@@ -65,7 +64,7 @@ export class ConsultasListComponent implements OnInit {
       if (!identidad || !autorizado) {
         this.limpiarDatosSensibles();
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   ngOnInit(): void {

@@ -83,10 +83,16 @@ describe('permisoGuard', () => {
 
   it('espera a que finalice una carga pendiente', async () => {
     const pending = new Subject<readonly PermisoActual[]>();
-    loadResult = pending.asObservable();
+    let markSubscribed!: () => void;
+    const guardSubscribed = new Promise<void>(resolve => { markSubscribed = resolve; });
+    loadResult = new Observable(subscriber => {
+      const subscription = pending.subscribe(subscriber);
+      markSubscribed();
+      return subscription;
+    });
     const harness = await RouterTestingHarness.create();
     const navigation = harness.navigateByUrl('/protegida');
-    await Promise.resolve();
+    await guardSubscribed;
     expect(TestBed.inject(Router).url).not.toBe('/protegida');
     pending.next([]); pending.complete();
     await navigation;

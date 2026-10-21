@@ -1,0 +1,32 @@
+{
+  "files": 62,
+  "maps": [],
+  "findings": {
+    "privateKey": [],
+    "jwtValue": [],
+    "azureSql": [],
+    "azureStorageSecret": [],
+    "awsAccessKey": [],
+    "sourceMapReference": [],
+    "localApi": [
+      "dist/web-clinica/browser/chunk-645ZQLXC.js"
+    ],
+    "localHub": [
+      "dist/web-clinica/browser/chunk-645ZQLXC.js"
+    ]
+  },
+  "statsInputs": 368,
+  "bundlePackages": [
+    "@angular/common",
+    "@angular/core",
+    "@angular/forms",
+    "@angular/platform-browser",
+    "@angular/router",
+    "@microsoft/signalr",
+    "bootstrap",
+    "bootstrap-icons",
+    "rxjs",
+    "tslib",
+    "zone.js"
+  ]
+}

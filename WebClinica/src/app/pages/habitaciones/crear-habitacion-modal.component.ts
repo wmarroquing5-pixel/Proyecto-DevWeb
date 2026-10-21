@@ -1,5 +1,5 @@
 import { Component, inject, Output, EventEmitter, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { FormsModule } from '@angular/forms';
 import { HabitacionesService } from '../../core/services/habitaciones.service';
 import { CrearHabitacionRequest } from '../../core/models/habitacion.model';
@@ -9,10 +9,9 @@ import { CatalogosService } from '../../core/services/catalogos.service';
 import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
-  selector: 'app-crear-habitacion-modal',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-crear-habitacion-modal',
+    imports: [FormsModule],
+    template: `
     <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">

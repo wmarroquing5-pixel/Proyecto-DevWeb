@@ -23,10 +23,9 @@ interface ItemCarrito {
 }
 
 @Component({
-  selector: 'app-ventas-nueva',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-ventas-nueva',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <h2><i class="fa fa-plus-circle"></i> Nueva Venta de Farmacia</h2>

@@ -1,0 +1,97 @@
+[
+  {
+    "name": "vite",
+    "version": "7.3.6",
+    "location": "node_modules/vite",
+    "isWorkspace": false,
+    "dependents": [
+      {
+        "type": "prod",
+        "name": "vite",
+        "spec": "7.3.6",
+        "from": {
+          "name": "@angular/build",
+          "version": "21.2.27",
+          "location": "node_modules/@angular/build",
+          "isWorkspace": false,
+          "dependents": [
+            {
+              "type": "prod",
+              "name": "@angular/build",
+              "spec": "21.2.27",
+              "from": {
+                "name": "@angular-devkit/build-angular",
+                "version": "21.2.27",
+                "location": "node_modules/@angular-devkit/build-angular",
+                "isWorkspace": false,
+                "dependents": [
+                  {
+                    "type": "dev",
+                    "name": "@angular-devkit/build-angular",
+                    "spec": "^21.2.27",
+                    "from": {
+                      "location": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica\\WebClinica"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "peer",
+        "name": "vite",
+        "spec": "^6.0.0 || ^7.0.0",
+        "from": {
+          "name": "@vitejs/plugin-basic-ssl",
+          "version": "2.1.4",
+          "location": "node_modules/@vitejs/plugin-basic-ssl",
+          "isWorkspace": false,
+          "dependents": [
+            {
+              "type": "prod",
+              "name": "@vitejs/plugin-basic-ssl",
+              "spec": "2.1.4",
+              "from": {
+                "name": "@angular/build",
+                "version": "21.2.27",
+                "location": "node_modules/@angular/build",
+                "isWorkspace": false,
+                "dependents": [
+                  {
+                    "type": "prod",
+                    "name": "@angular/build",
+                    "spec": "21.2.27",
+                    "from": {
+                      "name": "@angular-devkit/build-angular",
+                      "version": "21.2.27",
+                      "location": "node_modules/@angular-devkit/build-angular",
+                      "isWorkspace": false,
+                      "dependents": [
+                        {
+                          "type": "dev",
+                          "name": "@angular-devkit/build-angular",
+                          "spec": "^21.2.27",
+                          "from": {
+                            "location": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica\\WebClinica"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "dev": true,
+    "optional": false,
+    "devOptional": true,
+    "peer": false,
+    "bundled": false,
+    "overridden": false
+  }
+]

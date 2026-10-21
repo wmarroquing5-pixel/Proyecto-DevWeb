@@ -60,7 +60,7 @@ export class MenuService {
     }
     effect(() => {
       if (!this.auth.isAuthenticated()) this.clearMenu();
-    }, { allowSignalWrites: true });
+    });
   }
 
   /**

@@ -8,11 +8,10 @@ import { ApiErrorService } from '../../core/services/api-error.service';
 import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
-  selector: 'app-login',
-  standalone: true,
-  imports: [FormsModule],
-  templateUrl: './login.component.html',
-  styleUrl: './login.component.css',
+    selector: 'app-login',
+    imports: [FormsModule],
+    templateUrl: './login.component.html',
+    styleUrl: './login.component.css'
 })
 export class LoginComponent {
   private auth = inject(AuthService);

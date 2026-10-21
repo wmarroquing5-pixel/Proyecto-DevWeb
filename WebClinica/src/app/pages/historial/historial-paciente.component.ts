@@ -9,10 +9,9 @@ import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.m
 import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-historial-paciente',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-historial-paciente',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>

@@ -177,7 +177,7 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
     const component = render();
     component.abrirConsumo(tratamiento);
     consumoPermitido.set(false);
-    TestBed.flushEffects();
+    fixture.detectChanges();
     component.registrarConsumo();
     expect(component.tratamientoConsumo).toBeNull();
     expect(registrarConsumo).not.toHaveBeenCalled();

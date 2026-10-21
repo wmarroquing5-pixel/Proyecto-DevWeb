@@ -58,7 +58,7 @@ export class PermisosService {
       if (this.estadoState() === 'no-cargados') {
         this.cargarPermisos().subscribe({ error: () => undefined });
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   cargarPermisos(): Observable<readonly PermisoActual[]> {

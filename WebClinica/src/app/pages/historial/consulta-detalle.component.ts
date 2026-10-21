@@ -20,10 +20,9 @@ import { ApiErrorService } from '../../core/services/api-error.service';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 
 @Component({
-  selector: 'app-consulta-detalle',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-consulta-detalle',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="container mt-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Detalle de Consulta #{{ idConsulta }}</h2>
@@ -243,7 +242,7 @@ export class ConsultaDetalleComponent implements OnInit {
         || !this.permisos.puedeCrear(MODULOS_PERMISO.CONSUMO_CLINICO)) {
         this.cancelarConsumoProtegido();
       }
-    }, { allowSignalWrites: true });
+    });
   }
 
   ngOnInit() {

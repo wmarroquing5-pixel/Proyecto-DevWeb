@@ -33,10 +33,9 @@ interface LineaMedicamento {
 }
 
 @Component({
-  selector: 'app-factura-nueva',
-  standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, UiStateComponent],
-  template: `
+    selector: 'app-factura-nueva',
+    imports: [CommonModule, FormsModule, RouterModule, UiStateComponent],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <div>
@@ -185,7 +184,7 @@ interface LineaMedicamento {
         </form>
       }
     </div>
-  `,
+  `
 })
 export class FacturaNuevaComponent implements OnInit {
   private readonly facturasService = inject(FacturaService);

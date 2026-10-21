@@ -6,10 +6,9 @@ import { VentaConsultaResponse } from '../../core/models/venta.model';
 import { correlativoLista } from '../../shared/utils/correlativo';
 
 @Component({
-  selector: 'app-venta-detalle',
-  standalone: true,
-  imports: [CommonModule, RouterModule],
-  template: `
+    selector: 'app-venta-detalle',
+    imports: [CommonModule, RouterModule],
+    template: `
     <div class="page-shell">
       <header class="page-header">
         <h2><i class="fa fa-receipt"></i> Detalle de Venta #{{ idVenta }}</h2>

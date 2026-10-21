@@ -13,10 +13,9 @@ import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-ad
 type FiltroEstado = 'todos' | 'activos' | 'inactivos';
 
 @Component({
-  selector: 'app-sucursales-admin',
-  standalone: true,
-  imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
-  template: `
+    selector: 'app-sucursales-admin',
+    imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
+    template: `
     <app-catalogo-admin-shell
       title="Sucursales"
       description="Administra las sedes disponibles para la atención clínica."
@@ -85,7 +84,7 @@ type FiltroEstado = 'todos' | 'activos' | 'inactivos';
         </div>
       </div>
     </app-catalogo-admin-shell>
-  `,
+  `
 })
 export class SucursalesAdminComponent implements OnInit {
   private readonly service = inject(CatalogosService);

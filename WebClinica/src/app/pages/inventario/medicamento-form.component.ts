@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { InventarioService } from '../../core/services/inventario.service';
@@ -11,10 +11,9 @@ import {
 } from '../../core/models/inventario.model';
 
 @Component({
-  selector: 'app-medicamento-form',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-medicamento-form',
+    imports: [RouterModule, FormsModule],
+    template: `
     <div class="container mt-4">
       <h2>{{ esEdicion ? 'Editar Medicamento' : 'Nuevo Medicamento' }}</h2>
 

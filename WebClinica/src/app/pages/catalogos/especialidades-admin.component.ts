@@ -11,10 +11,9 @@ import { CatalogosService } from '../../core/services/catalogos.service';
 import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-admin-shell.component';
 
 @Component({
-  selector: 'app-especialidades-admin',
-  standalone: true,
-  imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
-  template: `
+    selector: 'app-especialidades-admin',
+    imports: [ReactiveFormsModule, CatalogoAdminShellComponent],
+    template: `
     <app-catalogo-admin-shell
       title="Especialidades"
       description="Administra las especialidades disponibles para el personal médico."
@@ -53,7 +52,7 @@ import { CatalogoAdminShellComponent } from '../../shared/components/catalogo-ad
         }
       </div>
     </app-catalogo-admin-shell>
-  `,
+  `
 })
 export class EspecialidadesAdminComponent implements OnInit {
   private readonly service = inject(CatalogosService);
