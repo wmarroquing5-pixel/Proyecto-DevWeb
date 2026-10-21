@@ -28,6 +28,18 @@ describe('MenuService: actualización dinámica', () => {
     { label: 'Lotes', route: '/inventario/lotes', icon: 'fa-boxes-stacked', hidden: false, roles: null, children: null },
     { label: 'Habitaciones', route: '/habitaciones', icon: 'fa-bed', hidden: false, roles: null, children: null },
     { label: 'Ventas', route: '/ventas', icon: 'fa-cash-register', hidden: false, roles: null, children: null },
+    { label: 'Facturación', route: '/facturas', icon: 'fa-file-invoice-dollar', hidden: false, roles: null, children: null },
+    { label: 'Catálogos organizativos', route: null, icon: 'bi bi-building', hidden: false, roles: null, children: [
+      { label: 'Sucursales', route: '/admin/sucursales', icon: 'bi bi-building', hidden: false, roles: null, children: null },
+      { label: 'Clínicas', route: '/admin/clinicas', icon: 'bi bi-hospital', hidden: false, roles: null, children: null },
+      { label: 'Especialidades', route: '/admin/especialidades', icon: 'bi bi-person-lines-fill', hidden: false, roles: null, children: null },
+      { label: 'Turnos', route: '/admin/turnos', icon: 'bi bi-clock', hidden: false, roles: null, children: null },
+      { label: 'Servicios', route: '/admin/servicios', icon: 'bi bi-clipboard2-pulse', hidden: false, roles: null, children: null },
+    ] },
+    { label: 'Catálogos farmacéuticos', route: null, icon: 'bi bi-box-seam', hidden: false, roles: null, children: [
+      { label: 'Categorías', route: '/admin/categorias', icon: 'bi bi-tags', hidden: false, roles: null, children: null },
+      { label: 'Marcas', route: '/admin/marcas', icon: 'bi bi-bookmark-star', hidden: false, roles: null, children: null },
+    ] },
     { label: 'Administración', route: null, icon: 'fa-cogs', hidden: false, roles: ['Admin'], children: [
       { label: 'Usuarios', route: '/admin/usuarios', icon: 'fa-users-cog', hidden: false, roles: ['Admin'], children: null },
       { label: 'Roles', route: '/admin/roles', icon: 'fa-user-tag', hidden: false, roles: ['Admin'], children: null },
@@ -162,6 +174,9 @@ describe('MenuService: actualización dinámica', () => {
     expect(routes).toEqual([
       '/dashboard', '/pacientes', '/consultas', '/medicamentos',
       '/inventario/lotes', '/habitaciones', '/ventas',
+      '/facturas',
+      '/admin/sucursales', '/admin/clinicas', '/admin/especialidades',
+      '/admin/turnos', '/admin/servicios', '/admin/categorias', '/admin/marcas',
       '/admin/usuarios', '/admin/roles', '/admin/empleados', '/admin/permisos',
     ]);
     expect(service.estado()).toBe('cargado');
@@ -171,6 +186,14 @@ describe('MenuService: actualización dinámica', () => {
     ['/inventario/lotes', MODULOS_PERMISO.LOTES_MEDICAMENTO],
     ['/habitaciones', MODULOS_PERMISO.HABITACIONES],
     ['/ventas', MODULOS_PERMISO.VENTAS],
+    ['/facturas', MODULOS_PERMISO.FACTURAS],
+    ['/admin/sucursales', MODULOS_PERMISO.SUCURSALES],
+    ['/admin/clinicas', MODULOS_PERMISO.CLINICAS],
+    ['/admin/especialidades', MODULOS_PERMISO.ESPECIALIDADES],
+    ['/admin/turnos', MODULOS_PERMISO.TURNOS],
+    ['/admin/servicios', MODULOS_PERMISO.SERVICIOS],
+    ['/admin/categorias', MODULOS_PERMISO.CATEGORIAS],
+    ['/admin/marcas', MODULOS_PERMISO.MARCAS],
     ['/admin/permisos', MODULOS_PERMISO.PERMISOS],
   ].forEach(([route, module]) => {
     it(`conserva ${route} únicamente con ${module}/Consultar`, () => {
@@ -183,6 +206,27 @@ describe('MenuService: actualización dinámica', () => {
       load([{ label: module, route, children: null }]);
       expect(service.menu()).toEqual([]);
     });
+  });
+
+  it('filtra los grupos de catálogos por permisos independientes', () => {
+    configure(); authenticated.set(true);
+    authorizationByModule = module =>
+      module === MODULOS_PERMISO.SUCURSALES || module === MODULOS_PERMISO.MARCAS;
+    load(catalog.filter(item => item.label.startsWith('Catálogos')));
+
+    expect(service.menu().map(item => item.label)).toEqual([
+      'Catálogos organizativos', 'Catálogos farmacéuticos',
+    ]);
+    expect(service.menu()[0].children?.map(item => item.route)).toEqual(['/admin/sucursales']);
+    expect(service.menu()[1].children?.map(item => item.route)).toEqual(['/admin/marcas']);
+  });
+
+  it('oculta los grupos de catálogos cuando no queda ningún hijo consultable', () => {
+    configure(); authenticated.set(true);
+    authorizationByModule = () => false;
+    load(catalog.filter(item => item.label.startsWith('Catálogos')));
+
+    expect(service.menu()).toEqual([]);
   });
 
   it('conserva /consultas únicamente con el permiso real Consultas/Consultar', () => {

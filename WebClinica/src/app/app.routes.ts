@@ -311,6 +311,31 @@ export const routes: Routes = [
     import('./pages/ventas/venta-detalle.component')
       .then(m => m.VentaDetalleComponent),
 },
+// ---------- Módulo Facturación ----------
+{
+  path: 'facturas',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.FACTURAS, OPERACIONES_PERMISO.CONSULTAR)] },
+  loadComponent: () =>
+    import('./pages/facturas/facturas-list.component')
+      .then(m => m.FacturasListComponent),
+},
+{
+  path: 'facturas/nueva',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.FACTURAS, OPERACIONES_PERMISO.CREAR)] },
+  loadComponent: () =>
+    import('./pages/facturas/factura-nueva.component')
+      .then(m => m.FacturaNuevaComponent),
+},
+{
+  path: 'facturas/:id',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.FACTURAS, OPERACIONES_PERMISO.CONSULTAR)] },
+  loadComponent: () =>
+    import('./pages/facturas/factura-detalle.component')
+      .then(m => m.FacturaDetalleComponent),
+},
 
       // ---------- Módulo Permisos ----------
       {
@@ -319,6 +344,64 @@ export const routes: Routes = [
         data: { permisos: [permiso(MODULOS_PERMISO.PERMISOS, OPERACIONES_PERMISO.CONSULTAR)] },
         loadComponent: () =>
           import('./pages/permisos/permisos.component').then(m => m.PermisosComponent),
+      },
+
+      // ---------- Catálogos administrativos ----------
+      {
+        path: 'admin/sucursales',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.SUCURSALES, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/sucursales-admin.component')
+            .then(m => m.SucursalesAdminComponent),
+      },
+      {
+        path: 'admin/especialidades',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.ESPECIALIDADES, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/especialidades-admin.component')
+            .then(m => m.EspecialidadesAdminComponent),
+      },
+      {
+        path: 'admin/turnos',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.TURNOS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/turnos-admin.component')
+            .then(m => m.TurnosAdminComponent),
+      },
+      {
+        path: 'admin/categorias',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.CATEGORIAS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/categorias-admin.component')
+            .then(m => m.CategoriasAdminComponent),
+      },
+      {
+        path: 'admin/marcas',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.MARCAS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/marcas-admin.component')
+            .then(m => m.MarcasAdminComponent),
+      },
+      {
+        path: 'admin/clinicas',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.CLINICAS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/clinicas-admin.component')
+            .then(m => m.ClinicasAdminComponent),
+      },
+      {
+        path: 'admin/servicios',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.SERVICIOS, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/catalogos/servicios-admin.component')
+            .then(m => m.ServiciosAdminComponent),
       },
 
       {

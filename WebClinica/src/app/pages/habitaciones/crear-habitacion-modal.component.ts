@@ -1,8 +1,12 @@
-import { Component, inject, Output, EventEmitter } from '@angular/core';
+import { Component, inject, Output, EventEmitter, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HabitacionesService } from '../../core/services/habitaciones.service';
 import { CrearHabitacionRequest } from '../../core/models/habitacion.model';
+import { Sucursal } from '../../core/models/catalogos.model';
+import { MODULOS_PERMISO } from '../../core/models/permiso.model';
+import { CatalogosService } from '../../core/services/catalogos.service';
+import { PermisosService } from '../../core/services/permisos.service';
 
 @Component({
   selector: 'app-crear-habitacion-modal',
@@ -21,8 +25,13 @@ import { CrearHabitacionRequest } from '../../core/models/habitacion.model';
 
             <form (ngSubmit)="crear()">
               <div class="mb-3">
-                <label class="form-label">ID Sucursal *</label>
-                <input type="number" class="form-control" [(ngModel)]="request.idSucursal" name="idSucursal" required min="1">
+                <label class="form-label">Sucursal *</label>
+                <select class="form-select" [(ngModel)]="request.idSucursal" name="idSucursal" required>
+                  <option [ngValue]="0">Seleccione una sucursal activa</option>
+                  @for (sucursal of sucursales; track sucursal.idSucursal) {
+                    <option [ngValue]="sucursal.idSucursal">{{ sucursal.nombre }}</option>
+                  }
+                </select>
               </div>
               <div class="mb-3">
                 <label class="form-label">Número de Habitación *</label>
@@ -46,21 +55,41 @@ import { CrearHabitacionRequest } from '../../core/models/habitacion.model';
     </div>
   `
 })
-export class CrearHabitacionModalComponent {
+export class CrearHabitacionModalComponent implements OnInit {
   private service = inject(HabitacionesService);
+  private catalogos = inject(CatalogosService);
+  private permisos = inject(PermisosService);
 
   @Output() cerrar = new EventEmitter<void>();
   @Output() creada = new EventEmitter<void>();
 
   cargando = false;
   error = '';
+  sucursales: Sucursal[] = [];
   request: CrearHabitacionRequest = {
-    idSucursal: 1,
+    idSucursal: 0,
     numeroHabitacion: '',
     tipoHabitacion: null
   };
 
+  ngOnInit() {
+    if (!this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)) {
+      this.error = 'No tiene permiso para consultar las sucursales disponibles.';
+      return;
+    }
+
+    this.catalogos.getSucursales().subscribe({
+      next: items => this.sucursales = items.filter(item => item.activa),
+      error: () => this.error = 'No fue posible cargar las sucursales.',
+    });
+  }
+
   crear() {
+    if (this.cargando) return;
+    if (!this.sucursales.some(item => item.idSucursal === this.request.idSucursal && item.activa)) {
+      this.error = 'Seleccione una sucursal activa.';
+      return;
+    }
     if (!this.request.numeroHabitacion.trim()) {
       this.error = 'El número de habitación es obligatorio.';
       return;

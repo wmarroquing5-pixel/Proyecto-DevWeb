@@ -112,12 +112,18 @@ export class ConsultaNuevaComponent implements OnInit {
     this.form.fechaConsulta = now.toISOString().slice(0, 16);
 
     this.catalogosService.getSucursales().subscribe({
-      next: (data) => this.sucursales = data,
+      next: (data) => this.sucursales = data.filter(item => item.activa),
       error: () => console.error('Error cargando sucursales')
     });
   }
 
   guardar() {
+    if (this.cargando || !this.sucursales.some(
+      item => item.idSucursal === this.form.idSucursal && item.activa,
+    )) {
+      this.error = 'Seleccione una sucursal activa.';
+      return;
+    }
     this.cargando = true;
     this.error = '';
     this.service.crearConsulta(this.form).subscribe({

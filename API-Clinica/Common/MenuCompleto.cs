@@ -58,6 +58,70 @@ public static class MenuCompleto
         },
         new MenuItemDto
         {
+            Label = "Facturación",
+            Route = "/facturas",
+            Icon = "fa-file-invoice-dollar"
+        },
+        new MenuItemDto
+        {
+            Label = "Catálogos organizativos",
+            Icon = "bi bi-building",
+            Children = new List<MenuItemDto>
+            {
+                new MenuItemDto
+                {
+                    Label = "Sucursales",
+                    Route = "/admin/sucursales",
+                    Icon = "bi bi-building"
+                },
+                new MenuItemDto
+                {
+                    Label = "Clínicas",
+                    Route = "/admin/clinicas",
+                    Icon = "bi bi-hospital"
+                },
+                new MenuItemDto
+                {
+                    Label = "Especialidades",
+                    Route = "/admin/especialidades",
+                    Icon = "bi bi-person-lines-fill"
+                },
+                new MenuItemDto
+                {
+                    Label = "Turnos",
+                    Route = "/admin/turnos",
+                    Icon = "bi bi-clock"
+                },
+                new MenuItemDto
+                {
+                    Label = "Servicios",
+                    Route = "/admin/servicios",
+                    Icon = "bi bi-clipboard2-pulse"
+                }
+            }
+        },
+        new MenuItemDto
+        {
+            Label = "Catálogos farmacéuticos",
+            Icon = "bi bi-box-seam",
+            Children = new List<MenuItemDto>
+            {
+                new MenuItemDto
+                {
+                    Label = "Categorías",
+                    Route = "/admin/categorias",
+                    Icon = "bi bi-tags"
+                },
+                new MenuItemDto
+                {
+                    Label = "Marcas",
+                    Route = "/admin/marcas",
+                    Icon = "bi bi-bookmark-star"
+                }
+            }
+        },
+        new MenuItemDto
+        {
             Label = "Administración",
             Icon = "fa-cogs",
             Roles = new[] { "Admin" },

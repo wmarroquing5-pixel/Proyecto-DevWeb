@@ -14,6 +14,8 @@ import {
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { PermisosService } from '../../core/services/permisos.service';
+import { Sucursal } from '../../core/models/catalogos.model';
+import { CatalogosService } from '../../core/services/catalogos.service';
 
 @Component({
   selector: 'app-lote-form',
@@ -32,7 +34,7 @@ import { PermisosService } from '../../core/services/permisos.service';
             <select class="form-select" [(ngModel)]="form.idMedicamento"
                     name="idMedicamento" required>
               <option [ngValue]="0">Seleccione...</option>
-              @for (m of medicamentos; track m.idMedicamento) {
+              @for (m of medicamentosDisponibles; track m.idMedicamento) {
                 <option [ngValue]="m.idMedicamento">{{ m.codigo }} - {{ m.nombre }}</option>
               }
             </select>
@@ -55,13 +57,18 @@ import { PermisosService } from '../../core/services/permisos.service';
           <div class="col-md-4">
             <label class="form-label">Cantidad Disponible *</label>
             <input type="number" class="form-control" [(ngModel)]="form.cantidadDisponible"
-                   name="cantidadDisponible" required min="0">
+                   name="cantidadDisponible" required min="0" (ngModelChange)="alCambiarCantidad()">
           </div>
           @if (requiereTrazabilidad) {
             <div class="col-md-4">
-              <label class="form-label">ID de Sucursal *</label>
-              <input type="number" class="form-control" [(ngModel)]="form.idSucursal"
-                     name="idSucursal" required min="1">
+              <label class="form-label">Sucursal *</label>
+              <select class="form-select" [(ngModel)]="form.idSucursal"
+                      name="idSucursal" required>
+                <option [ngValue]="null">Seleccione una sucursal activa</option>
+                @for (sucursal of sucursales; track sucursal.idSucursal) {
+                  <option [ngValue]="sucursal.idSucursal">{{ sucursal.nombre }}</option>
+                }
+              </select>
             </div>
             <div class="col-md-8">
               <label class="form-label">Justificación del ajuste *</label>
@@ -87,12 +94,17 @@ export class LoteFormComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private apiErrors = inject(ApiErrorService);
   private permisos = inject(PermisosService);
+  private catalogos = inject(CatalogosService);
 
   esEdicion = false;
   cargando = false;
   error = '';
   medicamentos: MedicamentoResponse[] = [];
+  sucursales: Sucursal[] = [];
   cantidadEsperada: number | null = null;
+  idMedicamentoOriginal: number | null = null;
+  private cargandoSucursales = false;
+  private sucursalesCargadas = false;
 
   form: GuardarLoteMedicamentoRequest = {
     idMedicamento: 0,
@@ -116,6 +128,12 @@ export class LoteFormComponent implements OnInit {
       : this.permisos.puedeCrear(MODULOS_PERMISO.LOTES_MEDICAMENTO);
   }
 
+  get medicamentosDisponibles(): MedicamentoResponse[] {
+    return this.medicamentos.filter(item =>
+      item.activo || (this.esEdicion && item.idMedicamento === this.idMedicamentoOriginal),
+    );
+  }
+
   ngOnInit() {
     this.cargarMedicamentos();
 
@@ -134,6 +152,7 @@ export class LoteFormComponent implements OnInit {
             idSucursal: null,
             observaciones: null
           };
+          this.idMedicamentoOriginal = lote.idMedicamento;
           this.cantidadEsperada = lote.cantidadDisponible;
           this.cargando = false;
         },
@@ -148,9 +167,34 @@ export class LoteFormComponent implements OnInit {
   cargarMedicamentos() {
     this.service.listarMedicamentos(1, 100).subscribe({
       next: (res: PagedResponse<MedicamentoResponse>) => {
-        this.medicamentos = res.items.filter(m => m.activo);
+        this.medicamentos = res.items;
       },
       error: () => console.error('Error cargando medicamentos')
+    });
+  }
+
+  alCambiarCantidad() {
+    if (this.requiereTrazabilidad) this.cargarSucursales();
+  }
+
+  cargarSucursales() {
+    if (this.sucursalesCargadas || this.cargandoSucursales) return;
+    if (!this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)) {
+      this.error = 'No tiene permiso para consultar las sucursales disponibles.';
+      return;
+    }
+
+    this.cargandoSucursales = true;
+    this.catalogos.getSucursales().subscribe({
+      next: items => {
+        this.sucursales = items.filter(item => item.activa);
+        this.sucursalesCargadas = true;
+        this.cargandoSucursales = false;
+      },
+      error: () => {
+        this.error = 'No fue posible cargar las sucursales.';
+        this.cargandoSucursales = false;
+      },
     });
   }
 
@@ -159,8 +203,17 @@ export class LoteFormComponent implements OnInit {
 
     if (this.cargando || !this.puedeGuardar) return;
 
+    if (!this.medicamentosDisponibles.some(
+      item => item.idMedicamento === this.form.idMedicamento,
+    )) {
+      this.error = 'Seleccione un medicamento disponible.';
+      return;
+    }
+
     if (this.requiereTrazabilidad &&
-        (!this.form.idSucursal || !this.form.observaciones?.trim())) {
+        (!this.form.idSucursal
+          || !this.sucursales.some(item => item.idSucursal === this.form.idSucursal && item.activa)
+          || !this.form.observaciones?.trim())) {
       this.error = 'La sucursal y la justificación son obligatorias cuando cambia la existencia.';
       return;
     }

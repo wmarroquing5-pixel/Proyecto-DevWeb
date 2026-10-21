@@ -16,6 +16,8 @@ import { ApiErrorService } from '../../core/services/api-error.service';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { PermisosService } from '../../core/services/permisos.service';
+import { Sucursal } from '../../core/models/catalogos.model';
+import { CatalogosService } from '../../core/services/catalogos.service';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
 
 const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
@@ -163,10 +165,14 @@ const entradaVacia = (): RegistrarEntradaInventarioRequest => ({
                     <div class="alert alert-danger" role="alert">{{ errorEntrada }}</div>
                   }
                   <div class="mb-3">
-                    <label class="form-label" for="entrada-sucursal">ID de sucursal *</label>
-                    <input id="entrada-sucursal" type="number" class="form-control"
-                           [(ngModel)]="entradaForm.idSucursal" name="idSucursal"
-                           required min="1" step="1">
+                    <label class="form-label" for="entrada-sucursal">Sucursal *</label>
+                    <select id="entrada-sucursal" class="form-select"
+                            [(ngModel)]="entradaForm.idSucursal" name="idSucursal" required>
+                      <option [ngValue]="0">Seleccione una sucursal activa</option>
+                      @for (sucursal of sucursales; track sucursal.idSucursal) {
+                        <option [ngValue]="sucursal.idSucursal">{{ sucursal.nombre }}</option>
+                      }
+                    </select>
                   </div>
                   <div class="mb-3">
                     <label class="form-label" for="entrada-cantidad">Cantidad *</label>
@@ -204,6 +210,7 @@ export class LotesMedicamentoComponent implements OnInit {
   private readonly service = inject(InventarioService);
   private readonly session = inject(AuthSessionService);
   private readonly apiErrors = inject(ApiErrorService);
+  private readonly catalogos = inject(CatalogosService);
   private readonly destroyRef = inject(DestroyRef);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
@@ -222,6 +229,7 @@ export class LotesMedicamentoComponent implements OnInit {
   entradaForm = entradaVacia();
   cargandoEntrada = false;
   errorEntrada = '';
+  sucursales: Sucursal[] = [];
 
   private solicitudListado?: Subscription;
   private solicitudEntrada?: Subscription;
@@ -303,6 +311,7 @@ export class LotesMedicamentoComponent implements OnInit {
     this.loteSeleccionado = lote;
     this.entradaForm = entradaVacia();
     this.errorEntrada = '';
+    this.cargarSucursalesEntrada();
   }
 
   cerrarEntrada(): void {
@@ -321,9 +330,10 @@ export class LotesMedicamentoComponent implements OnInit {
     if (!formularioValido
       || !Number.isInteger(Number(this.entradaForm.idSucursal))
       || Number(this.entradaForm.idSucursal) <= 0
+      || !this.sucursales.some(item => item.idSucursal === Number(this.entradaForm.idSucursal) && item.activa)
       || !Number.isInteger(Number(this.entradaForm.cantidad))
       || Number(this.entradaForm.cantidad) <= 0) {
-      this.errorEntrada = 'La sucursal y la cantidad deben ser enteros mayores que cero.';
+      this.errorEntrada = 'Seleccione una sucursal activa y una cantidad entera mayor que cero.';
       return;
     }
 
@@ -414,6 +424,24 @@ export class LotesMedicamentoComponent implements OnInit {
   private formatearFecha(value: string): string {
     const fecha = new Date(value);
     return Number.isNaN(fecha.getTime()) ? value : fecha.toLocaleString('es-GT');
+  }
+
+  private cargarSucursalesEntrada(): void {
+    if (!this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)) {
+      this.errorEntrada = 'No tiene permiso para consultar las sucursales disponibles.';
+      return;
+    }
+
+    this.catalogos.getSucursales().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: items => this.sucursales = items.filter(item => item.activa),
+      error: (error: HttpErrorResponse) => {
+        this.sucursales = [];
+        this.errorEntrada = this.apiErrors.messageFor(
+          error,
+          'No fue posible cargar las sucursales.',
+        );
+      },
+    });
   }
 
   private cancelarEntradaProtegida(): void {

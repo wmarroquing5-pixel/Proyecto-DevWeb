@@ -156,4 +156,59 @@ describe('InventarioService', () => {
     http.expectNone(`${environment.apiUrl}/lotes-medicamento/7/entradas`);
     expect(requests).toBe(1);
   });
+
+  it('administra categorías con baja lógica y reactivación mediante PUT', () => {
+    const category = { idCategoria: 8, nombre: 'Analgésicos', activa: true };
+    service.listarCategorias(2, 10).subscribe(response => expect(response.items).toEqual([category]));
+    http.expectOne(`${environment.apiUrl}/categorias?page=2&pageSize=10`).flush({
+      items: [category], page: 2, pageSize: 10, totalCount: 11, totalPages: 2,
+    });
+
+    service.crearCategoria({ nombre: 'Analgésicos' }).subscribe(value => expect(value).toEqual(category));
+    const post = http.expectOne(`${environment.apiUrl}/categorias`);
+    expect(post.request.method).toBe('POST');
+    post.flush(category);
+
+    service.actualizarCategoria(8, { nombre: 'Analgésicos', activa: true }).subscribe();
+    const put = http.expectOne(`${environment.apiUrl}/categorias/8`);
+    expect(put.request.body.activa).toBeTrue();
+    put.flush(category);
+
+    service.desactivarCategoria(8).subscribe();
+    const remove = http.expectOne(`${environment.apiUrl}/categorias/8`);
+    expect(remove.request.method).toBe('DELETE');
+    remove.flush(null);
+  });
+
+  it('administra marcas sin duplicar el cliente HTTP existente', () => {
+    const brand = { idMarca: 4, nombre: 'Marca Uno', activa: true };
+    service.listarMarcas().subscribe(response => expect(response.items).toEqual([brand]));
+    http.expectOne(`${environment.apiUrl}/marcas?page=1&pageSize=100`).flush({
+      items: [brand], page: 1, pageSize: 100, totalCount: 1, totalPages: 1,
+    });
+    service.crearMarca({ nombre: 'Marca Uno' }).subscribe();
+    http.expectOne(`${environment.apiUrl}/marcas`).flush(brand);
+    service.actualizarMarca(4, { nombre: 'Marca Uno', activa: false }).subscribe();
+    http.expectOne(`${environment.apiUrl}/marcas/4`).flush({ ...brand, activa: false });
+    service.desactivarMarca(4).subscribe();
+    http.expectOne(`${environment.apiUrl}/marcas/4`).flush(null);
+  });
+
+  it('rechaza catálogos farmacéuticos malformados y conserva conflictos 409', () => {
+    let malformed: unknown;
+    service.listarCategorias().subscribe({ error: error => malformed = error });
+    http.expectOne(`${environment.apiUrl}/categorias?page=1&pageSize=100`).flush({
+      items: [{ idCategoria: 8, nombre: 'Analgésicos', activa: 'sí' }],
+      page: 1, pageSize: 100, totalCount: 1, totalPages: 1,
+    });
+    expect(malformed).toEqual(jasmine.any(Error));
+
+    let conflict: HttpErrorResponse | undefined;
+    service.desactivarMarca(4).subscribe({ error: error => conflict = error });
+    http.expectOne(`${environment.apiUrl}/marcas/4`).flush(
+      { title: 'Conflicto', detail: 'La marca tiene medicamentos activos.' },
+      { status: 409, statusText: 'Conflict' },
+    );
+    expect(conflict?.status).toBe(409);
+  });
 });

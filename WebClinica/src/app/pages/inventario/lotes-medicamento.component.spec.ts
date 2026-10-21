@@ -12,6 +12,7 @@ import {
 } from '../../core/models/inventario.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { AuthSessionService } from '../../core/services/auth-session.service';
+import { CatalogosService } from '../../core/services/catalogos.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { LotesMedicamentoComponent } from './lotes-medicamento.component';
@@ -86,9 +87,15 @@ describe('LotesMedicamentoComponent', () => {
           currentUser: () => ({ idUsuario: userId() }),
           get token(): string { return token; },
         } },
+        { provide: CatalogosService, useValue: {
+          getSucursales: () => of([
+            { idSucursal: 2, nombre: 'Central', direccion: null, activa: true },
+            { idSucursal: 8, nombre: 'Cerrada', direccion: null, activa: false },
+          ]),
+        } },
         { provide: PermisosService, useValue: {
-          puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.LOTES_MEDICAMENTO
-            && consultar(),
+          puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.SUCURSALES
+            || (modulo === MODULOS_PERMISO.LOTES_MEDICAMENTO && consultar()),
           puedeCrear: () => false,
           puedeModificar: (modulo: string) => modulo === MODULOS_PERMISO.LOTES_MEDICAMENTO
             && modificar(),
@@ -184,7 +191,19 @@ describe('LotesMedicamentoComponent', () => {
       component.registrarEntrada(true);
     }
     expect(registrarEntrada).not.toHaveBeenCalled();
-    expect(component.errorEntrada).toContain('enteros mayores que cero');
+    expect(component.errorEntrada).toContain('sucursal activa');
+  });
+
+  it('ofrece sucursales descriptivas activas para registrar entradas', () => {
+    const component = render();
+    component.abrirEntrada(lote);
+    fixture.detectChanges();
+    expect(component.sucursales.map(item => item.idSucursal)).toEqual([2]);
+    const options = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('#entrada-sucursal option'),
+    ).map(option => option.textContent?.trim());
+    expect(options).toContain('Central');
+    expect(options).not.toContain('Cerrada');
   });
 
   it('respeta la cancelación de la confirmación', () => {

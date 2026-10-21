@@ -37,7 +37,7 @@ import {
             <select class="form-select" [(ngModel)]="form.idCategoria"
                     name="idCategoria" required>
               <option [ngValue]="0">Seleccione...</option>
-              @for (c of categorias; track c.idCategoria) {
+              @for (c of categoriasDisponibles; track c.idCategoria) {
                 <option [ngValue]="c.idCategoria">{{ c.nombre }}</option>
               }
             </select>
@@ -47,7 +47,7 @@ import {
             <select class="form-select" [(ngModel)]="form.idMarca"
                     name="idMarca" required>
               <option [ngValue]="0">Seleccione...</option>
-              @for (m of marcas; track m.idMarca) {
+              @for (m of marcasDisponibles; track m.idMarca) {
                 <option [ngValue]="m.idMarca">{{ m.nombre }}</option>
               }
             </select>
@@ -98,6 +98,18 @@ export class MedicamentoFormComponent implements OnInit {
   error = '';
   categorias: CategoriaResponse[] = [];
   marcas: MarcaResponse[] = [];
+  idCategoriaOriginal: number | null = null;
+  idMarcaOriginal: number | null = null;
+
+  get categoriasDisponibles(): CategoriaResponse[] {
+    return this.categorias.filter(item => item.activa
+      || (this.esEdicion && item.idCategoria === this.idCategoriaOriginal));
+  }
+
+  get marcasDisponibles(): MarcaResponse[] {
+    return this.marcas.filter(item => item.activa
+      || (this.esEdicion && item.idMarca === this.idMarcaOriginal));
+  }
 
   form: GuardarMedicamentoRequest = {
     idCategoria: 0,
@@ -119,6 +131,8 @@ export class MedicamentoFormComponent implements OnInit {
       this.cargando = true;
       this.service.obtenerMedicamento(+id).subscribe({
         next: (med: MedicamentoResponse) => {
+          this.idCategoriaOriginal = med.idCategoria;
+          this.idMarcaOriginal = med.idMarca;
           this.form = {
             idCategoria: med.idCategoria,
             idMarca: med.idMarca,
@@ -151,6 +165,14 @@ export class MedicamentoFormComponent implements OnInit {
   }
 
   guardar() {
+    const categoriaValida = this.categoriasDisponibles.some(
+      item => item.idCategoria === this.form.idCategoria,
+    );
+    const marcaValida = this.marcasDisponibles.some(item => item.idMarca === this.form.idMarca);
+    if (this.cargando || !categoriaValida || !marcaValida) {
+      this.error = 'Seleccione una categoría y una marca disponibles.';
+      return;
+    }
     this.cargando = true;
     this.error = '';
 

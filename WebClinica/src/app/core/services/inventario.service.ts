@@ -112,15 +112,17 @@ export class InventarioService {
       .set('pageSize', pageSize.toString());
     return this.http.get<PagedResponse<CategoriaResponse>>(
       `${this.apiUrl}/categorias`, { params }
-    );
+    ).pipe(map(response => this.validarPagina(response, this.esCategoria)));
   }
 
   crearCategoria(request: GuardarCatalogoFarmaciaRequest): Observable<CategoriaResponse> {
-    return this.http.post<CategoriaResponse>(`${this.apiUrl}/categorias`, request);
+    return this.http.post<unknown>(`${this.apiUrl}/categorias`, request)
+      .pipe(map(response => this.validarItem(response, this.esCategoria, 'categoría')));
   }
 
   actualizarCategoria(id: number, request: GuardarCatalogoFarmaciaRequest): Observable<CategoriaResponse> {
-    return this.http.put<CategoriaResponse>(`${this.apiUrl}/categorias/${id}`, request);
+    return this.http.put<unknown>(`${this.apiUrl}/categorias/${id}`, request)
+      .pipe(map(response => this.validarItem(response, this.esCategoria, 'categoría')));
   }
 
   desactivarCategoria(id: number): Observable<void> {
@@ -135,15 +137,17 @@ export class InventarioService {
       .set('pageSize', pageSize.toString());
     return this.http.get<PagedResponse<MarcaResponse>>(
       `${this.apiUrl}/marcas`, { params }
-    );
+    ).pipe(map(response => this.validarPagina(response, this.esMarca)));
   }
 
   crearMarca(request: GuardarCatalogoFarmaciaRequest): Observable<MarcaResponse> {
-    return this.http.post<MarcaResponse>(`${this.apiUrl}/marcas`, request);
+    return this.http.post<unknown>(`${this.apiUrl}/marcas`, request)
+      .pipe(map(response => this.validarItem(response, this.esMarca, 'marca')));
   }
 
   actualizarMarca(id: number, request: GuardarCatalogoFarmaciaRequest): Observable<MarcaResponse> {
-    return this.http.put<MarcaResponse>(`${this.apiUrl}/marcas/${id}`, request);
+    return this.http.put<unknown>(`${this.apiUrl}/marcas/${id}`, request)
+      .pipe(map(response => this.validarItem(response, this.esMarca, 'marca')));
   }
 
   desactivarMarca(id: number): Observable<void> {
@@ -195,6 +199,18 @@ export class InventarioService {
     && typeof value['fechaVencimiento'] === 'string'
     && this.esEnteroNoNegativo(value['cantidadDisponible']);
 
+  private readonly esCategoria = (value: unknown): value is CategoriaResponse =>
+    this.esRegistro(value)
+    && this.esEnteroPositivo(value['idCategoria'])
+    && typeof value['nombre'] === 'string'
+    && typeof value['activa'] === 'boolean';
+
+  private readonly esMarca = (value: unknown): value is MarcaResponse =>
+    this.esRegistro(value)
+    && this.esEnteroPositivo(value['idMarca'])
+    && typeof value['nombre'] === 'string'
+    && typeof value['activa'] === 'boolean';
+
   private readonly esEntrada = (value: unknown): value is EntradaInventarioResponse =>
     this.esRegistro(value)
     && this.esEnteroPositivo(value['idMovimiento'])
@@ -205,6 +221,15 @@ export class InventarioService {
     && this.esEnteroNoNegativo(value['cantidadDisponible'])
     && typeof value['fechaMovimiento'] === 'string'
     && (value['observaciones'] === null || typeof value['observaciones'] === 'string');
+
+  private validarItem<T>(
+    value: unknown,
+    validator: (candidate: unknown) => candidate is T,
+    resource: string,
+  ): T {
+    if (!validator(value)) throw new Error(`La API devolvió una ${resource} inválida.`);
+    return value;
+  }
 
   private esRegistro(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === 'object' && !Array.isArray(value);

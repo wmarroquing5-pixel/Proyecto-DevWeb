@@ -37,6 +37,14 @@ public sealed class MenuTests
         { "LotesMedicamento", "/inventario/lotes" },
         { "Habitaciones", "/habitaciones" },
         { "Ventas", "/ventas" },
+        { "Facturas", "/facturas" },
+        { "Sucursales", "/admin/sucursales" },
+        { "Clinicas", "/admin/clinicas" },
+        { "Especialidades", "/admin/especialidades" },
+        { "Turnos", "/admin/turnos" },
+        { "Servicios", "/admin/servicios" },
+        { "Categorias", "/admin/categorias" },
+        { "Marcas", "/admin/marcas" },
         { "Usuarios", "/admin/usuarios" },
         { "Roles", "/admin/roles" },
         { "Empleados", "/admin/empleados" },
@@ -52,6 +60,10 @@ public sealed class MenuTests
         {
             "/dashboard", "/pacientes", "/consultas", "/medicamentos",
             "/inventario/lotes", "/habitaciones", "/ventas",
+            "/facturas",
+            "/admin/sucursales", "/admin/clinicas", "/admin/especialidades",
+            "/admin/turnos", "/admin/servicios", "/admin/categorias",
+            "/admin/marcas",
             "/admin/usuarios", "/admin/roles", "/admin/empleados",
             "/admin/permisos"
         }, rutas);
@@ -107,6 +119,85 @@ public sealed class MenuTests
         };
 
         Assert.Empty(await new MenuService(acceso).ObtenerMenuAsync(Principal, default));
+    }
+
+    [Theory]
+    [InlineData("Sucursales")]
+    [InlineData("Clinicas")]
+    [InlineData("Especialidades")]
+    [InlineData("Turnos")]
+    [InlineData("Servicios")]
+    [InlineData("Categorias")]
+    [InlineData("Marcas")]
+    public async Task CatalogoSinConsultarNoExponeRutaNiGrupo(string modulo)
+    {
+        var acceso = new AccesoActualDoble
+        {
+            Permisos = [new PermisoActualResponse(1, modulo, false, true, true, true)]
+        };
+
+        Assert.Empty(await new MenuService(acceso).ObtenerMenuAsync(Principal, default));
+    }
+
+    [Fact]
+    public async Task CatalogosSeAgrupanYFiltranDeFormaIndependiente()
+    {
+        var acceso = new AccesoActualDoble
+        {
+            Permisos = [
+                Permiso(1, "Sucursales", consultar: true),
+                Permiso(2, "Marcas", consultar: true)
+            ]
+        };
+
+        var menu = await new MenuService(acceso).ObtenerMenuAsync(Principal, default);
+        Assert.Equal(new[]
+        {
+            "Dashboard", "Catálogos organizativos", "Catálogos farmacéuticos"
+        }, menu.Select(item => item.Label));
+
+        Assert.Equal(new[] { "/admin/sucursales" },
+            menu.Single(item => item.Label == "Catálogos organizativos")
+                .Children!.Select(item => item.Route));
+        Assert.Equal(new[] { "/admin/marcas" },
+            menu.Single(item => item.Label == "Catálogos farmacéuticos")
+                .Children!.Select(item => item.Route));
+    }
+
+    [Theory]
+    [InlineData("Administrador")]
+    [InlineData("PERSONAL_ADMON")]
+    [InlineData("PERSONAL_FARMACIA")]
+    [InlineData("BODEGERO")]
+    public async Task FacturasConsultarExponeLaRutaSinDependerDelNombreDelRol(string rol)
+    {
+        var acceso = new AccesoActualDoble
+        {
+            Permisos = [Permiso(1, "Facturas", consultar: true)]
+        };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(ClaimTypes.Role, rol)
+        ], "Test"));
+
+        var rutas = Aplanar(await new MenuService(acceso).ObtenerMenuAsync(principal, default))
+            .Select(item => item.Route).ToArray();
+
+        Assert.Equal(new[] { "/dashboard", "/facturas" }, rutas);
+        Assert.DoesNotContain("/ventas", rutas);
+    }
+
+    [Fact]
+    public async Task MedicoSinFacturasConsultarYCrearAisladoNoExponenLaRuta()
+    {
+        var acceso = new AccesoActualDoble
+        {
+            Permisos = [new PermisoActualResponse(1, "Facturas", false, true, false, false)]
+        };
+        var medico = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(ClaimTypes.Role, "MEDICO")
+        ], "Test"));
+
+        Assert.Empty(await new MenuService(acceso).ObtenerMenuAsync(medico, default));
     }
 
     [Theory]

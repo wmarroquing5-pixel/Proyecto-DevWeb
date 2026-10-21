@@ -17,8 +17,8 @@ describe('EmpleadoFormComponent: catálogos descriptivos', () => {
     { idSucursal: 9, nombre: 'Anterior', direccion: null, activa: false },
   ];
   const especialidades = [
-    { idEspecialidad: 2, nombre: 'Cardiología', descripcion: null, activa: true },
-    { idEspecialidad: 8, nombre: 'Retirada', descripcion: null, activa: false },
+    { idEspecialidad: 2, nombre: 'Cardiología', activa: true },
+    { idEspecialidad: 8, nombre: 'Retirada', activa: false },
   ];
   const turnos = [
     { idTurno: 3, nombre: 'Diurno', codigo: 'D', horaEntrada: '08:00', horaSalida: '16:00', jornada: 'Diurna', activo: true },

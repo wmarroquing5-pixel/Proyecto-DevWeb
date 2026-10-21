@@ -2,6 +2,8 @@ import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { Sucursal } from '../../core/models/catalogos.model';
+import { CatalogosService } from '../../core/services/catalogos.service';
 import { VentasService } from '../../core/services/venta.service';
 import {
   CrearVentaRequest,
@@ -41,8 +43,13 @@ interface ItemCarrito {
           <div class="ui-card ui-form">
             <h5><i class="fa fa-search"></i> Buscar Medicamento</h5>
             <div class="mb-3">
-              <label for="venta-sucursal" class="form-label">ID Sucursal *</label>
-              <input id="venta-sucursal" type="number" class="form-control" [(ngModel)]="idSucursal" min="1" required>
+              <label for="venta-sucursal" class="form-label">Sucursal *</label>
+              <select id="venta-sucursal" class="form-select" [(ngModel)]="idSucursal" required>
+                <option [ngValue]="null">Seleccione una sucursal activa</option>
+                @for (sucursal of sucursales; track sucursal.idSucursal) {
+                  <option [ngValue]="sucursal.idSucursal">{{ sucursal.nombre }}</option>
+                }
+              </select>
             </div>
             <div class="mb-3">
               <label for="venta-busqueda" class="form-label">Buscar por nombre</label>
@@ -144,7 +151,7 @@ interface ItemCarrito {
 
               <div class="d-flex gap-2 mt-3">
                 <button class="btn btn-success flex-fill" (click)="confirmarVenta()"
-                        [disabled]="cargando || carrito.length === 0 || idSucursal <= 0">
+                        [disabled]="cargando || carrito.length === 0 || !idSucursal">
                   {{ cargando ? 'Procesando...' : 'Confirmar Venta' }}
                 </button>
                 <button class="btn btn-outline-danger" (click)="limpiarCarrito()"
@@ -161,9 +168,11 @@ interface ItemCarrito {
 })
 export class VentasNuevaComponent implements OnInit {
   private service = inject(VentasService);
+  private catalogosService = inject(CatalogosService);
   private router = inject(Router);
 
-  idSucursal = 1;
+  idSucursal: number | null = null;
+  sucursales: Sucursal[] = [];
   busqueda = '';
   medicamentos: CatalogoMedicamentoResponse[] = [];
   carrito: ItemCarrito[] = [];
@@ -172,6 +181,10 @@ export class VentasNuevaComponent implements OnInit {
   error = '';
 
   ngOnInit() {
+    this.catalogosService.getSucursales().subscribe({
+      next: items => this.sucursales = items.filter(item => item.activa),
+      error: () => this.error = 'No fue posible cargar las sucursales.',
+    });
     // Carga inicial de medicamentos
     this.buscarMedicamentos();
   }
@@ -242,7 +255,11 @@ export class VentasNuevaComponent implements OnInit {
   }
 
   confirmarVenta() {
-    if (this.carrito.length === 0 || this.idSucursal <= 0) return;
+    if (this.carrito.length === 0 || !this.idSucursal
+      || !this.sucursales.some(item => item.idSucursal === this.idSucursal && item.activa)) {
+      this.error = 'Seleccione una sucursal activa.';
+      return;
+    }
 
     this.cargando = true;
     this.error = '';

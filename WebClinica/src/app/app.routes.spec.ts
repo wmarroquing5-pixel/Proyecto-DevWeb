@@ -83,6 +83,42 @@ describe('rutas de navegación', () => {
     }]);
   });
 
+  it('protege las rutas administrativas de catálogos con Consultar', () => {
+    const casos = [
+      ['admin/sucursales', MODULOS_PERMISO.SUCURSALES],
+      ['admin/especialidades', MODULOS_PERMISO.ESPECIALIDADES],
+      ['admin/turnos', MODULOS_PERMISO.TURNOS],
+      ['admin/categorias', MODULOS_PERMISO.CATEGORIAS],
+      ['admin/marcas', MODULOS_PERMISO.MARCAS],
+      ['admin/clinicas', MODULOS_PERMISO.CLINICAS],
+      ['admin/servicios', MODULOS_PERMISO.SERVICIOS],
+    ] as const;
+
+    for (const [path, modulo] of casos) {
+      const catalogo = route(path);
+      expect(catalogo.canActivate).toContain(permisoGuard);
+      expect(catalogo.loadComponent).toBeDefined();
+      expect(catalogo.data?.['permisos']).toEqual([{
+        modulo,
+        operacion: OPERACIONES_PERMISO.CONSULTAR,
+      }]);
+    }
+  });
+
+  it('protege el listado y detalle de facturas con Consultar y la creación con Crear', () => {
+    for (const path of ['facturas', 'facturas/:id']) {
+      expect(route(path).data?.['permisos']).toEqual([{
+        modulo: MODULOS_PERMISO.FACTURAS,
+        operacion: OPERACIONES_PERMISO.CONSULTAR,
+      }]);
+    }
+    expect(route('facturas/nueva').data?.['permisos']).toEqual([{
+      modulo: MODULOS_PERMISO.FACTURAS,
+      operacion: OPERACIONES_PERMISO.CREAR,
+    }]);
+    expect(route('facturas/nueva').loadComponent).toBeDefined();
+  });
+
   it('protege formularios de usuario con los permisos reales de sus catálogos', () => {
     for (const path of ['admin/usuarios/nuevo', 'admin/usuarios/editar/:id']) {
       const permisos = route(path).data?.['permisos'] as PermisoRequerido[];
