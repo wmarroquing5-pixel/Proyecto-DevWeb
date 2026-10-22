@@ -3,7 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { forkJoin, Subscription } from 'rxjs';
 import { Servicio, Sucursal } from '../../core/models/catalogos.model';
 import { CrearFacturaRequest } from '../../core/models/factura.model';
 import { CatalogoMedicamentoResponse } from '../../core/models/inventario.model';
@@ -14,6 +14,10 @@ import { FacturaService } from '../../core/services/factura.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { PacientesService } from '../../core/services/paciente.service';
 import { UiStateComponent } from '../../shared/components/ui-state.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
+import { PermisosService } from '../../core/services/permisos.service';
+import { cargarCatalogoInventario, ContextoInventario, idInventarioValido } from '../inventario/inventario-ui';
+import { cantidadFinancieraValida, facturaConfirmada, mensajeResultadoIncierto, precioReferenciaValido, respuestaFinancieraIncierta, verificarMedicamentosFinancieros } from './finanzas-ui';
 
 interface LineaServicio {
   idServicio: number;
@@ -44,6 +48,13 @@ interface LineaMedicamento {
         </div>
         <a routerLink="/facturas" class="btn btn-secondary"><i class="fa fa-arrow-left"></i> Volver</a>
       </header>
+      @if (resultadoIncierto) {
+        <div class="alert alert-warning" role="alert">{{ mensajeIncierto }}
+          @if (permisos.puedeConsultar('Facturas')) { <a routerLink="/facturas">Consultar facturas registradas</a> }
+          @else { Solicite la comprobación a un usuario con permiso Facturas/Consultar. }
+        </div>
+      }
+      @if (confirmada) { <p class="alert alert-success" role="status">Factura confirmada por el servidor. Consulte su detalle.</p> }
 
       @if (cargandoCatalogos) {
         <app-ui-state kind="loading" title="Cargando catálogos"></app-ui-state>
@@ -53,6 +64,7 @@ interface LineaMedicamento {
       } @else {
         @if (error) { <div class="alert alert-danger" role="alert">{{ error }}</div> }
         <form class="ui-form" (ngSubmit)="guardar()" #formulario="ngForm">
+          <fieldset [disabled]="bloqueado || !permisos.puedeCrear('Facturas')">
           <section class="ui-card mb-4">
             <h5>Datos generales</h5>
             <div class="row g-3">
@@ -80,7 +92,7 @@ interface LineaMedicamento {
                 <select id="factura-paciente" name="idPaciente" class="form-select" required
                         [(ngModel)]="idPaciente" (ngModelChange)="seleccionarPaciente()">
                   <option [ngValue]="null">Seleccione un paciente activo</option>
-                  @for (paciente of pacientes; track paciente.idPaciente) {
+                  @for (paciente of pacientesDisponibles; track paciente.idPaciente) {
                     <option [ngValue]="paciente.idPaciente">{{ paciente.nombres }} {{ paciente.apellidos }}</option>
                   }
                 </select>
@@ -181,6 +193,7 @@ interface LineaMedicamento {
               </div>
             </div>
           </section>
+          </fieldset>
         </form>
       }
     </div>
@@ -193,6 +206,26 @@ export class FacturaNuevaComponent implements OnInit {
   private readonly inventarioService = inject(InventarioService);
   private readonly apiErrors = inject(ApiErrorService);
   private readonly router = inject(Router);
+  private readonly session = inject(AuthSessionService);
+  readonly permisos = inject(PermisosService);
+  private readonly contexto = new ContextoInventario(['Facturas', 'Sucursales', 'Pacientes', 'Servicios', 'Medicamentos']);
+  private contextoFormulario = this.contexto.clave();
+  private catalogosSolicitud?: Subscription;
+  private pacientesSolicitud?: Subscription;
+  private pacienteSolicitud?: Subscription;
+  private revisionCatalogos = 0;
+  private revisionPacientes = 0;
+  private revisionPaciente = 0;
+  pacienteElegido: PacienteListadoResponse | null = null;
+  cargandoPaciente = false;
+  resultadoIncierto = false;
+  confirmada = false;
+  readonly mensajeIncierto = mensajeResultadoIncierto;
+  get bloqueado(): boolean { return this.guardando || this.resultadoIncierto || this.confirmada; }
+  get pacientesDisponibles(): PacienteListadoResponse[] {
+    return this.pacienteElegido && !this.pacientes.some(p => p.idPaciente === this.pacienteElegido!.idPaciente)
+      ? [this.pacienteElegido, ...this.pacientes] : this.pacientes;
+  }
 
   sucursales: Sucursal[] = [];
   pacientes: PacienteListadoResponse[] = [];
@@ -213,59 +246,115 @@ export class FacturaNuevaComponent implements OnInit {
   errorCatalogos = '';
   error = '';
 
-  ngOnInit(): void { this.cargarCatalogos(); }
+  constructor() {
+    this.contexto.observar(() => {
+      if (this.guardando) this.resultadoIncierto = true;
+      this.guardando = false; this.cargandoPaciente = this.cargandoPacientes = false;
+      this.pacientes = []; this.pacienteElegido = null; this.idPaciente = this.idSucursal = null;
+      this.nit = this.nombreFacturacion = ''; this.lineasServicio = []; this.lineasMedicamento = [];
+      this.servicioSeleccionado = this.medicamentoSeleccionado = null;
+      this.ngOnInit();
+    });
+  }
+
+  ngOnInit(): void { this.contextoFormulario = this.contexto.clave(); this.cargarCatalogos(); }
 
   cargarCatalogos(): void {
+    this.catalogosSolicitud?.unsubscribe();
+    this.pacientesSolicitud?.unsubscribe(); this.revisionPacientes++;
+    const revision = ++this.revisionCatalogos, clave = this.contexto.clave();
+    this.cargandoPacientes = false;
+    if (!this.contexto.vigente(this.contextoFormulario) || !['Sucursales', 'Servicios', 'Pacientes', 'Medicamentos'].every(m => this.permisos.puedeConsultar(m))) {
+      this.errorCatalogos = 'Se requieren permisos de consulta vigentes para sucursales, pacientes, servicios y medicamentos.';
+      this.cargandoCatalogos = false; this.sucursales = []; this.servicios = []; this.medicamentos = []; this.pacientes = []; return;
+    }
     this.cargandoCatalogos = true;
     this.errorCatalogos = '';
-    forkJoin({
+    this.catalogosSolicitud = forkJoin({
       sucursales: this.catalogosService.getSucursales(),
       servicios: this.catalogosService.getServicios(),
-      pacientes: this.pacientesService.listar(undefined, true, 1, 50),
-      medicamentos: this.inventarioService.listarCatalogo({ page: 1, pageSize: 50 }),
+      pacientes: cargarCatalogoInventario((p, t) => this.pacientesService.listar(undefined, true, p, t), p => p.idPaciente),
+      medicamentos: cargarCatalogoInventario((p, t) => this.inventarioService.listarCatalogo({ page: p, pageSize: t }), m => m.idMedicamento),
     }).subscribe({
       next: result => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionCatalogos) return;
+        if (new Set(result.servicios.map(s => s.idServicio)).size !== result.servicios.length ||
+          new Set(result.sucursales.map(s => s.idSucursal)).size !== result.sucursales.length) {
+          this.errorCatalogos = 'El catálogo contiene identificadores duplicados. Recargue los catálogos.';
+          this.cargandoCatalogos = false; return;
+        }
         this.sucursales = result.sucursales.filter(item => item.activa);
         this.servicios = result.servicios.filter(item => item.activo && item.precioBase > 0);
-        this.pacientes = result.pacientes.items.filter(item => item.activo);
-        this.medicamentos = result.medicamentos.items.filter(item => item.existenciaTotal > 0);
+        this.pacientes = result.pacientes.filter(item => item.activo);
+        this.medicamentos = result.medicamentos.filter(item => item.existenciaTotal > 0);
+        if (this.pacienteElegido && !this.pacientes.some(p => p.idPaciente === this.idPaciente)) {
+          this.pacienteElegido = null; this.idPaciente = null;
+        }
         this.cargandoCatalogos = false;
       },
       error: (error: HttpErrorResponse) => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionCatalogos) return;
         this.errorCatalogos = this.apiErrors.messageFor(error, 'No fue posible cargar los datos requeridos.');
         this.cargandoCatalogos = false;
       },
     });
+    this.contexto.agregar(this.catalogosSolicitud);
   }
 
   buscarPacientes(): void {
+    if (this.bloqueado) return;
+    this.pacientesSolicitud?.unsubscribe();
+    const revision = ++this.revisionPacientes, clave = this.contexto.clave();
+    if (!this.contexto.vigente(this.contextoFormulario) || !this.permisos.puedeConsultar('Pacientes')) return;
+    const nombre = this.busquedaPaciente.trim() || undefined;
     this.cargandoPacientes = true;
-    this.pacientesService.listar(this.busquedaPaciente.trim() || undefined, true, 1, 50).subscribe({
-      next: response => { this.pacientes = response.items.filter(item => item.activo); this.cargandoPacientes = false; },
+    this.pacientesSolicitud = cargarCatalogoInventario((p, t) => this.pacientesService.listar(nombre, true, p, t), p => p.idPaciente).subscribe({
+      next: items => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionPacientes) return;
+        this.pacientes = items.filter(item => item.activo); this.cargandoPacientes = false;
+      },
       error: (error: HttpErrorResponse) => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionPacientes) return;
         this.error = this.apiErrors.messageFor(error, 'No fue posible buscar pacientes.');
         this.cargandoPacientes = false;
       },
     });
+    this.contexto.agregar(this.pacientesSolicitud);
   }
 
   seleccionarPaciente(): void {
-    if (!this.idPaciente) return;
-    this.pacientesService.obtener(this.idPaciente).subscribe({
+    if (this.bloqueado) return;
+    this.pacienteSolicitud?.unsubscribe();
+    const revision = ++this.revisionPaciente, clave = this.contexto.clave(), id = this.idPaciente;
+    this.cargandoPaciente = false;
+    this.nit = this.nombreFacturacion = '';
+    this.pacienteElegido = this.pacientesDisponibles.find(p => p.idPaciente === id && p.activo) ?? null;
+    if (!id || !idInventarioValido(id) || !this.pacienteElegido || !this.contexto.vigente(this.contextoFormulario) || !this.permisos.puedeConsultar('Pacientes')) return;
+    this.cargandoPaciente = true;
+    this.pacienteSolicitud = this.pacientesService.obtener(id).subscribe({
       next: paciente => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionPaciente || this.idPaciente !== id) return;
+        this.cargandoPaciente = false;
+        if (paciente.idPaciente !== id || !paciente.activo) { this.idPaciente = null; this.pacienteElegido = null; this.error = 'El paciente seleccionado ya no está disponible.'; return; }
         this.nit = paciente.nit ?? '';
         this.nombreFacturacion = paciente.nombreFacturacion
           ?? `${paciente.nombres} ${paciente.apellidos}`.trim();
       },
-      error: () => undefined,
+      error: err => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionPaciente) return;
+        this.cargandoPaciente = false; this.pacienteElegido = null; this.idPaciente = null;
+        this.error = this.apiErrors.messageFor(err, 'No se pudo verificar el paciente seleccionado.');
+      },
     });
+    this.contexto.agregar(this.pacienteSolicitud);
   }
 
   agregarServicio(): void {
+    if (this.bloqueado) return;
     const servicio = this.servicios.find(item => item.idServicio === this.servicioSeleccionado);
-    if (!servicio) return;
+    if (!servicio || !servicio.activo || !precioReferenciaValido(servicio.precioBase)) return;
     const existente = this.lineasServicio.find(item => item.idServicio === servicio.idServicio);
-    if (existente) existente.cantidad += 1;
+    if (existente) { if (cantidadFinancieraValida(existente.cantidad + 1)) existente.cantidad += 1; }
     else this.lineasServicio.push({
       idServicio: servicio.idServicio, codigo: servicio.codigo, nombre: servicio.nombre,
       cantidad: 1, precioReferencia: servicio.precioBase,
@@ -274,8 +363,9 @@ export class FacturaNuevaComponent implements OnInit {
   }
 
   agregarMedicamento(): void {
+    if (this.bloqueado) return;
     const medicamento = this.medicamentos.find(item => item.idMedicamento === this.medicamentoSeleccionado);
-    if (!medicamento) return;
+    if (!medicamento || medicamento.existenciaTotal <= 0 || !precioReferenciaValido(medicamento.precioVenta)) return;
     const existente = this.lineasMedicamento.find(item => item.idMedicamento === medicamento.idMedicamento);
     if (existente) existente.cantidad = Math.min(existente.cantidad + 1, existente.existenciaTotal);
     else this.lineasMedicamento.push({
@@ -286,18 +376,20 @@ export class FacturaNuevaComponent implements OnInit {
   }
 
   normalizarServicio(linea: LineaServicio): void {
-    linea.cantidad = this.cantidadValida(linea.cantidad, Number.MAX_SAFE_INTEGER);
+    if (!this.bloqueado && !cantidadFinancieraValida(linea.cantidad)) this.error = 'Indique cantidades enteras positivas dentro de Int32.';
   }
 
   normalizarMedicamento(linea: LineaMedicamento): void {
-    linea.cantidad = this.cantidadValida(linea.cantidad, linea.existenciaTotal);
+    if (!this.bloqueado && (!cantidadFinancieraValida(linea.cantidad) || linea.cantidad > linea.existenciaTotal)) this.error = 'Verifique la cantidad y el stock de referencia.';
   }
 
   quitarServicio(idServicio: number): void {
+    if (this.bloqueado) return;
     this.lineasServicio = this.lineasServicio.filter(item => item.idServicio !== idServicio);
   }
 
   quitarMedicamento(idMedicamento: number): void {
+    if (this.bloqueado) return;
     this.lineasMedicamento = this.lineasMedicamento.filter(item => item.idMedicamento !== idMedicamento);
   }
 
@@ -309,9 +401,22 @@ export class FacturaNuevaComponent implements OnInit {
   }
 
   guardar(): void {
-    if (this.guardando || !this.idSucursal || !this.idPaciente || !this.tieneLineas) return;
-    this.lineasServicio.forEach(linea => this.normalizarServicio(linea));
-    this.lineasMedicamento.forEach(linea => this.normalizarMedicamento(linea));
+    if (this.bloqueado) return;
+    const clave = this.contexto.clave();
+    if (!this.contexto.vigente(this.contextoFormulario) || !this.permisos.puedeCrear('Facturas') || this.cargandoCatalogos ||
+      this.errorCatalogos || this.cargandoPaciente || this.cargandoPacientes || !this.idSucursal || !this.idPaciente || !this.tieneLineas ||
+      !this.sucursales.some(s => s.idSucursal === this.idSucursal && s.activa) ||
+      !this.pacientesDisponibles.some(p => p.idPaciente === this.idPaciente && p.activo)) {
+      this.error = 'Verifique permisos, catálogos, sucursal, paciente y líneas antes de confirmar.'; return;
+    }
+    if (this.nit.trim().length > 50 || this.nombreFacturacion.trim().length > 150 ||
+      new Set(this.lineasServicio.map(l => l.idServicio)).size !== this.lineasServicio.length ||
+      new Set(this.lineasMedicamento.map(l => l.idMedicamento)).size !== this.lineasMedicamento.length ||
+      this.lineasServicio.some(l => !cantidadFinancieraValida(l.cantidad) || !this.servicios.some(s => s.idServicio === l.idServicio && s.activo)) ||
+      this.lineasMedicamento.some(l => !cantidadFinancieraValida(l.cantidad) || !this.medicamentos.some(m =>
+        m.idMedicamento === l.idMedicamento && m.existenciaTotal >= l.cantidad))) {
+      this.error = 'Verifique las relaciones, cantidades enteras positivas y datos de facturación.'; return;
+    }
     const request: CrearFacturaRequest = {
       idSucursal: this.idSucursal,
       idPaciente: this.idPaciente,
@@ -322,18 +427,34 @@ export class FacturaNuevaComponent implements OnInit {
     };
     this.guardando = true;
     this.error = '';
-    this.facturasService.crear(request).subscribe({
-      next: factura => { void this.router.navigate(['/facturas', factura.idFactura]); },
+    const idUsuario = this.session.currentUser()!.idUsuario;
+    const enviar = () => {
+    if (!this.contexto.vigente(clave)) return;
+    this.contexto.agregar(this.facturasService.crear(request).subscribe({
+      next: factura => {
+        if (!this.contexto.vigente(clave)) return;
+        if (!facturaConfirmada(factura, request, idUsuario)) {
+          this.resultadoIncierto = true; this.guardando = false; this.error = this.mensajeIncierto; return;
+        }
+        this.confirmada = true;
+        void this.router.navigate(['/facturas', factura.idFactura]);
+      },
       error: (error: HttpErrorResponse) => {
-        this.error = this.apiErrors.messageFor(error, 'No fue posible crear la factura. Verifique existencias y datos.');
+        if (!this.contexto.vigente(clave)) return;
+        this.resultadoIncierto = respuestaFinancieraIncierta(error);
+        this.error = this.resultadoIncierto ? this.mensajeIncierto : this.apiErrors.messageFor(error, 'No fue posible crear la factura. Verifique existencias y datos.');
         this.guardando = false;
       },
-    });
-  }
-
-  private cantidadValida(cantidad: number, maximo: number): number {
-    if (!Number.isFinite(cantidad)) return 1;
-    return Math.min(Math.max(Math.trunc(cantidad), 1), maximo);
+    }));
+    };
+    this.contexto.agregar(verificarMedicamentosFinancieros(request.medicamentos, this.inventarioService).subscribe({
+      next: enviar,
+      error: err => {
+        if (!this.contexto.vigente(clave)) return;
+        this.guardando = false;
+        this.error = this.apiErrors.messageFor(err, 'No se pudo verificar el medicamento y su stock. Recargue el catálogo.');
+      },
+    }));
   }
 
   private limpiarOpcional(value: string): string | null {

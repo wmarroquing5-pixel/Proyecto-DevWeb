@@ -5,6 +5,9 @@ import { CatalogoMedicamentoResponse } from '../../core/models/inventario.model'
 import { CatalogosService } from '../../core/services/catalogos.service';
 import { VentasService } from '../../core/services/venta.service';
 import { VentasNuevaComponent } from './ventas-nueva.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
+import { PermisosService } from '../../core/services/permisos.service';
+import { InventarioService } from '../../core/services/inventario.service';
 
 describe('VentasNuevaComponent WEB-UX-01C2', () => {
   let fixture: ComponentFixture<VentasNuevaComponent>;
@@ -16,14 +19,18 @@ describe('VentasNuevaComponent WEB-UX-01C2', () => {
 
   beforeEach(async () => {
     crearVenta = jasmine.createSpy('crearVenta').and.returnValue(of({
-      idVenta: 90, idUsuario: 1, idSucursal: 3, fechaVenta: '2026-10-19T12:00:00', total: 5, detalles: [],
+      idVenta: 90, idUsuario: 1, idSucursal: 3, fechaVenta: '2026-10-19T12:00:00', total: 5,
+      detalles: [{ idVentaDetalle: 1, idMedicamento: 77, idLote: 2, cantidad: 1, precioUnitario: 5, subtotal: 5 }],
     }));
     await TestBed.configureTestingModule({
       imports: [VentasNuevaComponent],
       providers: [
         provideRouter([]),
+        { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
+        { provide: PermisosService, useValue: { puedeCrear: () => true, puedeConsultar: () => true, puedeModificar: () => false, puedeEliminar: () => false } },
+        { provide: InventarioService, useValue: { obtenerCatalogo: () => of(medicamento) } },
         { provide: VentasService, useValue: {
-          buscarMedicamentos: () => of({ items: [medicamento], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }),
+          buscarMedicamentos: () => of({ items: [medicamento], page: 1, pageSize: 100, totalCount: 1, totalPages: 1 }),
           crearVenta,
         } },
         { provide: CatalogosService, useValue: {

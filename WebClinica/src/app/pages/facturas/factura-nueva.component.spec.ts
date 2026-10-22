@@ -8,6 +8,8 @@ import { FacturaService } from '../../core/services/factura.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { PacientesService } from '../../core/services/paciente.service';
 import { FacturaNuevaComponent } from './factura-nueva.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
+import { PermisosService } from '../../core/services/permisos.service';
 
 describe('FacturaNuevaComponent', () => {
   let fixture: ComponentFixture<FacturaNuevaComponent>;
@@ -21,6 +23,8 @@ describe('FacturaNuevaComponent', () => {
       imports: [FacturaNuevaComponent],
       providers: [
         provideRouter([]),
+        { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 2, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
+        { provide: PermisosService, useValue: { puedeCrear: () => true, puedeConsultar: () => true, puedeModificar: () => false, puedeEliminar: () => false } },
         { provide: FacturaService, useValue: { crear } },
         { provide: CatalogosService, useValue: {
           getSucursales: () => of([
@@ -41,19 +45,19 @@ describe('FacturaNuevaComponent', () => {
               { idPaciente: 4, nombres: 'Paciente', apellidos: 'Demo', activo: true },
               { idPaciente: 9, nombres: 'Paciente', apellidos: 'Inactivo', activo: false },
             ],
-            page: 1, pageSize: 50, totalCount: 2, totalPages: 1,
+            page: 1, pageSize: 100, totalCount: 2, totalPages: 1,
           }),
           obtener: () => of({
             idPaciente: 4, nombres: 'Paciente', apellidos: 'Demo', fechaNacimiento: '2000-01-01',
             fechaRegistro: '2026-01-01', activo: true, nit: 'CF', nombreFacturacion: 'Paciente Demo',
           }),
         } },
-        { provide: InventarioService, useValue: { listarCatalogo: () => of({
+        { provide: InventarioService, useValue: { obtenerCatalogo: () => of({ idMedicamento: 7, precioVenta: 12.5, existenciaTotal: 4 }), listarCatalogo: () => of({
           items: [{
             idMedicamento: 7, codigo: 'MED-7', nombre: 'Medicamento', precioVenta: 12.5,
             marca: 'Marca', categoria: 'Categoría', descripcion: null, imagenURL: null, existenciaTotal: 4,
           }],
-          page: 1, pageSize: 50, totalCount: 1, totalPages: 1,
+          page: 1, pageSize: 100, totalCount: 1, totalPages: 1,
         }) } },
       ],
     }).compileComponents();

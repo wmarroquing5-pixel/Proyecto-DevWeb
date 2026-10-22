@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, OnInit } from '@angular/core';
+import { Component, DestroyRef, effect, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,7 +9,11 @@ import { RegistrarEgresoModalComponent } from './registrar-egreso-modal.componen
 import { CrearHabitacionModalComponent } from './crear-habitacion-modal.component';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
-import { finalize } from 'rxjs';
+import { finalize, Subscription } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 
 @Component({
     selector: 'app-habitaciones-board',
@@ -19,7 +23,8 @@ import { finalize } from 'rxjs';
         FormsModule,
         AsignarPacienteModalComponent,
         RegistrarEgresoModalComponent,
-        CrearHabitacionModalComponent
+        CrearHabitacionModalComponent,
+        ConfirmDialogComponent
     ],
     template: `
     <div class="container-fluid mt-4">
@@ -31,6 +36,9 @@ import { finalize } from 'rxjs';
           </button>
         }
       </div>
+
+      @if (errorBaja) { <div class="alert alert-danger" role="alert">{{ errorBaja }}</div> }
+      @if (avisoBaja) { <div class="alert alert-success" role="status">{{ avisoBaja }}</div> }
 
       <div class="d-flex flex-wrap align-items-center gap-2 mb-3" role="status" aria-live="polite">
         <span class="badge" [ngClass]="claseEstadoConexion()">
@@ -110,6 +118,14 @@ import { finalize } from 'rxjs';
                   <button class="btn btn-sm btn-outline-secondary" (click)="verDetalles(hab)">
                     <i class="fa fa-eye"></i>
                   </button>
+                  @if (permisos.puedeEliminar(MODULOS_PERMISO.HABITACIONES) && hab.activa) {
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            [disabled]="!puedeDesactivar(hab) || desactivando"
+                            [attr.aria-label]="'Dar de baja la habitación ' + hab.numeroHabitacion"
+                            (click)="abrirBaja(hab)">
+                      <i class="bi bi-trash" aria-hidden="true"></i> Dar de baja
+                    </button>
+                  }
                 </div>
               </div>
             </div>
@@ -143,6 +159,14 @@ import { finalize } from 'rxjs';
         (creada)="onHabitacionCreada()">
       </app-crear-habitacion-modal>
     }
+    @if (habitacionParaBaja) {
+      <app-confirm-dialog title="Dar de baja habitación"
+        [description]="'¿Dar de baja la habitación ' + habitacionParaBaja.numeroHabitacion + '?'"
+        consequence="La habitación quedará inactiva. Se conservará su historial de asignaciones."
+        confirmLabel="Dar de baja" [busy]="desactivando"
+        (cancelled)="cancelarBaja()" (confirmed)="confirmarBaja()">
+      </app-confirm-dialog>
+    }
   `,
     styles: [`
     .card { transition: all 0.3s ease; cursor: pointer; }
@@ -156,6 +180,8 @@ export class HabitacionesBoardComponent implements OnInit {
   readonly service = inject(HabitacionesService);
   private destroyRef = inject(DestroyRef);
   readonly permisos = inject(PermisosService);
+  private readonly session = inject(AuthSessionService);
+  private readonly apiErrors = inject(ApiErrorService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
 
   habitaciones: HabitacionResponse[] = [];
@@ -163,6 +189,26 @@ export class HabitacionesBoardComponent implements OnInit {
   habitacionSeleccionada: HabitacionResponse | null = null;
   habitacionParaEgreso: HabitacionResponse | null = null;
   mostrarModalCrear = false;
+  habitacionParaBaja: HabitacionResponse | null = null;
+  desactivando = false;
+  errorBaja = '';
+  avisoBaja = '';
+  private identidadBaja: string | null = null;
+  private revisionBaja = 0;
+  private solicitudBaja?: Subscription;
+  private focoBaja: HTMLElement | null = null;
+
+  constructor() {
+    effect(() => {
+      const identidad = this.identidadActual();
+      const permitido = this.permisos.puedeEliminar(MODULOS_PERMISO.HABITACIONES);
+      if (this.identidadBaja && (identidad !== this.identidadBaja || !permitido)) {
+        this.invalidarBaja();
+        this.errorBaja = 'La sesión o los permisos cambiaron. No se puede confirmar la baja.';
+      }
+    });
+    this.destroyRef.onDestroy(() => this.invalidarBaja());
+  }
 
   ESTADOS_HABITACION = ESTADOS_HABITACION;
 
@@ -241,6 +287,82 @@ export class HabitacionesBoardComponent implements OnInit {
 
   abrirModalEgreso(hab: HabitacionResponse) {
     this.habitacionParaEgreso = hab;
+  }
+
+  puedeDesactivar(hab: HabitacionResponse): boolean {
+    return this.permisos.puedeEliminar(MODULOS_PERMISO.HABITACIONES)
+      && hab.activa && (hab.estado === ESTADOS_HABITACION.LIBRE
+        || hab.estado === ESTADOS_HABITACION.EN_LIMPIEZA);
+  }
+
+  abrirBaja(hab: HabitacionResponse): void {
+    if (this.desactivando || this.habitacionParaBaja || !this.puedeDesactivar(hab)) return;
+    const actual = this.habitaciones.find(item => item.idHabitacion === hab.idHabitacion);
+    const identidad = this.identidadActual();
+    if (!actual || !this.puedeDesactivar(actual) || !identidad) return;
+    this.errorBaja = '';
+    this.avisoBaja = '';
+    this.focoBaja = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.identidadBaja = identidad;
+    this.habitacionParaBaja = { ...actual };
+  }
+
+  cancelarBaja(): void {
+    if (this.desactivando) return;
+    this.invalidarBaja();
+    this.focoBaja?.focus();
+  }
+
+  confirmarBaja(): void {
+    if (this.desactivando || !this.habitacionParaBaja) return;
+    const seleccion = this.habitacionParaBaja;
+    const identidad = this.identidadBaja;
+    const actual = this.habitaciones.find(item => item.idHabitacion === seleccion.idHabitacion);
+    if (!identidad || identidad !== this.identidadActual() || !actual || !this.puedeDesactivar(actual)) {
+      this.errorBaja = 'La habitación, la sesión o los permisos cambiaron. No se realizó la baja.';
+      this.invalidarBaja();
+      this.focoBaja?.focus();
+      return;
+    }
+    const revision = ++this.revisionBaja;
+    this.desactivando = true;
+    this.errorBaja = '';
+    this.solicitudBaja = this.service.desactivarHabitacion(seleccion.idHabitacion).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (revision === this.revisionBaja) this.desactivando = false; }),
+    ).subscribe({
+      next: () => {
+        if (revision !== this.revisionBaja || identidad !== this.identidadActual()
+          || !this.permisos.puedeEliminar(MODULOS_PERMISO.HABITACIONES)) return;
+        this.habitacionParaBaja = null;
+        this.identidadBaja = null;
+        this.avisoBaja = `La habitación ${seleccion.numeroHabitacion} quedó inactiva.`;
+        this.cargar();
+        this.focoBaja?.focus();
+      },
+      error: (error: HttpErrorResponse) => {
+        if (revision !== this.revisionBaja || identidad !== this.identidadActual()) return;
+        this.habitacionParaBaja = null;
+        this.identidadBaja = null;
+        this.errorBaja = this.apiErrors.messageFor(error, error.status === 401
+          ? 'La sesión expiró. Inicia sesión nuevamente.' : 'No fue posible dar de baja la habitación.');
+        this.focoBaja?.focus();
+      },
+    });
+  }
+
+  private invalidarBaja(): void {
+    this.revisionBaja++;
+    this.solicitudBaja?.unsubscribe();
+    this.habitacionParaBaja = null;
+    this.identidadBaja = null;
+    this.desactivando = false;
+  }
+
+  private identidadActual(): string | null {
+    const id = this.session.currentUser()?.idUsuario;
+    const token = this.session.token;
+    return this.session.isAuthenticated() && id && token ? `${id}:${token}` : null;
   }
 
   cambiarEstado(hab: HabitacionResponse, nuevoEstado: string) {

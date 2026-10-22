@@ -6,6 +6,7 @@ import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PacientesService } from '../../core/services/paciente.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { PacientesComponent } from './pacientes.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 
 describe('PacientesComponent WEB-UX-01C1', () => {
   let fixture: ComponentFixture<PacientesComponent>;
@@ -28,12 +29,13 @@ describe('PacientesComponent WEB-UX-01C1', () => {
       imports: [PacientesComponent],
       providers: [
         provideRouter([]),
+        { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
         { provide: PacientesService, useValue: { listar, eliminar } },
         { provide: PermisosService, useValue: {
           puedeCrear: () => operaciones.has('Crear'),
           puedeModificar: () => operaciones.has('Modificar'),
           puedeEliminar: () => operaciones.has('Eliminar'),
-          puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.CONSULTAS,
+          puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.CONSULTAS || modulo === MODULOS_PERMISO.PACIENTES,
         } },
       ],
     }).compileComponents();

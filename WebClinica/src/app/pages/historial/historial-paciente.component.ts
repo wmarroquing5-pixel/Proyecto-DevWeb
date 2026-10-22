@@ -1,12 +1,17 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, effect, inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { ActivatedRoute, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HistorialService } from '../../core/services/historial.service';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaListadoDto, PagedResponse } from '../../core/models/historial.model';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
+import { Subscription } from 'rxjs';
+import { AuthSessionService } from '../../core/services/auth-session.service';
+import { ApiErrorService } from '../../core/services/api-error.service';
 
 @Component({
     selector: 'app-historial-paciente',
@@ -89,7 +94,7 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
                     (click)="cambiarPagina(page - 1)" [disabled]="page <= 1">Anterior</button>
             <span class="mx-2">Página {{ page }}</span>
             <button class="btn btn-outline-secondary btn-sm"
-                    (click)="cambiarPagina(page + 1)" [disabled]="consultas.length < pageSize">Siguiente</button>
+                    (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages">Siguiente</button>
           </div>
         </div>
       }
@@ -99,7 +104,9 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
 export class HistorialPacienteComponent implements OnInit {
   private service = inject(HistorialService);
   private route = inject(ActivatedRoute);
-  private router = inject(Router);
+  private session = inject(AuthSessionService);
+  private apiErrors = inject(ApiErrorService);
+  private destroyRef = inject(DestroyRef);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
   readonly correlativo = correlativoPaginado;
@@ -107,16 +114,37 @@ export class HistorialPacienteComponent implements OnInit {
   idPaciente!: number;
   consultas: ConsultaListadoDto[] = [];
   total = 0;
+  totalPages = 0;
   page = 1;
   pageSize = 10;
   cargando = false;
   error = '';
   filtroDesde = '';
   filtroHasta = '';
+  private listado?: Subscription;
+  private revisionListado = 0;
+  private contextoObservado: string | null | undefined;
+
+  constructor() {
+    effect(() => {
+      const contexto = this.contextoLectura();
+      const cambio = this.contextoObservado !== undefined && contexto !== this.contextoObservado;
+      this.contextoObservado = contexto;
+      if (!contexto || cambio) {
+        this.revisionListado++;
+        this.listado?.unsubscribe();
+        this.consultas = [];
+        this.total = this.totalPages = 0;
+        this.cargando = false;
+        if (!contexto) this.error = 'No tiene sesión y permiso Consultas/Consultar vigentes.';
+        else if (cambio && this.idValido(this.idPaciente)) this.cargarConsultas();
+      }
+    });
+  }
 
   ngOnInit() {
     const paramId = this.route.snapshot.paramMap.get('id');
-    if (!paramId) {
+    if (!paramId || !this.idValido(Number(paramId))) {
       this.error = 'No se especificó un paciente';
       return;
     }
@@ -125,25 +153,47 @@ export class HistorialPacienteComponent implements OnInit {
   }
 
   cargarConsultas() {
+    this.listado?.unsubscribe();
+    const revision = ++this.revisionListado;
+    const contexto = this.contextoLectura();
+    const paciente = this.idPaciente;
+    const pagina = this.page;
+    if (!contexto || !this.idValido(paciente) || !this.permisos.puedeConsultar(MODULOS_PERMISO.CONSULTAS)) {
+      this.consultas = []; this.total = this.totalPages = 0; this.cargando = false;
+      this.error = 'No tiene sesión y permiso Consultas/Consultar vigentes.'; return;
+    }
     this.cargando = true;
     this.error = '';
-    this.service.listarConsultas({
-      idPaciente: this.idPaciente,
+    this.listado = this.service.listarConsultas({
+      idPaciente: paciente,
       idMedico: null,
       idSucursal: null,
       idClinica: null,
       desde: this.filtroDesde || null,
       hasta: this.filtroHasta || null,
-      page: this.page,
+      page: pagina,
       pageSize: this.pageSize
-    }).subscribe({
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res: PagedResponse<ConsultaListadoDto>) => {
+        if (revision !== this.revisionListado || contexto !== this.contextoLectura()
+          || paciente !== this.idPaciente || pagina !== this.page) return;
+        const totalPages = Math.ceil(res.totalCount / this.pageSize);
+        const esperados = Math.min(this.pageSize, Math.max(0, res.totalCount - (pagina - 1) * this.pageSize));
+        if (!Array.isArray(res.items) || res.page !== pagina || res.pageSize !== this.pageSize
+          || !Number.isSafeInteger(res.totalCount) || res.totalCount < 0 || res.totalPages !== totalPages
+          || res.items.length !== esperados || res.items.some(c => !this.idValido(c.idConsulta) || c.idPaciente !== paciente)) {
+          this.consultas = []; this.total = this.totalPages = 0; this.cargando = false;
+          this.error = 'La API devolvió una página de historial contradictoria. Recargue el historial.'; return;
+        }
         this.consultas = res.items;
         this.total = res.totalCount;
+        this.totalPages = res.totalPages;
         this.cargando = false;
       },
-      error: () => {
-        this.error = 'Error al cargar el historial. Verifica tus permisos.';
+      error: (err: HttpErrorResponse) => {
+        if (revision !== this.revisionListado || contexto !== this.contextoLectura()) return;
+        this.consultas = []; this.total = this.totalPages = 0;
+        this.error = this.apiErrors.messageFor(err, 'Error al cargar el historial. Verifica tus permisos.');
         this.cargando = false;
       }
     });
@@ -151,5 +201,20 @@ export class HistorialPacienteComponent implements OnInit {
 
   buscar() { this.page = 1; this.cargarConsultas(); }
   limpiarFiltros() { this.filtroDesde = ''; this.filtroHasta = ''; this.buscar(); }
-  cambiarPagina(n: number) { if (n > 0) { this.page = n; this.cargarConsultas(); } }
+  cambiarPagina(n: number) {
+    if (Number.isInteger(n) && n > 0 && n <= Math.max(this.totalPages, 1)) {
+      this.page = n; this.cargarConsultas();
+    }
+  }
+
+  private contextoLectura(): string | null {
+    const usuario = this.session.currentUser();
+    const token = this.session.token;
+    return this.session.isAuthenticated() && usuario && token
+      ? `${usuario.idUsuario}:${usuario.idRol}:${token}:${this.permisos.puedeConsultar(MODULOS_PERMISO.CONSULTAS)}` : null;
+  }
+
+  private idValido(id: number): boolean {
+    return Number.isSafeInteger(id) && id > 0 && id <= 2_147_483_647;
+  }
 }

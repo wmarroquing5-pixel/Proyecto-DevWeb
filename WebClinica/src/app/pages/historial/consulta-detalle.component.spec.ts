@@ -12,6 +12,9 @@ import {
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { HistorialService } from '../../core/services/historial.service';
+import { InventarioService } from '../../core/services/inventario.service';
+import { By } from '@angular/platform-browser';
+import { TratamientoFormComponent } from './tratamiento-form.component';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaDetalleComponent } from './consulta-detalle.component';
 
@@ -22,6 +25,8 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
   let authenticated: WritableSignal<boolean>;
   let userId: WritableSignal<number>;
   let token: string;
+  let leerTratamientos: jasmine.Spy;
+  let leerTratamiento: jasmine.Spy;
 
   const tratamiento: TratamientoResponseDto = {
     idTratamiento: 9,
@@ -60,6 +65,8 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
     authenticated = signal(true);
     userId = signal(7);
     token = 'session-one';
+    leerTratamientos = jasmine.createSpy('listarTratamientos').and.returnValue(of(page([tratamiento])));
+    leerTratamiento = jasmine.createSpy('obtenerTratamiento').and.returnValue(of(tratamiento));
     registrarConsumo = jasmine.createSpy('registrarConsumoClinico').and.returnValue(of({
       idMovimiento: 51,
       idTratamiento: 9,
@@ -72,6 +79,7 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
     TestBed.configureTestingModule({
       imports: [ConsultaDetalleComponent],
       providers: [
+        { provide: InventarioService, useValue: {} },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: {
           get: (key: string) => key === 'id' ? '11' : '17',
         } } } },
@@ -88,7 +96,8 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
         { provide: HistorialService, useValue: {
           obtenerConsulta: () => of(consulta),
           listarDiagnosticos: () => of(page([])),
-          listarTratamientos: () => of(page([tratamiento])),
+          listarTratamientos: leerTratamientos,
+          obtenerTratamiento: leerTratamiento,
           listarExamenes: () => of(page([])),
           listarHistorial: () => of(page([])),
           crearDiagnostico: jasmine.createSpy('crearDiagnostico'),
@@ -198,5 +207,82 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
     });
     pending.complete();
     expect(component.avisoConsumo).toBe('');
+  });
+
+  it('recibe la prescripción confirmada y relee la asociación sin consumir', () => {
+    const component = render();
+    const form = fixture.debugElement.query(By.directive(TratamientoFormComponent)).componentInstance as TratamientoFormComponent;
+    leerTratamientos.and.returnValue(of(page([tratamiento])));
+    form.registrado.emit(tratamiento);
+    expect(leerTratamiento).toHaveBeenCalledOnceWith(9);
+    expect(component.tratamientos[0].idLote).toBe(7);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Lote #7');
+    expect(registrarConsumo).not.toHaveBeenCalled();
+  });
+
+  it('admite consumo parcial sin reducir ni marcar consumida la cantidad prescrita', () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    registrarConsumo.and.returnValue(of({ idMovimiento: 52, idTratamiento: 9, idLote: 7,
+      cantidad: 1, idSucursal: 3, fechaMovimiento: '2026-10-21T19:00:00Z' }));
+    const component = render(); component.abrirConsumo(tratamiento); component.cantidadConsumo = 1;
+    component.registrarConsumo();
+    expect(registrarConsumo).toHaveBeenCalledOnceWith(9, { cantidad: 1 });
+    expect(component.avisoConsumo).toContain('1 unidades');
+    expect(component.tratamientos[0].cantidad).toBe(2);
+    expect(component.revisionStock).toBe(1);
+  });
+
+  it('permite un nuevo consumo explícito tras uno confirmado, sin inventar consumo único', () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    const component = render(); component.abrirConsumo(tratamiento); component.registrarConsumo();
+    component.abrirConsumo(tratamiento); component.registrarConsumo();
+    expect(registrarConsumo).toHaveBeenCalledTimes(2);
+    expect(component.tratamientos[0].cantidad).toBe(2);
+  });
+
+  for (const status of [401, 403, 404, 409, 500, 0]) {
+    it(`conserva el error ${status} de consumo sin inventar salida ni reintentar`, () => {
+      spyOn(window, 'confirm').and.returnValue(true);
+      registrarConsumo.and.returnValue(throwError(() => new HttpErrorResponse({ status,
+        error: { detail: 'El lote no está vigente para consumo.' } })));
+      const component = render(); component.abrirConsumo(tratamiento); component.registrarConsumo();
+      expect(registrarConsumo).toHaveBeenCalledTimes(1);
+      expect(component.avisoConsumo).toBe(''); expect(component.revisionStock).toBe(0);
+      expect(leerTratamientos).toHaveBeenCalledTimes(1);
+      expect(component.errorConsumo).toContain(status === 401 ? 'sesión expiró'
+        : status === 403 ? 'autorización' : status === 0 || status >= 500 ? 'Resultado incierto' : 'no está vigente');
+    });
+  }
+
+  it('no muestra confirmación si el servidor responde por otro lote', () => {
+    spyOn(window, 'confirm').and.returnValue(true);
+    registrarConsumo.and.returnValue(of({ idMovimiento: 51, idTratamiento: 9, idLote: 8,
+      cantidad: 2, idSucursal: 3, fechaMovimiento: '2026-10-21T19:00:00Z' }));
+    const component = render(); component.abrirConsumo(tratamiento); component.registrarConsumo();
+    expect(component.errorConsumo).toContain('inconsistente');
+    expect(component.avisoConsumo).toBe(''); expect(component.revisionStock).toBe(0);
+  });
+
+  it('no permite consumir tratamientos ajenos a la consulta actual', () => {
+    const component = render(); component.abrirConsumo({ ...tratamiento, idConsulta: 99 });
+    component.registrarConsumo(); expect(registrarConsumo).not.toHaveBeenCalled();
+  });
+
+  it('mantiene visible y relee por ID una prescripción fuera de la primera página del historial', () => {
+    const nuevo = { ...tratamiento, idTratamiento: 101 };
+    leerTratamiento.and.returnValue(of(nuevo));
+    const component = render(); component.onTratamientoRegistrado(nuevo);
+    expect(leerTratamiento).toHaveBeenCalledOnceWith(101);
+    expect(component.tratamientos.find(t => t.idTratamiento === 101)?.idLote).toBe(7);
+    expect(registrarConsumo).not.toHaveBeenCalled();
+  });
+
+  it('ignora relectura tardía de tratamientos tras cambiar identidad', () => {
+    const pending = new Subject<PagedResponse<TratamientoResponseDto>>();
+    leerTratamientos.and.returnValue(pending);
+    const component = render(); userId.set(8);
+    pending.next(page([tratamiento])); fixture.detectChanges();
+    expect(component.tratamientos).toEqual([]);
+    expect(pending.observed).toBeFalse();
   });
 });

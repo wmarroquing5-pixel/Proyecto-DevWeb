@@ -317,6 +317,33 @@ describe('HabitacionesService: recuperación y SignalR', () => {
     expect(rooms).toEqual([]);
   });
 
+  it('consulta la página de asignaciones por los parámetros existentes', () => {
+    service().listarAsignaciones(3, 100).subscribe(response => expect(response.totalPages).toBe(3));
+    const request = http.expectOne(`${environment.apiUrl}/asignaciones-habitacion?page=3&pageSize=100`);
+    expect(request.request.method).toBe('GET');
+    request.flush({ items: [], page: 3, pageSize: 100, totalCount: 201, totalPages: 3 });
+  });
+
+  it('registra egreso por ID sin actualizar ni eliminar la asignación histórica', () => {
+    service().registrarEgreso(19).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/asignaciones-habitacion/19/egreso`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({});
+    request.flush({ idAsignacion: 19, idHabitacion: 7, fechaEgreso: '2026-10-21T10:00:00Z' });
+    http.expectNone(req => req.method === 'DELETE' || req.method === 'PUT');
+  });
+
+  it('la baja usa solo DELETE habitación y no toca asignaciones ni lanza recarga por sí misma', () => {
+    const result = service();
+    result.desactivarHabitacion(7).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/habitaciones/7`);
+    expect(request.request.method).toBe('DELETE');
+    expect(request.request.body).toBeNull();
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    http.expectNone(req => req.url.includes('asignaciones-habitacion'));
+    http.expectNone(`${environment.apiUrl}/habitaciones`);
+  });
+
   it('retira el handler, detiene el hub y limpia el estado al destruirse', () => {
     const result = service();
     result.ngOnDestroy();

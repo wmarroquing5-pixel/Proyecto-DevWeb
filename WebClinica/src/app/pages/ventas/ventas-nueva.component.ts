@@ -8,9 +8,15 @@ import { VentasService } from '../../core/services/venta.service';
 import {
   CrearVentaRequest,
   VentaResponse,
-  CatalogoMedicamentoResponse,
-  PagedResponse
+  CatalogoMedicamentoResponse
 } from '../../core/models/venta.model';
+import { Subscription } from 'rxjs';
+import { AuthSessionService } from '../../core/services/auth-session.service';
+import { PermisosService } from '../../core/services/permisos.service';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { cargarCatalogoInventario, ContextoInventario, idInventarioValido } from '../inventario/inventario-ui';
+import { cantidadFinancieraValida, mensajeResultadoIncierto, precioReferenciaValido, respuestaFinancieraIncierta, ventaConfirmada, verificarMedicamentosFinancieros } from '../facturas/finanzas-ui';
+import { InventarioService } from '../../core/services/inventario.service';
 
 interface ItemCarrito {
   idMedicamento: number;
@@ -35,7 +41,17 @@ interface ItemCarrito {
       </header>
 
       @if (error) { <div class="alert alert-danger">{{ error }}</div> }
+      @if (resultadoIncierto) {
+        <div class="alert alert-warning" role="alert">{{ mensajeIncierto }}
+          @if (permisos.puedeConsultar('Ventas')) { <a routerLink="/ventas">Consultar ventas registradas</a> }
+          @else { Solicite la comprobación a un usuario con permiso Ventas/Consultar. }
+        </div>
+      }
+      @if (confirmada) { <p class="alert alert-success" role="status">Venta confirmada por el servidor. Consulte su detalle.</p> }
+      @if (errorBusqueda) { <div class="alert alert-danger" role="alert">{{ errorBusqueda }}</div> }
+      <p class="text-muted small">Precios, stock y total mostrados son referencias; el servidor confirma los importes y lotes definitivos.</p>
 
+      <fieldset [disabled]="bloqueado || !permisos.puedeCrear('Ventas')">
       <div class="row g-4">
         <!-- Panel izquierdo: Búsqueda de medicamentos -->
         <div class="col-md-5">
@@ -162,6 +178,7 @@ interface ItemCarrito {
           </div>
         </div>
       </div>
+      </fieldset>
     </div>
   `
 })
@@ -169,6 +186,19 @@ export class VentasNuevaComponent implements OnInit {
   private service = inject(VentasService);
   private catalogosService = inject(CatalogosService);
   private router = inject(Router);
+  private session = inject(AuthSessionService);
+  readonly permisos = inject(PermisosService);
+  private errores = inject(ApiErrorService);
+  private inventario = inject(InventarioService);
+  private contexto = new ContextoInventario(['Ventas', 'Medicamentos', 'Sucursales']);
+  private contextoFormulario = this.contexto.clave();
+  private busquedaSolicitud?: Subscription;
+  private revisionBusqueda = 0;
+  resultadoIncierto = false;
+  confirmada = false;
+  readonly mensajeIncierto = mensajeResultadoIncierto;
+  errorBusqueda = '';
+  get bloqueado(): boolean { return this.cargando || this.resultadoIncierto || this.confirmada; }
 
   idSucursal: number | null = null;
   sucursales: Sucursal[] = [];
@@ -179,30 +209,67 @@ export class VentasNuevaComponent implements OnInit {
   cargando = false;
   error = '';
 
-  ngOnInit() {
-    this.catalogosService.getSucursales().subscribe({
-      next: items => this.sucursales = items.filter(item => item.activa),
-      error: () => this.error = 'No fue posible cargar las sucursales.',
+  constructor() {
+    this.contexto.observar(() => {
+      if (this.cargando) this.resultadoIncierto = true;
+      this.cargando = false; this.carrito = []; this.medicamentos = []; this.sucursales = [];
+      this.idSucursal = null; this.busqueda = ''; this.error = '';
+      this.ngOnInit();
     });
+  }
+
+  ngOnInit() {
+    this.contextoFormulario = this.contexto.clave();
+    const clave = this.contexto.clave();
+    if (this.contexto.vigente(clave) && this.permisos.puedeConsultar('Sucursales')) {
+      this.contexto.agregar(this.catalogosService.getSucursales().subscribe({
+        next: items => {
+          if (!this.contexto.vigente(clave)) return;
+          if (new Set(items.map(s => s.idSucursal)).size !== items.length) {
+            this.sucursales = []; this.error = 'El catálogo de sucursales contiene duplicados. Recargue la pantalla.'; return;
+          }
+          this.sucursales = items.filter(item => item.activa);
+        },
+        error: err => { if (this.contexto.vigente(clave)) this.error = this.errores.messageFor(err, 'No fue posible cargar las sucursales.'); },
+      }));
+    } else this.error = 'Se requiere sesión y permiso Sucursales/Consultar.';
     // Carga inicial de medicamentos
     this.buscarMedicamentos();
   }
 
   buscarMedicamentos() {
+    this.busquedaSolicitud?.unsubscribe();
+    const revision = ++this.revisionBusqueda, clave = this.contexto.clave();
+    this.errorBusqueda = ''; this.medicamentos = []; this.cargandoBusqueda = false;
+    if (!this.contexto.vigente(this.contextoFormulario) || !this.permisos.puedeConsultar('Medicamentos')) {
+      this.errorBusqueda = 'Se requiere permiso Medicamentos/Consultar vigente.'; return;
+    }
     this.cargandoBusqueda = true;
-    this.service.buscarMedicamentos(this.busqueda || undefined).subscribe({
-      next: (res: PagedResponse<CatalogoMedicamentoResponse>) => {
-        this.medicamentos = res.items;
+    const nombre = this.busqueda.trim() || undefined;
+    this.busquedaSolicitud = cargarCatalogoInventario((p, t) => this.service.buscarMedicamentos(nombre, p, t), m => m.idMedicamento).subscribe({
+      next: items => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionBusqueda) return;
+        this.medicamentos = items;
         this.cargandoBusqueda = false;
       },
-      error: () => {
+      error: err => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionBusqueda) return;
         this.medicamentos = [];
         this.cargandoBusqueda = false;
+        this.errorBusqueda = this.errores.messageFor(err, 'No se pudo cargar el catálogo completo. Repita la búsqueda.');
       }
     });
+    this.contexto.agregar(this.busquedaSolicitud);
   }
 
   agregarAlCarrito(med: CatalogoMedicamentoResponse) {
+    if (this.bloqueado || this.cargandoBusqueda || this.errorBusqueda || !this.contexto.vigente(this.contextoFormulario) ||
+      !this.permisos.puedeCrear('Ventas') || !this.permisos.puedeConsultar('Medicamentos')) return;
+    const disponible = this.medicamentos.find(m => m.idMedicamento === med.idMedicamento);
+    if (!disponible || disponible.existenciaTotal <= 0 || !precioReferenciaValido(disponible.precioVenta)) {
+      this.error = 'Seleccione un medicamento disponible del catálogo.'; return;
+    }
+    med = disponible;
     const existente = this.carrito.find(i => i.idMedicamento === med.idMedicamento);
     if (existente) {
       if (existente.cantidad < med.existenciaTotal) {
@@ -210,7 +277,6 @@ export class VentasNuevaComponent implements OnInit {
         existente.subtotal = existente.cantidad * existente.precioUnitario;
       } else {
         this.error = `No hay más stock disponible para ${med.nombre}`;
-        setTimeout(() => this.error = '', 3000);
       }
     } else {
       this.carrito.push({
@@ -226,24 +292,29 @@ export class VentasNuevaComponent implements OnInit {
   }
 
   cambiarCantidad(item: ItemCarrito, delta: number) {
+    if (this.bloqueado || !cantidadFinancieraValida(item.cantidad)) return;
     const nuevaCantidad = item.cantidad + delta;
-    if (nuevaCantidad >= 1 && nuevaCantidad <= item.existenciaTotal) {
+    if (cantidadFinancieraValida(nuevaCantidad) && nuevaCantidad <= item.existenciaTotal) {
       item.cantidad = nuevaCantidad;
       item.subtotal = item.cantidad * item.precioUnitario;
     }
   }
 
   recalcularSubtotal(item: ItemCarrito) {
-    if (item.cantidad < 1) item.cantidad = 1;
-    if (item.cantidad > item.existenciaTotal) item.cantidad = item.existenciaTotal;
+    if (this.bloqueado) return;
+    if (!cantidadFinancieraValida(item.cantidad) || item.cantidad > item.existenciaTotal) {
+      this.error = 'Indique una cantidad entera positiva dentro del stock de referencia.'; item.subtotal = 0; return;
+    }
     item.subtotal = item.cantidad * item.precioUnitario;
   }
 
   eliminarDelCarrito(item: ItemCarrito) {
+    if (this.bloqueado) return;
     this.carrito = this.carrito.filter(i => i.idMedicamento !== item.idMedicamento);
   }
 
   limpiarCarrito() {
+    if (this.bloqueado) return;
     this.carrito = [];
     this.busqueda = '';
     this.buscarMedicamentos();
@@ -254,10 +325,21 @@ export class VentasNuevaComponent implements OnInit {
   }
 
   confirmarVenta() {
-    if (this.carrito.length === 0 || !this.idSucursal
+    if (this.bloqueado) return;
+    const clave = this.contexto.clave();
+    if (!this.contexto.vigente(this.contextoFormulario) || !this.permisos.puedeCrear('Ventas') || !this.permisos.puedeConsultar('Medicamentos')) {
+      this.error = 'No tiene sesión y permisos vigentes para crear la venta.'; return;
+    }
+    if (this.carrito.length === 0) { this.error = 'Agregue al menos un medicamento antes de confirmar.'; return; }
+    if (!this.idSucursal
       || !this.sucursales.some(item => item.idSucursal === this.idSucursal && item.activa)) {
       this.error = 'Seleccione una sucursal activa.';
       return;
+    }
+    if (this.cargandoBusqueda || this.errorBusqueda || new Set(this.carrito.map(i => i.idMedicamento)).size !== this.carrito.length ||
+      this.carrito.some(i => !idInventarioValido(i.idMedicamento) || !cantidadFinancieraValida(i.cantidad) ||
+        i.cantidad > i.existenciaTotal || !precioReferenciaValido(i.precioUnitario))) {
+      this.error = 'Verifique el catálogo y las cantidades enteras positivas de los medicamentos.'; return;
     }
 
     this.cargando = true;
@@ -271,14 +353,34 @@ export class VentasNuevaComponent implements OnInit {
       }))
     };
 
-    this.service.crearVenta(request).subscribe({
+    const idUsuario = this.session.currentUser()!.idUsuario;
+    const enviar = () => {
+    if (!this.contexto.vigente(clave)) return;
+    this.contexto.agregar(this.service.crearVenta(request).subscribe({
       next: (res: VentaResponse) => {
+        if (!this.contexto.vigente(clave)) return;
+        if (!ventaConfirmada(res, request, idUsuario)) {
+          this.resultadoIncierto = true; this.cargando = false; this.error = this.mensajeIncierto; return;
+        }
+        this.confirmada = true;
         this.router.navigate(['/ventas', res.idVenta]);
       },
       error: (err) => {
-        this.error = err.error?.message || 'Error al procesar la venta. Verifica el stock disponible.';
+        if (!this.contexto.vigente(clave)) return;
+        this.resultadoIncierto = respuestaFinancieraIncierta(err);
+        this.error = this.resultadoIncierto ? this.mensajeIncierto :
+          this.errores.messageFor(err, 'Error al procesar la venta. Verifique los datos y existencias.');
         this.cargando = false;
       }
-    });
+    }));
+    };
+    this.contexto.agregar(verificarMedicamentosFinancieros(request.items, this.inventario).subscribe({
+      next: enviar,
+      error: err => {
+        if (!this.contexto.vigente(clave)) return;
+        this.cargando = false;
+        this.error = this.errores.messageFor(err, 'No se pudo verificar el medicamento y su stock. Recargue el catálogo.');
+      },
+    }));
   }
 }

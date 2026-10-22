@@ -5,6 +5,7 @@ import { ConsultaListadoDto } from '../../core/models/historial.model';
 import { HistorialService } from '../../core/services/historial.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { HistorialPacienteComponent } from './historial-paciente.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 
 describe('HistorialPacienteComponent WEB-UX-01C2', () => {
   let fixture: ComponentFixture<HistorialPacienteComponent>;
@@ -17,7 +18,9 @@ describe('HistorialPacienteComponent WEB-UX-01C2', () => {
 
   beforeEach(async () => {
     listarConsultas = jasmine.createSpy('listarConsultas').and.callFake((filtro: { page: number; pageSize: number }) => of({
-      items: [{ ...consulta, idConsulta: filtro.page === 1 ? 81 : 144 }],
+      items: Array.from({ length: 10 }, (_, index) => ({
+        ...consulta, idConsulta: index === 0 ? (filtro.page === 1 ? 81 : 144) : filtro.page * 100 + index,
+      })),
       page: filtro.page, pageSize: filtro.pageSize, totalCount: 20, totalPages: 2,
     }));
     await TestBed.configureTestingModule({
@@ -25,6 +28,9 @@ describe('HistorialPacienteComponent WEB-UX-01C2', () => {
       providers: [
         provideRouter([]),
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: '29' }) } } },
+        { provide: AuthSessionService, useValue: {
+          currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token',
+        } },
         { provide: HistorialService, useValue: { listarConsultas } },
         { provide: PermisosService, useValue: { puedeCrear: () => true, puedeConsultar: () => true } },
       ],

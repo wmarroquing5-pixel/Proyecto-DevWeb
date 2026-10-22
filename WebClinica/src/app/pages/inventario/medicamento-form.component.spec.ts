@@ -3,6 +3,8 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { InventarioService } from '../../core/services/inventario.service';
 import { MedicamentoFormComponent } from './medicamento-form.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
+import { PermisosService } from '../../core/services/permisos.service';
 
 describe('MedicamentoFormComponent catálogos activos', () => {
   let fixture: ComponentFixture<MedicamentoFormComponent>;
@@ -47,6 +49,8 @@ describe('MedicamentoFormComponent catálogos activos', () => {
     await TestBed.configureTestingModule({
       imports: [MedicamentoFormComponent],
       providers: [
+        { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
+        { provide: PermisosService, useValue: { puedeCrear: () => true, puedeConsultar: () => true, puedeModificar: () => true, puedeEliminar: () => true } },
         { provide: InventarioService, useValue: service },
         provideRouter([]),
         { provide: ActivatedRoute, useValue: {

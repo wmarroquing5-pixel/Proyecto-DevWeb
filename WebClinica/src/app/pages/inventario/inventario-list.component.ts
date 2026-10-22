@@ -6,6 +6,9 @@ import { InventarioService } from '../../core/services/inventario.service';
 import { CatalogoMedicamentoResponse, PagedResponse } from '../../core/models/inventario.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { Subscription } from 'rxjs';
+import { cargarCatalogoInventario, ContextoInventario, idInventarioValido } from './inventario-ui';
 
 @Component({
     selector: 'app-inventario-list',
@@ -29,6 +32,13 @@ import { PermisosService } from '../../core/services/permisos.service';
       </header>
 
       <!-- Filtros -->
+      @if (cargandoCatalogos) { <p role="status">Cargando categorías y marcas completas...</p> }
+      @if (errorCatalogos) { <div class="alert alert-danger" role="alert">{{ errorCatalogos }}</div> }
+      @if (!cargandoCatalogos && !errorCatalogos && (!categorias.length || !marcas.length)) {
+        <p class="text-muted">No hay categorías o marcas para filtrar.</p>
+      }
+      <button type="button" class="btn btn-link btn-sm" [disabled]="cargandoCatalogos" (click)="cargarCatalogos()">Recargar catálogos</button>
+      @if (errorOperacion) { <div class="alert alert-danger" role="alert">{{ errorOperacion }}</div> }
       <div class="ui-card ui-form mb-4">
         <div class="row g-3">
           <div class="col-md-5">
@@ -38,7 +48,7 @@ import { PermisosService } from '../../core/services/permisos.service';
           </div>
           <div class="col-md-3">
             <label for="inventario-categoria" class="form-label">Categoría</label>
-            <select id="inventario-categoria" class="form-select" [(ngModel)]="filtroCategoriaId" (change)="buscar()">
+            <select id="inventario-categoria" class="form-select" [(ngModel)]="filtroCategoriaId" (change)="buscar()" [disabled]="cargandoCatalogos || !!errorCatalogos">
               <option [ngValue]="null">Todas</option>
               @for (c of categorias; track c.idCategoria) {
                 <option [ngValue]="c.idCategoria">{{ c.nombre }}</option>
@@ -47,7 +57,7 @@ import { PermisosService } from '../../core/services/permisos.service';
           </div>
           <div class="col-md-3">
             <label for="inventario-marca" class="form-label">Marca</label>
-            <select id="inventario-marca" class="form-select" [(ngModel)]="filtroMarcaId" (change)="buscar()">
+            <select id="inventario-marca" class="form-select" [(ngModel)]="filtroMarcaId" (change)="buscar()" [disabled]="cargandoCatalogos || !!errorCatalogos">
               <option [ngValue]="null">Todas</option>
               @for (m of marcas; track m.idMarca) {
                 <option [ngValue]="m.idMarca">{{ m.nombre }}</option>
@@ -109,7 +119,7 @@ import { PermisosService } from '../../core/services/permisos.service';
                     }
                     @if (permisos.puedeEliminar(MODULOS_PERMISO.MEDICAMENTOS)) {
                       <button type="button" (click)="desactivar(m.idMedicamento)" class="btn btn-sm btn-outline-danger ui-icon-button"
-                              [disabled]="!m.existenciaTotal" aria-label="Eliminar medicamento" title="Eliminar medicamento">
+                              [disabled]="desactivandoId !== null" aria-label="Eliminar medicamento" title="Desactivar medicamento">
                         <i class="fa fa-trash"></i>
                       </button>
                     }
@@ -130,7 +140,7 @@ import { PermisosService } from '../../core/services/permisos.service';
             </button>
             <span class="mx-2">Página {{ page }}</span>
             <button class="btn btn-outline-secondary btn-sm"
-                    (click)="cambiarPagina(page + 1)" [disabled]="medicamentos.length < pageSize">
+                    (click)="cambiarPagina(page + 1)" [disabled]="page * pageSize >= total">
               Siguiente
             </button>
           </div>
@@ -143,6 +153,16 @@ export class InventarioListComponent implements OnInit {
   private service = inject(InventarioService);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
+  private readonly apiErrors = inject(ApiErrorService);
+  private readonly contexto = new ContextoInventario(['Medicamentos', 'Categorias', 'Marcas']);
+  private listado?: Subscription;
+  private catalogos?: Subscription;
+  private revisionListado = 0;
+  private revisionCatalogos = 0;
+  desactivandoId: number | null = null;
+  errorOperacion = '';
+  errorCatalogos = '';
+  cargandoCatalogos = false;
 
   medicamentos: CatalogoMedicamentoResponse[] = [];
   categorias: { idCategoria: number; nombre: string }[] = [];
@@ -157,26 +177,55 @@ export class InventarioListComponent implements OnInit {
   filtroCategoriaId: number | null = null;
   filtroMarcaId: number | null = null;
 
+  constructor() {
+    this.contexto.observar(() => {
+      this.listado?.unsubscribe(); this.catalogos?.unsubscribe();
+      this.medicamentos = []; this.categorias = []; this.marcas = [];
+      this.desactivandoId = null;
+      this.limpiarFiltros(); this.cargarCatalogos();
+    });
+  }
+
   ngOnInit() {
     this.cargarCatalogos();
     this.cargarMedicamentos();
   }
 
   cargarCatalogos() {
-    this.service.listarCategorias(1, 100).subscribe({
-      next: (res) => this.categorias = res.items,
-      error: () => console.error('Error cargando categorías')
-    });
-    this.service.listarMarcas(1, 100).subscribe({
-      next: (res) => this.marcas = res.items,
-      error: () => console.error('Error cargando marcas')
-    });
+    this.catalogos?.unsubscribe();
+    this.catalogos = new Subscription();
+    this.contexto.agregar(this.catalogos);
+    const revision = ++this.revisionCatalogos, clave = this.contexto.clave();
+    this.categorias = []; this.marcas = []; this.errorCatalogos = '';
+    this.cargandoCatalogos = true;
+    let pendientes = 2;
+    const terminar = () => this.cargandoCatalogos = --pendientes > 0;
+    const fallo = (err: Parameters<ApiErrorService['messageFor']>[0]) => {
+      if (!this.contexto.vigente(clave) || revision !== this.revisionCatalogos) return;
+      this.errorCatalogos = this.apiErrors.messageFor(err, 'No se pudo cargar un catálogo completo. Recargue los catálogos.');
+      terminar();
+    };
+    if (!this.contexto.vigente(clave) || !this.permisos.puedeConsultar('Categorias') || !this.permisos.puedeConsultar('Marcas')) {
+      this.errorCatalogos = 'Se requiere sesión y permisos Categorias/Consultar y Marcas/Consultar.';
+      this.cargandoCatalogos = false; return;
+    }
+    this.catalogos.add(cargarCatalogoInventario((p, t) => this.service.listarCategorias(p, t), c => c.idCategoria).subscribe({
+      next: items => { if (this.contexto.vigente(clave) && revision === this.revisionCatalogos) { this.categorias = items; terminar(); } }, error: fallo,
+    }));
+    this.catalogos.add(cargarCatalogoInventario((p, t) => this.service.listarMarcas(p, t), m => m.idMarca).subscribe({
+      next: items => { if (this.contexto.vigente(clave) && revision === this.revisionCatalogos) { this.marcas = items; terminar(); } }, error: fallo,
+    }));
   }
 
   cargarMedicamentos() {
+    this.listado?.unsubscribe();
+    const revision = ++this.revisionListado, clave = this.contexto.clave();
+    if (!this.contexto.vigente(clave) || !this.permisos.puedeConsultar('Medicamentos')) {
+      this.cargando = false; this.medicamentos = []; this.error = 'No tiene permiso Medicamentos/Consultar vigente.'; return;
+    }
     this.cargando = true;
     this.error = '';
-    this.service.listarCatalogo({
+    this.listado = this.service.listarCatalogo({
       nombre: this.filtroNombre || null,
       categoriaId: this.filtroCategoriaId,
       marcaId: this.filtroMarcaId,
@@ -184,15 +233,18 @@ export class InventarioListComponent implements OnInit {
       pageSize: this.pageSize
     }).subscribe({
       next: (res: PagedResponse<CatalogoMedicamentoResponse>) => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
         this.medicamentos = res.items;
         this.total = res.totalCount;
         this.cargando = false;
       },
-      error: () => {
-        this.error = 'Error al cargar los medicamentos. Verifica tus permisos.';
+      error: err => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
+        this.error = this.apiErrors.messageFor(err, 'Error al cargar los medicamentos. Verifica tus permisos.');
         this.cargando = false;
       }
     });
+    this.contexto.agregar(this.listado);
   }
 
   buscar() {
@@ -208,18 +260,29 @@ export class InventarioListComponent implements OnInit {
   }
 
   cambiarPagina(n: number) {
-    if (n > 0) {
+    if (idInventarioValido(n) && n <= Math.max(1, Math.ceil(this.total / this.pageSize))) {
       this.page = n;
       this.cargarMedicamentos();
     }
   }
 
   desactivar(id: number) {
-    if (confirm('¿Estás seguro de desactivar este medicamento?')) {
-      this.service.desactivarMedicamento(id).subscribe({
-        next: () => this.cargarMedicamentos(),
-        error: () => alert('No se pudo desactivar el medicamento.')
-      });
-    }
+    const clave = this.contexto.clave();
+    if (this.desactivandoId !== null || !this.contexto.vigente(clave) ||
+      !this.permisos.puedeEliminar('Medicamentos') || !idInventarioValido(id) ||
+      !this.medicamentos.some(m => m.idMedicamento === id)) return;
+    if (!confirm('¿Estás seguro de desactivar este medicamento?') || !this.contexto.vigente(clave)) return;
+    this.desactivandoId = id; this.errorOperacion = '';
+    this.contexto.agregar(this.service.desactivarMedicamento(id).subscribe({
+      next: () => {
+        if (!this.contexto.vigente(clave)) return;
+        this.desactivandoId = null; this.cargarMedicamentos();
+      },
+      error: err => {
+        if (!this.contexto.vigente(clave)) return;
+        this.desactivandoId = null;
+        this.errorOperacion = this.apiErrors.messageFor(err, 'No se pudo desactivar el medicamento.');
+      },
+    }));
   }
 }

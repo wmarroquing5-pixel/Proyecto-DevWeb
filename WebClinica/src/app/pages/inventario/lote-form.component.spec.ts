@@ -12,6 +12,7 @@ import { InventarioService } from '../../core/services/inventario.service';
 import { CatalogosService } from '../../core/services/catalogos.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { LoteFormComponent } from './lote-form.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 
 describe('LoteFormComponent: ajuste de existencia', () => {
   let fixture: ComponentFixture<LoteFormComponent>;
@@ -35,11 +36,13 @@ describe('LoteFormComponent: ajuste de existencia', () => {
     TestBed.configureTestingModule({
       imports: [LoteFormComponent],
       providers: [
+        { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
         provideRouter([]),
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => '7' } } } },
         { provide: PermisosService, useValue: {
           puedeCrear: () => true,
-          puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.SUCURSALES,
+          puedeConsultar: (modulo: string) => [MODULOS_PERMISO.SUCURSALES, MODULOS_PERMISO.MEDICAMENTOS, MODULOS_PERMISO.LOTES_MEDICAMENTO].some(item => item === modulo),
+          puedeEliminar: () => false,
           puedeModificar: (modulo: string) => modulo === MODULOS_PERMISO.LOTES_MEDICAMENTO
             && modificar(),
         } },

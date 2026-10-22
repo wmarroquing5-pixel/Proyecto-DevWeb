@@ -9,6 +9,9 @@ import { PermisosService } from '../../core/services/permisos.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
 import { UiStateComponent } from '../../shared/components/ui-state.component';
 import { correlativoPaginado } from '../../shared/utils/correlativo';
+import { Subscription } from 'rxjs';
+import { ApiErrorService } from '../../core/services/api-error.service';
+import { ContextoInventario, idInventarioValido } from '../inventario/inventario-ui';
 
 @Component({
     selector: 'app-pacientes',
@@ -37,9 +40,9 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
           <div class="col-md-3">
             <label for="paciente-estado" class="form-label">Estado</label>
             <select id="paciente-estado" class="form-select" [(ngModel)]="filtroActivo" (change)="buscar()">
-              <option [value]="undefined">Todos</option>
-              <option [value]="true">Activos</option>
-              <option [value]="false">Inactivos</option>
+              <option [ngValue]="undefined">Todos</option>
+              <option [ngValue]="true">Activos</option>
+              <option [ngValue]="false">Inactivos</option>
             </select>
           </div>
           <div class="col-md-3">
@@ -48,6 +51,7 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
         </div>
       </div>
 
+      @if (errorOperacion) { <div class="alert alert-danger" role="alert">{{ errorOperacion }}</div> }
       @if (cargando) {
         <app-ui-state kind="loading" title="Cargando pacientes…" />
       } @else if (error) {
@@ -87,7 +91,7 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
                       </a>
                     }
                     @if (permisos.puedeEliminar(MODULOS_PERMISO.PACIENTES)) {
-                      <button type="button" (click)="solicitarDesactivacion(paciente)" class="btn btn-sm btn-outline-danger ui-icon-button" [disabled]="!paciente.activo || eliminandoId === paciente.idPaciente" aria-label="Eliminar paciente" title="Desactivar paciente">
+                      <button type="button" (click)="solicitarDesactivacion(paciente)" class="btn btn-sm btn-outline-danger ui-icon-button" [disabled]="!paciente.activo || eliminandoId !== null" aria-label="Eliminar paciente" title="Desactivar paciente">
                         <i class="bi bi-trash" aria-hidden="true"></i>
                       </button>
                     }
@@ -128,6 +132,13 @@ export class PacientesComponent implements OnInit {
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
   readonly correlativo = correlativoPaginado;
+  private readonly apiErrors = inject(ApiErrorService);
+  private readonly contexto = new ContextoInventario(['Pacientes']);
+  private contextoListado = this.contexto.clave();
+  private contextoConfirmacion: string | null = null;
+  private listado?: Subscription;
+  private revisionListado = 0;
+  errorOperacion = '';
 
   pacientes: PacienteListadoResponse[] = [];
   total = 0;
@@ -142,30 +153,47 @@ export class PacientesComponent implements OnInit {
   filtroNombre = '';
   filtroActivo: boolean | undefined = undefined;
 
+  constructor() {
+    this.contexto.observar(() => {
+      this.contextoListado = this.contexto.clave();
+      this.contextoConfirmacion = null; this.pacientePendiente = null; this.eliminandoId = null;
+      this.pacientes = []; this.errorOperacion = ''; this.total = this.totalPages = 0;
+      this.limpiarFiltros();
+    });
+  }
+
   ngOnInit() {
     this.cargarPacientes();
   }
 
   cargarPacientes() {
+    this.listado?.unsubscribe();
+    const revision = ++this.revisionListado, clave = this.contextoListado;
+    if (!this.contexto.vigente(clave) || !this.permisos.puedeConsultar('Pacientes')) {
+      this.pacientes = []; this.cargando = false; this.error = 'No tiene sesión y permiso Pacientes/Consultar vigentes.'; return;
+    }
     this.cargando = true;
     this.error = '';
-    this.service.listar(
+    this.listado = this.service.listar(
       this.filtroNombre || undefined,
       this.filtroActivo,
       this.page,
       this.pageSize
     ).subscribe({
       next: (res: PagedResponse<PacienteListadoResponse>) => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
         this.pacientes = res.items;
         this.total = res.totalCount;
         this.totalPages = res.totalPages;
         this.cargando = false;
       },
-      error: () => {
-        this.error = 'Error al cargar los pacientes. Verifica tus permisos.';
+      error: err => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
+        this.error = this.apiErrors.messageFor(err, 'Error al cargar los pacientes. Verifica tus permisos.');
         this.cargando = false;
       }
     });
+    this.contexto.agregar(this.listado);
   }
 
   buscar() {
@@ -187,7 +215,11 @@ export class PacientesComponent implements OnInit {
   }
 
   solicitarDesactivacion(paciente: PacienteListadoResponse): void {
-    if (!paciente.activo || !this.permisos.puedeEliminar(MODULOS_PERMISO.PACIENTES)) return;
+    if (this.eliminandoId !== null || !this.contexto.vigente(this.contextoListado) || !idInventarioValido(paciente.idPaciente) ||
+      !paciente.activo || !this.pacientes.some(p => p.idPaciente === paciente.idPaciente && p.activo) ||
+      !this.permisos.puedeEliminar(MODULOS_PERMISO.PACIENTES)) return;
+    this.contextoConfirmacion = this.contextoListado;
+    this.errorOperacion = '';
     this.pacientePendiente = paciente;
   }
 
@@ -198,18 +230,25 @@ export class PacientesComponent implements OnInit {
   confirmarDesactivacion(): void {
     const paciente = this.pacientePendiente;
     if (!paciente || this.eliminandoId !== null) return;
+    if (!this.contextoConfirmacion || !this.contexto.vigente(this.contextoConfirmacion) ||
+      !this.permisos.puedeEliminar('Pacientes') || !this.pacientes.some(p => p.idPaciente === paciente.idPaciente && p.activo)) {
+      this.pacientePendiente = null; this.errorOperacion = 'La sesión, el permiso o el paciente cambiaron. Revise la operación.'; return;
+    }
+    const clave = this.contextoConfirmacion;
     this.eliminandoId = paciente.idPaciente;
-    this.service.eliminar(paciente.idPaciente).subscribe({
+    this.contexto.agregar(this.service.eliminar(paciente.idPaciente).subscribe({
       next: () => {
+        if (!this.contexto.vigente(clave)) return;
         this.eliminandoId = null;
         this.pacientePendiente = null;
         this.cargarPacientes();
       },
-      error: () => {
+      error: err => {
+        if (!this.contexto.vigente(clave)) return;
         this.eliminandoId = null;
         this.pacientePendiente = null;
-        this.error = 'No se pudo desactivar el paciente.';
+        this.errorOperacion = this.apiErrors.messageFor(err, 'No se pudo desactivar el paciente.');
       },
-    });
+    }));
   }
 }

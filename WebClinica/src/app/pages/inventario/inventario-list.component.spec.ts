@@ -5,6 +5,7 @@ import { CatalogoMedicamentoResponse } from '../../core/models/inventario.model'
 import { InventarioService } from '../../core/services/inventario.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { InventarioListComponent } from './inventario-list.component';
+import { AuthSessionService } from '../../core/services/auth-session.service';
 
 describe('InventarioListComponent WEB-UX-01C2', () => {
   let fixture: ComponentFixture<InventarioListComponent>;
@@ -18,6 +19,7 @@ describe('InventarioListComponent WEB-UX-01C2', () => {
       imports: [InventarioListComponent],
       providers: [
         provideRouter([]),
+        { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
         { provide: InventarioService, useValue: {
           listarCatalogo: () => of({ items: [medicamento], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 }),
           listarCategorias: () => of({ items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 }),

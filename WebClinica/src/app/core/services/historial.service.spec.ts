@@ -103,6 +103,34 @@ describe('HistorialService: listado global de consultas', () => {
     });
   }
 
+  it('crea la prescripción con lote/cantidad por POST tratamientos sin emitir consumo ni modificar stock', () => {
+    const body = { idConsulta: 17, descripcion: 'Prescripción', fechaInicio: '2026-10-21',
+      fechaFin: null, indicaciones: null, idLote: 7, cantidad: 2 };
+    service.crearTratamiento(body).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/tratamientos`);
+    expect(request.request.method).toBe('POST'); expect(request.request.body).toEqual(body);
+    expect(request.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    request.flush({ ...body, idTratamiento: 9, idPaciente: 11, idMedico: 7 });
+    http.expectNone(req => req.url.includes('/consumos') || req.url.includes('/lotes-medicamento'));
+  });
+
+  it('permite crear un tratamiento sin lote ni cantidad sin invocar inventario', () => {
+    const body = { idConsulta: 17, descripcion: 'Reposo', fechaInicio: '2026-10-21',
+      fechaFin: null, indicaciones: null, idLote: null, cantidad: null };
+    service.crearTratamiento(body).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/tratamientos`);
+    expect(request.request.body).toEqual(body);
+    request.flush({ ...body, idTratamiento: 10, idPaciente: 11, idMedico: 7 });
+    http.expectNone(req => req.url.includes('/consumos') || req.url.includes('/lotes-medicamento'));
+  });
+
+  it('relee un tratamiento por su ID aunque no esté en la primera página de historial', () => {
+    service.obtenerTratamiento(101).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/tratamientos/101`);
+    expect(request.request.method).toBe('GET');
+    request.flush({ idTratamiento: 101, idLote: 7, cantidad: 2 });
+  });
+
   it('registra consumo clínico únicamente en el tratamiento indicado', () => {
     const response = {
       idMovimiento: 51,

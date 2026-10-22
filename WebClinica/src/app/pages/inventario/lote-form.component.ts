@@ -8,14 +8,15 @@ import {
   GuardarLoteMedicamentoRequest,
   ActualizarLoteMedicamentoRequest,
   LoteMedicamentoResponse,
-  MedicamentoResponse,
-  PagedResponse
+  MedicamentoResponse
 } from '../../core/models/inventario.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { Sucursal } from '../../core/models/catalogos.model';
 import { CatalogosService } from '../../core/services/catalogos.service';
+import { Subscription } from 'rxjs';
+import { cargarCatalogoInventario, ContextoInventario, fechaInventarioValida, idInventarioValido } from './inventario-ui';
 
 @Component({
     selector: 'app-lote-form',
@@ -25,8 +26,15 @@ import { CatalogosService } from '../../core/services/catalogos.service';
       <h2>{{ esEdicion ? 'Editar Lote' : 'Nuevo Lote' }}</h2>
 
       @if (error) { <div class="alert alert-danger">{{ error }}</div> }
+      @if (errorMedicamentos) { <div class="alert alert-danger" role="alert">{{ errorMedicamentos }}</div> }
+      @if (cargandoMedicamentos) { <p role="status">Cargando el catálogo completo de medicamentos...</p> }
+      @if (!cargandoMedicamentos && !errorMedicamentos && medicamentos.length === 0) {
+        <p class="alert alert-info">No hay medicamentos disponibles.</p>
+      }
+      <button type="button" class="btn btn-link" [disabled]="cargando || cargandoMedicamentos" (click)="cargarMedicamentos()">Recargar medicamentos</button>
 
       <form (ngSubmit)="guardar()" class="card p-4 shadow-sm">
+        <fieldset [disabled]="cargando || cargandoMedicamentos || !puedeGuardar">
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label">Medicamento *</label>
@@ -34,7 +42,7 @@ import { CatalogosService } from '../../core/services/catalogos.service';
                     name="idMedicamento" required>
               <option [ngValue]="0">Seleccione...</option>
               @for (m of medicamentosDisponibles; track m.idMedicamento) {
-                <option [ngValue]="m.idMedicamento">{{ m.codigo }} - {{ m.nombre }}</option>
+                <option [ngValue]="m.idMedicamento">{{ m.codigo }} - {{ m.nombre }} · #{{ m.idMedicamento }}{{ m.activo ? '' : ' (inactivo, relación histórica)' }}</option>
               }
             </select>
           </div>
@@ -78,11 +86,12 @@ import { CatalogosService } from '../../core/services/catalogos.service';
         </div>
 
         <div class="d-flex gap-2 mt-4">
-          <button type="submit" class="btn btn-success" [disabled]="cargando || !puedeGuardar">
+          <button type="submit" class="btn btn-success" [disabled]="cargando || cargandoMedicamentos || !!errorMedicamentos || !puedeGuardar || !registroCargado">
             {{ cargando ? 'Guardando...' : 'Guardar' }}
           </button>
           <a routerLink="/inventario/lotes" class="btn btn-secondary">Cancelar</a>
         </div>
+        </fieldset>
       </form>
     </div>
   `
@@ -94,6 +103,12 @@ export class LoteFormComponent implements OnInit {
   private apiErrors = inject(ApiErrorService);
   private permisos = inject(PermisosService);
   private catalogos = inject(CatalogosService);
+  private contexto = new ContextoInventario(['LotesMedicamento', 'Medicamentos', 'Sucursales']);
+  private medicamentosSolicitud?: Subscription;
+  private revisionMedicamentos = 0;
+  cargandoMedicamentos = false;
+  errorMedicamentos = '';
+  registroCargado = false;
 
   esEdicion = false;
   cargando = false;
@@ -133,15 +148,35 @@ export class LoteFormComponent implements OnInit {
     );
   }
 
-  ngOnInit() {
-    this.cargarMedicamentos();
+  constructor() {
+    this.contexto.observar(() => {
+      this.medicamentosSolicitud?.unsubscribe();
+      this.cargando = false; this.medicamentos = []; this.sucursales = [];
+      this.cargandoSucursales = this.sucursalesCargadas = false;
+      this.cantidadEsperada = this.idMedicamentoOriginal = null;
+      this.form = { idMedicamento: 0, numeroLote: '', fechaIngreso: '', fechaVencimiento: '', cantidadDisponible: 0, idSucursal: null, observaciones: null };
+      this.ngOnInit();
+    });
+  }
 
+  ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
+    this.esEdicion = id !== null;
+    this.registroCargado = !this.esEdicion;
+    this.error = '';
+    this.cargarMedicamentos();
     if (id) {
-      this.esEdicion = true;
+      const clave = this.contexto.clave();
+      if (!idInventarioValido(+id) || !this.contexto.vigente(clave) || !this.permisos.puedeConsultar('LotesMedicamento')) {
+        this.error = 'No se puede consultar el lote con el identificador y permisos actuales.'; return;
+      }
       this.cargando = true;
-      this.service.obtenerLote(+id).subscribe({
+      this.contexto.agregar(this.service.obtenerLote(+id).subscribe({
         next: (lote: LoteMedicamentoResponse) => {
+          if (!this.contexto.vigente(clave)) return;
+          if (lote.idLote !== +id || !Number.isInteger(lote.cantidadDisponible) || lote.cantidadDisponible < 0) {
+            this.error = 'El lote devuelto no permite verificar su existencia original.'; this.cargando = false; return;
+          }
           this.form = {
             idMedicamento: lote.idMedicamento,
             numeroLote: lote.numeroLote,
@@ -154,22 +189,37 @@ export class LoteFormComponent implements OnInit {
           this.idMedicamentoOriginal = lote.idMedicamento;
           this.cantidadEsperada = lote.cantidadDisponible;
           this.cargando = false;
+          this.registroCargado = true;
         },
-        error: () => {
-          this.error = 'Lote no encontrado';
+        error: err => {
+          if (!this.contexto.vigente(clave)) return;
+          this.error = this.apiErrors.messageFor(err, 'Lote no encontrado o sesión expirada');
           this.cargando = false;
         }
-      });
+      }));
     }
   }
 
   cargarMedicamentos() {
-    this.service.listarMedicamentos(1, 100).subscribe({
-      next: (res: PagedResponse<MedicamentoResponse>) => {
-        this.medicamentos = res.items;
+    this.medicamentosSolicitud?.unsubscribe();
+    const revision = ++this.revisionMedicamentos, clave = this.contexto.clave();
+    this.medicamentos = []; this.errorMedicamentos = ''; this.cargandoMedicamentos = false;
+    if (!this.contexto.vigente(clave) || !this.permisos.puedeConsultar('Medicamentos')) {
+      this.errorMedicamentos = 'Se requiere permiso Medicamentos/Consultar vigente.'; return;
+    }
+    this.cargandoMedicamentos = true;
+    this.medicamentosSolicitud = cargarCatalogoInventario((p, t) => this.service.listarMedicamentos(p, t), m => m.idMedicamento).subscribe({
+      next: items => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionMedicamentos) return;
+        this.medicamentos = items; this.cargandoMedicamentos = false;
       },
-      error: () => console.error('Error cargando medicamentos')
+      error: err => {
+        if (!this.contexto.vigente(clave) || revision !== this.revisionMedicamentos) return;
+        this.errorMedicamentos = this.apiErrors.messageFor(err, 'No se pudo cargar el catálogo completo de medicamentos. Recargue el catálogo.');
+        this.cargandoMedicamentos = false;
+      },
     });
+    this.contexto.agregar(this.medicamentosSolicitud);
   }
 
   alCambiarCantidad() {
@@ -178,29 +228,36 @@ export class LoteFormComponent implements OnInit {
 
   cargarSucursales() {
     if (this.sucursalesCargadas || this.cargandoSucursales) return;
-    if (!this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)) {
+    const clave = this.contexto.clave();
+    if (!this.contexto.vigente(clave) || !this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)) {
       this.error = 'No tiene permiso para consultar las sucursales disponibles.';
       return;
     }
 
     this.cargandoSucursales = true;
-    this.catalogos.getSucursales().subscribe({
+    this.contexto.agregar(this.catalogos.getSucursales().subscribe({
       next: items => {
+        if (!this.contexto.vigente(clave)) return;
         this.sucursales = items.filter(item => item.activa);
         this.sucursalesCargadas = true;
         this.cargandoSucursales = false;
       },
-      error: () => {
-        this.error = 'No fue posible cargar las sucursales.';
+      error: err => {
+        if (!this.contexto.vigente(clave)) return;
+        this.error = this.apiErrors.messageFor(err, 'No fue posible cargar las sucursales.');
         this.cargandoSucursales = false;
       },
-    });
+    }));
   }
 
   guardar() {
     this.error = '';
 
     if (this.cargando || !this.puedeGuardar) return;
+    const clave = this.contexto.clave();
+    if (!this.contexto.vigente(clave) || !this.registroCargado || this.cargandoMedicamentos || this.errorMedicamentos) {
+      this.error = 'Verifique la sesión, el lote y el catálogo antes de guardar.'; return;
+    }
 
     if (!this.medicamentosDisponibles.some(
       item => item.idMedicamento === this.form.idMedicamento,
@@ -208,9 +265,22 @@ export class LoteFormComponent implements OnInit {
       this.error = 'Seleccione un medicamento disponible.';
       return;
     }
+    if (!idInventarioValido(this.form.idMedicamento) || !this.form.numeroLote?.trim() || this.form.numeroLote.trim().length > 50 ||
+      !Number.isInteger(this.form.cantidadDisponible) || this.form.cantidadDisponible < 0 || this.form.cantidadDisponible > 2_147_483_647 ||
+      !fechaInventarioValida(this.form.fechaIngreso) || !fechaInventarioValida(this.form.fechaVencimiento) ||
+      this.form.fechaVencimiento <= this.form.fechaIngreso ||
+      (!this.esEdicion && this.form.cantidadDisponible > 0 && this.form.fechaVencimiento <= new Date().toISOString().slice(0, 10))) {
+      this.error = 'Indique número de lote, cantidad entera no negativa y fechas válidas; vencimiento posterior al ingreso y futuro para existencia inicial.'; return;
+    }
+    const observaciones = this.form.observaciones?.trim() ?? '';
+    if (observaciones.length > 300 || (!this.esEdicion && this.form.cantidadDisponible > 0 &&
+      ('Existencia inicial | ' + observaciones).length > 300)) {
+      this.error = 'La justificación excede el límite permitido por el registro de inventario.'; return;
+    }
 
     if (this.requiereTrazabilidad &&
         (!this.form.idSucursal
+          || !this.permisos.puedeConsultar('Sucursales')
           || !this.sucursales.some(item => item.idSucursal === this.form.idSucursal && item.activa)
           || !this.form.observaciones?.trim())) {
       this.error = 'La sucursal y la justificación son obligatorias cuando cambia la existencia.';
@@ -219,6 +289,7 @@ export class LoteFormComponent implements OnInit {
 
     if (this.requiereTrazabilidad
       && !confirm('¿Confirmas el cambio de existencia de este lote?')) return;
+    if (!this.contexto.vigente(clave)) return;
 
     this.cargando = true;
 
@@ -233,21 +304,23 @@ export class LoteFormComponent implements OnInit {
         ...this.form,
         cantidadEsperada: this.cantidadEsperada
       };
-      this.service.actualizarLote(id, request).subscribe({
-        next: () => this.router.navigate(['/inventario/lotes']),
+      this.contexto.agregar(this.service.actualizarLote(id, request).subscribe({
+        next: () => { if (this.contexto.vigente(clave)) this.router.navigate(['/inventario/lotes']); },
         error: (err: HttpErrorResponse) => {
+          if (!this.contexto.vigente(clave)) return;
           this.error = this.apiErrors.messageFor(err, 'No fue posible actualizar el lote.');
           this.cargando = false;
         }
-      });
+      }));
     } else {
-      this.service.crearLote(this.form).subscribe({
-        next: () => this.router.navigate(['/inventario/lotes']),
+      this.contexto.agregar(this.service.crearLote({ ...this.form }).subscribe({
+        next: () => { if (this.contexto.vigente(clave)) this.router.navigate(['/inventario/lotes']); },
         error: (err: HttpErrorResponse) => {
+          if (!this.contexto.vigente(clave)) return;
           this.error = this.apiErrors.messageFor(err, 'No fue posible crear el lote.');
           this.cargando = false;
         }
-      });
+      }));
     }
   }
 }

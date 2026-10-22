@@ -97,6 +97,10 @@ export class HistorialService {
     return this.http.post<TratamientoResponseDto>(`${this.apiUrl}/tratamientos`, request);
   }
 
+  obtenerTratamiento(id: number): Observable<TratamientoResponseDto> {
+    return this.http.get<TratamientoResponseDto>(`${this.apiUrl}/tratamientos/${id}`);
+  }
+
   actualizarTratamiento(id: number, request: TratamientoUpdateDto): Observable<TratamientoResponseDto> {
     return this.http.put<TratamientoResponseDto>(`${this.apiUrl}/tratamientos/${id}`, request);
   }
