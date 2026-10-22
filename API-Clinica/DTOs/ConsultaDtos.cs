@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace API_Clinica.DTOs;
 
@@ -34,6 +35,28 @@ public abstract class ConsultaDatosRequest
     public double? PresionSistolica { get; init; }
 
     public int? AlturaCm { get; init; }
+
+    private decimal? temperaturaC;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public decimal? TemperaturaC
+    {
+        get => temperaturaC;
+        init { temperaturaC = value; TemperaturaCEnviada = true; }
+    }
+
+    private short? frecuenciaCardiaca;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public short? FrecuenciaCardiaca
+    {
+        get => frecuenciaCardiaca;
+        init { frecuenciaCardiaca = value; FrecuenciaCardiacaEnviada = true; }
+    }
+
+    [JsonIgnore]
+    public bool TemperaturaCEnviada { get; private set; }
+
+    [JsonIgnore]
+    public bool FrecuenciaCardiacaEnviada { get; private set; }
 }
 
 public sealed class ConsultaCreateDto : ConsultaDatosRequest;
@@ -54,10 +77,23 @@ public sealed class ConsultaFiltroDto
 
 public sealed record ConsultaListadoDto(
     int IdConsulta, int IdPaciente, int IdMedico, int IdSucursal,
-    int? IdClinica, DateTime FechaConsulta);
+    int? IdClinica, DateTime FechaConsulta)
+{
+    public string? EstadoConsulta { get; init; }
+    public string? MotivoConsulta { get; init; }
+    public string? NombrePaciente { get; init; }
+    public string? NombreMedico { get; init; }
+    public string? NombreSucursal { get; init; }
+    public string? NombreClinica { get; init; }
+}
 
 public sealed record ConsultaDetalleDto(
     int IdConsulta, int IdPaciente, int IdMedico, int IdSucursal,
     int? IdClinica, DateTime FechaConsulta, string? MotivoConsulta,
     string? Sintomas, string? Observaciones, double? PesoLb,
-    double? PresionDiastolica, double? PresionSistolica, int? AlturaCm);
+    double? PresionDiastolica, double? PresionSistolica, int? AlturaCm)
+{
+    public string? EstadoConsulta { get; init; }
+    public decimal? TemperaturaC { get; init; }
+    public short? FrecuenciaCardiaca { get; init; }
+}

@@ -13,6 +13,9 @@ import { HistorialService } from '../../core/services/historial.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaDetalleComponent } from './consulta-detalle.component';
+import { PacientesService } from '../../core/services/paciente.service';
+import { EmpleadosService } from '../../core/services/empleado.service';
+import { CatalogosService } from '../../core/services/catalogos.service';
 import { HistorialPacienteComponent } from './historial-paciente.component';
 
 const consulta = (idConsulta = 17, idPaciente = 11): ConsultaDetalleDto => ({
@@ -62,6 +65,9 @@ describe('ConsultaDetalleComponent CLOSE-07D', () => {
     TestBed.configureTestingModule({
       imports: [ConsultaDetalleComponent],
       providers: [provideRouter([]), { provide: InventarioService, useValue: {} },
+        { provide: PacientesService, useValue: { obtener: () => of({ idPaciente: 11, nombres: 'Ana', apellidos: 'López' }) } },
+        { provide: EmpleadosService, useValue: { obtener: () => of({ idEmpleado: 7, nombres: 'Luis', apellidos: 'Pérez' }) } },
+        { provide: CatalogosService, useValue: { obtenerSucursal: () => of({ idSucursal: 3, nombre: 'Centro' }), obtenerClinica: () => of(null) } },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: {
           get: (key: string) => key === 'id' ? '11' : '17',
         } } } },

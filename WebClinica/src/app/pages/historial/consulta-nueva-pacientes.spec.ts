@@ -20,6 +20,7 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
   let component: ConsultaNuevaComponent;
   let listar: jasmine.Spy<(nombre?: string, activo?: boolean, page?: number, size?: number) => Observable<PagedResponse<PacienteListadoResponse>>>;
   let obtener: jasmine.Spy<(id: number) => Observable<PacienteResponse>>;
+  let obtenerFoto: jasmine.Spy<(id: number) => Observable<Blob>>;
   let crear: jasmine.Spy<(request: ConsultaCreateDto) => Observable<ConsultaDetalleDto>>;
   let navegar: jasmine.Spy;
   let queryId: string | null;
@@ -49,13 +50,14 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     token.set('sesion-a'); consultarPacientes.set(true); crearConsultas.set(true); consultarClinicas.set(false);
     listar = jasmine.createSpy('listarPacientes').and.callFake((_n, _a, page = 1) => of(pagina(page)));
     obtener = jasmine.createSpy('obtenerPaciente').and.callFake(id => of(paciente(id)));
+    obtenerFoto = jasmine.createSpy('obtenerFoto').and.returnValue(of(new Blob(['foto'], { type: 'image/png' })));
     crear = jasmine.createSpy('crearConsulta').and.callFake(request => of(respuesta(request)));
     await TestBed.configureTestingModule({ imports: [ConsultaNuevaComponent], providers: [
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: {
         paramMap: { get: () => null }, queryParamMap: { get: () => queryId },
       } } },
-      { provide: PacientesService, useValue: { listar, obtener } },
+      { provide: PacientesService, useValue: { listar, obtener, obtenerFoto } },
       { provide: HistorialService, useValue: { crearConsulta: crear } },
       { provide: AuthSessionService, useValue: {
         currentUser: usuario, isAuthenticated: () => !!usuario() && !!token(),
@@ -99,6 +101,83 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     expect(JSON.stringify(nueva?.data)).toContain('Consultas');
   });
 
+  it('organiza el formulario en tarjetas accesibles y conserva todos los campos del DTO', () => {
+    abrir(); fixture.detectChanges();
+    const view = fixture.nativeElement as HTMLElement;
+    expect(view.querySelector('h1')?.textContent).toContain('Nueva Consulta');
+    expect(view.querySelector('header a[href="/consultas"]')?.textContent).toContain('Volver al listado');
+    for (const [id, title] of [
+      ['consulta-paciente-title', 'Paciente'],
+      ['consulta-datos-title', 'Datos de la consulta'],
+      ['consulta-evaluacion-title', 'Evaluación inicial'],
+      ['consulta-acciones-title', 'Acciones'],
+    ]) {
+      const section = view.querySelector(`section[aria-labelledby="${id}"]`);
+      expect(section).not.toBeNull();
+      expect(section?.querySelector(`#${id}`)?.textContent).toContain(title);
+    }
+    for (const name of ['idMedico', 'idSucursal', 'fechaConsulta', 'motivoConsulta', 'sintomas',
+      'observaciones', 'pesoLb', 'alturaCm', 'presionSistolica', 'presionDiastolica']) {
+      expect(view.querySelector(`[name="${name}"]`)).withContext(name).not.toBeNull();
+    }
+    for (const name of ['motivoConsulta', 'sintomas', 'observaciones']) {
+      expect(view.querySelector<HTMLTextAreaElement>(`[name="${name}"]`)?.maxLength).toBe(300);
+    }
+    expect(view.querySelector('#consulta-datos-title + .row .col-md-6')).not.toBeNull();
+    expect(view.querySelector('#consulta-evaluacion-title + .row .col-12.col-md-6')).not.toBeNull();
+    expect(view.querySelector('form#consulta-nueva-form button[type="submit"]')?.textContent).toContain('Guardar consulta');
+    expect(crear).not.toHaveBeenCalled();
+  });
+
+  it('muestra identidad y estado sin consultar automáticamente la fotografía al seleccionar', () => {
+    abrir(); component.seleccionarPaciente(1); fixture.detectChanges();
+    const view = fixture.nativeElement as HTMLElement;
+    expect(view.querySelector('.consulta-nueva-page__patient')?.textContent).toContain('Ana Paciente 1');
+    expect(view.querySelector('.consulta-nueva-page__patient')?.textContent).toContain('Identificador interno: 1');
+    expect(view.querySelector('.consulta-nueva-page__patient .badge')?.textContent).toContain('Activo');
+    expect(obtenerFoto).not.toHaveBeenCalled();
+    expect(obtener).not.toHaveBeenCalled();
+  });
+
+  it('carga fotografía autenticada solo por acción explícita y revoca la URL al cambiar de paciente', () => {
+    const crearUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:paciente-1');
+    const revocarUrl = spyOn(URL, 'revokeObjectURL');
+    abrir(); component.seleccionarPaciente(1); fixture.detectChanges();
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.consulta-nueva-page__photo-button')!.click();
+    fixture.detectChanges();
+    expect(obtenerFoto).toHaveBeenCalledOnceWith(1);
+    expect(crearUrl).toHaveBeenCalled();
+    expect(component.fotoPacienteUrl).toBe('blob:paciente-1');
+    expect((fixture.nativeElement as HTMLElement).querySelector('img.consulta-nueva-page__avatar')).not.toBeNull();
+    component.seleccionarPaciente(2);
+    expect(component.fotoPacienteUrl).toBeNull();
+    expect(revocarUrl).toHaveBeenCalledOnceWith('blob:paciente-1');
+    expect(obtenerFoto).toHaveBeenCalledTimes(1);
+  });
+
+  it('informa foto ausente y descarta una descarga tardía tras cambiar de sesión', () => {
+    obtenerFoto.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+    abrir(); component.seleccionarPaciente(1); component.cargarFotoPaciente();
+    expect(component.avisoFoto).toContain('no tiene fotografía');
+    const pendiente = new Subject<Blob>();
+    obtenerFoto.and.returnValue(pendiente);
+    component.cargarFotoPaciente();
+    token.set('sesion-b'); fixture.detectChanges();
+    pendiente.next(new Blob(['foto'], { type: 'image/png' }));
+    expect(component.fotoPacienteUrl).toBeNull();
+    expect(pendiente.observed).toBeFalse();
+  });
+
+  it('no muestra una fotografía cuando el servidor niega su lectura', () => {
+    const crearUrl = spyOn(URL, 'createObjectURL');
+    obtenerFoto.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+    abrir(); component.seleccionarPaciente(1); component.cargarFotoPaciente(); fixture.detectChanges();
+    expect(component.errorFoto).toBeTruthy();
+    expect(component.fotoPacienteUrl).toBeNull();
+    expect(crearUrl).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('p[role="alert"]')?.textContent).toContain(component.errorFoto);
+  });
+
   it('no crea automáticamente ni acepta guardar sin paciente seleccionado', () => {
     abrir();
     expect(listar).toHaveBeenCalledWith(undefined, true, 1, 20);
@@ -117,6 +196,94 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     expect(obtener).toHaveBeenCalledWith(41);
     expect(crear).toHaveBeenCalledOnceWith(jasmine.objectContaining({ idPaciente: 41, idMedico: 2 }));
     expect(navegar).toHaveBeenCalledWith(['/historial', 41, 'consulta', 73]);
+  });
+
+  it('respeta la primera y última página incompleta del total real', () => {
+    abrir();
+    expect(component.paginaPacientes).toBe(1);
+    expect(component.totalPaginasPacientes).toBe(3);
+    expect(component.pacientesPagina.length).toBe(20);
+    component.cargarPacientes(3);
+    expect(component.paginaPacientes).toBe(3);
+    expect(component.pacientesPagina.map(item => item.idPaciente)).toEqual([41]);
+    const solicitudes = listar.calls.count();
+    component.cargarPacientes(4);
+    expect(listar).toHaveBeenCalledTimes(solicitudes);
+  });
+
+  it('no agrega una página ficticia cuando el total es múltiplo exacto', () => {
+    listar.and.callFake((_n, _a, page = 1) => of(pagina(page, 40)));
+    abrir();
+    expect(component.totalPaginasPacientes).toBe(2);
+    component.cargarPacientes(2);
+    expect(component.pacientesPagina.length).toBe(20);
+    expect(component.pacientesPagina[19].idPaciente).toBe(40);
+    const solicitudes = listar.calls.count();
+    component.cargarPacientes(3);
+    expect(listar).toHaveBeenCalledTimes(solicitudes);
+  });
+
+  it('acepta total cero sin mostrar pacientes ni una página siguiente', () => {
+    listar.and.returnValue(of(pagina(1, 0)));
+    abrir();
+    expect(component.errorPacientes).toBe('');
+    expect(component.totalPacientes).toBe(0);
+    expect(component.totalPaginasPacientes).toBe(0);
+    expect(component.pacientesPagina).toEqual([]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('0 pacientes');
+    expect(fixture.nativeElement.textContent).not.toContain('Página 1 de 0');
+    component.cargarPacientes(2);
+    expect(listar).toHaveBeenCalledTimes(1);
+    expect(crear).not.toHaveBeenCalled();
+  });
+
+  it('rechaza una página que deja de existir tras cambiar el total del catálogo', () => {
+    abrir();
+    listar.and.returnValue(of(pagina(2, 20)));
+    component.cargarPacientes(2);
+    expect(component.errorPacientes).toContain('paginación incoherente');
+    expect(component.pacientesPagina).toEqual([]);
+    expect(component.totalPaginasPacientes).toBe(0);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Catálogo no disponible');
+    expect(fixture.nativeElement.textContent).not.toContain('Página 1 de 0');
+    const solicitudes = listar.calls.count();
+    component.cargarPacientes(3);
+    expect(listar).toHaveBeenCalledTimes(solicitudes);
+  });
+
+  it('rechaza metadatos contradictorios aunque los elementos parezcan válidos', () => {
+    listar.and.returnValue(of({ ...pagina(1, 21), totalPages: 1 }));
+    abrir();
+    expect(component.errorPacientes).toContain('paginación incoherente');
+    expect(component.pacientesPagina).toEqual([]);
+    expect(component.totalPaginasPacientes).toBe(0);
+  });
+
+  it('actualiza la búsqueda y descarta una respuesta anterior pendiente', () => {
+    abrir();
+    const pendiente = new Subject<PagedResponse<PacienteListadoResponse>>();
+    listar.and.returnValue(pendiente);
+    component.cargarPacientes(2);
+    component.busquedaPaciente = 'Ana';
+    listar.and.returnValue(of(pagina(1, 1)));
+    component.cargarPacientes(1);
+    expect(listar.calls.mostRecent().args).toEqual(['Ana', true, 1, 20]);
+    pendiente.next(pagina(2));
+    expect(component.paginaPacientes).toBe(1);
+    expect(component.totalPacientes).toBe(1);
+    expect(component.pacientesPagina.map(item => item.idPaciente)).toEqual([1]);
+  });
+
+  it('conserva el error HTTP y no expone paginación anterior', () => {
+    abrir();
+    listar.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    component.cargarPacientes(2);
+    expect(component.errorPacientes).toBeTruthy();
+    expect(component.pacientesPagina).toEqual([]);
+    expect(component.totalPaginasPacientes).toBe(0);
+    expect(component.totalPacientes).toBe(0);
   });
 
   it('admite más de una consulta para el mismo paciente existente sin crear pacientes', () => {
@@ -166,6 +333,8 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     listar.and.returnValue(of({ ...pagina(1), items: [{ idPaciente: 1, nombres: 'Ana', apellidos: 'Paz', activo: false }] }));
     abrir(); component.seleccionarPaciente(1); component.guardar();
     expect(component.errorPacientes).toContain('paginación incoherente');
+    expect(component.totalPaginasPacientes).toBe(0);
+    expect(component.pacienteSeleccionado).toBeNull();
     expect(crear).not.toHaveBeenCalled();
   });
 

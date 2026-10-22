@@ -720,11 +720,25 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasColumnName("Observaciones")
                 .HasColumnType("nvarchar(300)")
                 .IsRequired(false);
+            entity.Property(e => e.EstadoConsulta)
+                .HasColumnName("EstadoConsulta")
+                .HasColumnType("nvarchar(30)")
+                .HasMaxLength(30)
+                .IsRequired(false);
             entity.Property(e => e.IdClinica).HasColumnType("int");
             entity.Property(e => e.PesoLb).HasColumnType("float");
             entity.Property(e => e.PresionSistolica).HasColumnType("float");
             entity.Property(e => e.PresionDiastolica).HasColumnType("float");
             entity.Property(e => e.AlturaCm).HasColumnType("int");
+            entity.Property(e => e.TemperaturaC)
+                .HasColumnName("TemperaturaC")
+                .HasColumnType("decimal(4,1)")
+                .HasPrecision(4, 1)
+                .IsRequired(false);
+            entity.Property(e => e.FrecuenciaCardiaca)
+                .HasColumnName("FrecuenciaCardiaca")
+                .HasColumnType("smallint")
+                .IsRequired(false);
             entity.HasOne<Paciente>()
                 .WithMany()
                 .HasForeignKey(e => e.IdPaciente)

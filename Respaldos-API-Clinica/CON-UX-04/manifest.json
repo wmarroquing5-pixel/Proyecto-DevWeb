@@ -1,0 +1,36 @@
+{
+  "createdUtc": "2026-10-22T16:02:06.1928460Z",
+  "root": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "files": [
+    {
+      "path": "WebClinica/src/app/core/models/historial.model.ts",
+      "size": 5705,
+      "sha256": "DDB55E0F08367B093810FC7477885A436EE8ECA316FCA2EA33ACE8FC7B07C41F"
+    },
+    {
+      "path": "WebClinica/src/app/core/services/historial.service.ts",
+      "size": 7855,
+      "sha256": "1A1CDC2E2A79FB7E89504C2886A0DA89C020F96E820ED7F4B6145376FBEAB78A"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consultas-list.component.ts",
+      "size": 23865,
+      "sha256": "7514143EDEF43C5518588F6E590803F2C8E716F7C30EB273D11612F72AD64E76"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consultas-list.component.html",
+      "size": 16531,
+      "sha256": "344841A613E0E2014E8ED4562D3D1B4A11D1C0E3F63937935D5165876ACBA876"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+      "size": 11274,
+      "sha256": "8DDC0717E16F371032CDECA094513056B8BBE3994B038E9F95942855098AB498"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consultas-list-conux02.spec.ts",
+      "size": 17179,
+      "sha256": "A515D85D093CB811F2B3ECD13F10FD7D20259A25C35266066ECA1E1EC38FEB4E"
+    }
+  ]
+}

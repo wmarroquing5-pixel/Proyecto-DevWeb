@@ -1,0 +1,17 @@
+ M API-Clinica.Tests/ConsultasTests.cs
+ M API-Clinica/DTOs/ConsultaDtos.cs
+ M API-Clinica/Services/ConsultaService.cs
+ M WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts
+ M WebClinica/src/app/pages/historial/consulta-detalle.component.ts
+ M WebClinica/src/app/pages/historial/consultas-list.component.html
+ M WebClinica/src/app/pages/historial/consultas-list.component.spec.ts
+ M WebClinica/src/app/pages/historial/consultas-list.component.ts
+ M WebClinica/src/app/pages/historial/historial-close07d.spec.ts
+?? Respaldos-API-Clinica/API-CON-01A/
+?? Respaldos-API-Clinica/CON-UX-01/
+?? Respaldos-API-Clinica/CON-UX-02/
+?? Respaldos-API-Clinica/CON-UX-03A/
+?? Respaldos-API-Clinica/CON-UX-03B/
+?? Respaldos-API-Clinica/CON-UX-04/
+?? WebClinica/src/app/pages/historial/consulta-detalle-conux01.spec.ts
+?? WebClinica/src/app/pages/historial/consultas-list-conux02.spec.ts

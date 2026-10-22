@@ -1,0 +1,20 @@
+{
+  "createdAt": "2026-10-22T10:28:10.1608533-06:00",
+  "files": [
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+      "bytes": 31824,
+      "sha256": "A81F92A212EBA5519B143A4605861024BF4EB3CA50160F199D62FD71DF7691E6"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+      "bytes": 25638,
+      "sha256": "CCD2C07357ADB9B27A821D91810987F239CF2871B44B3BD013BCBE6AA3E1CD87"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+      "bytes": 13890,
+      "sha256": "014C38918C1ED60D2492320699548A2B78F176BD53C8B6534D11B1713B7846F2"
+    }
+  ]
+}

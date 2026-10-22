@@ -1,0 +1,279 @@
+<div class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>Gestión de Consultas</h1>
+      <p class="page-header__subtitle">Administra consultas médicas y accede al expediente clínico del paciente.</p>
+    </div>
+    @if (permisos.puedeCrear(MODULOS_PERMISO.CONSULTAS) &&
+         permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES) &&
+         permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)) {
+      <a routerLink="/consultas/nueva" class="btn btn-primary" title="Crear consulta">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i> Nueva consulta
+      </a>
+    }
+  </header>
+
+  <form class="ui-card ui-form consultas-filtros mb-4" aria-label="Filtros de consultas" (ngSubmit)="buscar()">
+    <div class="row g-3">
+      <div class="col-12 col-sm-6 col-xl-3">
+        <label class="form-label" for="consulta-id-paciente">Paciente</label>
+        @if (permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES) && !errorPacientes) {
+          <div class="input-group mb-2">
+            <input id="consulta-buscar-paciente" name="buscarPaciente" type="search" class="form-control"
+                   [(ngModel)]="busquedaPaciente" maxlength="100" placeholder="Nombre o apellido"
+                   (keydown.enter)="cargarPacientes(1); $event.preventDefault()" aria-label="Buscar paciente por nombre">
+            <button type="button" class="btn btn-outline-primary" (click)="cargarPacientes(1)"
+                    [disabled]="cargandoPacientes" aria-label="Buscar en el catálogo de pacientes">
+              <i class="bi bi-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <select id="consulta-id-paciente" name="idPaciente" class="form-select"
+                  [ngModel]="filtros.idPaciente" (ngModelChange)="seleccionarPaciente($event)"
+                  [disabled]="cargandoPacientes">
+            <option [ngValue]="null">Todos los pacientes</option>
+            @if (pacienteSeleccionado && !pacientesPagina.includes(pacienteSeleccionado)) {
+              <option [ngValue]="pacienteSeleccionado.idPaciente">{{ pacienteSeleccionado.nombres }} {{ pacienteSeleccionado.apellidos }} · ID {{ pacienteSeleccionado.idPaciente }}</option>
+            } @else if (filtros.idPaciente && !pacienteSeleccionado && !cargandoPacientes) {
+              <option [ngValue]="filtros.idPaciente">Paciente ID {{ filtros.idPaciente }} · nombre no disponible</option>
+            }
+            @for (paciente of pacientesPagina; track paciente.idPaciente) {
+              <option [ngValue]="paciente.idPaciente">{{ paciente.nombres }} {{ paciente.apellidos }} · ID {{ paciente.idPaciente }}</option>
+            }
+          </select>
+          @if (cargandoPacientes) { <small class="consultas-filtros__hint" role="status">Cargando pacientes…</small> }
+          @else if (!pacientesPagina.length) { <small class="consultas-filtros__hint">No hay pacientes en esta búsqueda.</small> }
+          @if (paginasPacientes > 1) {
+            <div class="consultas-filtros__pager" aria-label="Páginas de pacientes">
+              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarPacientes(paginaPacientes - 1)" [disabled]="cargandoPacientes || paginaPacientes <= 1">Anterior</button>
+              <span>Página {{ paginaPacientes }} de {{ paginasPacientes }}</span>
+              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarPacientes(paginaPacientes + 1)" [disabled]="cargandoPacientes || paginaPacientes >= paginasPacientes">Siguiente</button>
+            </div>
+          }
+        } @else {
+          <input id="consulta-id-paciente" name="idPaciente" type="number" min="1" step="1"
+                 class="form-control" [(ngModel)]="filtros.idPaciente" placeholder="ID de paciente">
+          <small class="consultas-filtros__hint" [attr.role]="errorPacientes ? 'alert' : null">{{ errorPacientes || 'Sin Pacientes/Consultar: filtro por ID.' }}</small>
+        }
+      </div>
+      <div class="col-12 col-sm-6 col-xl-3">
+        <label class="form-label" for="consulta-id-medico">Médico</label>
+        @if (permisos.puedeConsultar(MODULOS_PERMISO.EMPLEADOS) && !errorMedicos) {
+          <div class="input-group mb-2">
+            <input id="consulta-buscar-medico" name="buscarMedico" type="search" class="form-control"
+                   [(ngModel)]="busquedaMedico" maxlength="100" placeholder="Nombre o apellido"
+                   (keydown.enter)="cargarMedicos(1); $event.preventDefault()" aria-label="Buscar médico por nombre">
+            <button type="button" class="btn btn-outline-primary" (click)="cargarMedicos(1)"
+                    [disabled]="cargandoMedicos" aria-label="Buscar en el catálogo de médicos">
+              <i class="bi bi-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <select id="consulta-id-medico" name="idMedico" class="form-select"
+                  [ngModel]="filtros.idMedico" (ngModelChange)="seleccionarMedico($event)"
+                  [disabled]="cargandoMedicos">
+            <option [ngValue]="null">Todos los médicos</option>
+            @if (medicoSeleccionado && !medicosPagina.includes(medicoSeleccionado)) {
+              <option [ngValue]="medicoSeleccionado.idEmpleado">{{ medicoSeleccionado.nombres }} {{ medicoSeleccionado.apellidos }} · ID {{ medicoSeleccionado.idEmpleado }}</option>
+            } @else if (filtros.idMedico && !medicoSeleccionado && !cargandoMedicos) {
+              <option [ngValue]="filtros.idMedico">Médico ID {{ filtros.idMedico }} · nombre no disponible</option>
+            }
+            @for (medico of medicosPagina; track medico.idEmpleado) {
+              <option [ngValue]="medico.idEmpleado">{{ medico.nombres }} {{ medico.apellidos }} · ID {{ medico.idEmpleado }}</option>
+            }
+          </select>
+          @if (cargandoMedicos) { <small class="consultas-filtros__hint" role="status">Cargando médicos…</small> }
+          @else if (!medicosPagina.length) { <small class="consultas-filtros__hint">No hay médicos en esta búsqueda.</small> }
+          @if (paginasMedicos > 1) {
+            <div class="consultas-filtros__pager" aria-label="Páginas de médicos">
+              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarMedicos(paginaMedicos - 1)" [disabled]="cargandoMedicos || paginaMedicos <= 1">Anterior</button>
+              <span>Página {{ paginaMedicos }} de {{ paginasMedicos }}</span>
+              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarMedicos(paginaMedicos + 1)" [disabled]="cargandoMedicos || paginaMedicos >= paginasMedicos">Siguiente</button>
+            </div>
+          }
+        } @else {
+          <input id="consulta-id-medico" name="idMedico" type="number" min="1" step="1"
+                 class="form-control" [(ngModel)]="filtros.idMedico" placeholder="ID de médico">
+          <small class="consultas-filtros__hint" [attr.role]="errorMedicos ? 'alert' : null">{{ errorMedicos || 'Sin Empleados/Consultar: filtro por ID.' }}</small>
+        }
+      </div>
+      <div class="col-12 col-sm-6 col-xl-3">
+        <label class="form-label" for="consulta-id-sucursal">Sucursal</label>
+        @if (permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES) && !errorSucursales) {
+          <select id="consulta-id-sucursal" name="idSucursal" class="form-select"
+                  [(ngModel)]="filtros.idSucursal" [disabled]="cargandoSucursales">
+            <option [ngValue]="null">Todas las sucursales</option>
+            @if (filtros.idSucursal && !sucursalSeleccionadaDisponible()) {
+              <option [ngValue]="filtros.idSucursal">Sucursal ID {{ filtros.idSucursal }} · nombre no disponible</option>
+            }
+            @for (sucursal of sucursales; track sucursal.idSucursal) {
+              <option [ngValue]="sucursal.idSucursal">{{ sucursal.nombre }}</option>
+            }
+          </select>
+          @if (cargandoSucursales) { <small class="consultas-filtros__hint" role="status">Cargando sucursales…</small> }
+          @else if (!sucursales.length) { <small class="consultas-filtros__hint">No hay sucursales disponibles.</small> }
+        } @else {
+          <input id="consulta-id-sucursal" name="idSucursal" type="number" min="1" step="1"
+                 class="form-control" [(ngModel)]="filtros.idSucursal" placeholder="ID de sucursal">
+          <small class="consultas-filtros__hint" [attr.role]="errorSucursales ? 'alert' : null">{{ errorSucursales || 'Sin Sucursales/Consultar: filtro por ID.' }}</small>
+        }
+      </div>
+      <div class="col-12 col-sm-6 col-xl-3">
+        <label class="form-label" for="consulta-id-clinica">Clínica</label>
+        @if (permisos.puedeConsultar(MODULOS_PERMISO.CLINICAS) && !errorClinicas) {
+          <select id="consulta-id-clinica" name="idClinica" class="form-select"
+                  [(ngModel)]="filtros.idClinica" [disabled]="cargandoClinicas">
+            <option [ngValue]="null">Todas las clínicas</option>
+            @if (filtros.idClinica && !clinicaSeleccionadaDisponible()) {
+              <option [ngValue]="filtros.idClinica">Clínica ID {{ filtros.idClinica }} · nombre no disponible</option>
+            }
+            @for (clinica of clinicas; track clinica.idClinica) {
+              <option [ngValue]="clinica.idClinica">{{ clinica.nombreClinica }}</option>
+            }
+          </select>
+          @if (cargandoClinicas) { <small class="consultas-filtros__hint" role="status">Cargando clínicas…</small> }
+          @else if (!clinicas.length) { <small class="consultas-filtros__hint">No hay clínicas disponibles.</small> }
+        } @else {
+          <input id="consulta-id-clinica" name="idClinica" type="number" min="1" step="1"
+                 class="form-control" [(ngModel)]="filtros.idClinica" placeholder="ID de clínica">
+          <small class="consultas-filtros__hint" [attr.role]="errorClinicas ? 'alert' : null">{{ errorClinicas || 'Sin Clinicas/Consultar: filtro por ID.' }}</small>
+        }
+      </div>
+    </div>
+    <div class="consultas-filtros__divider"></div>
+    <div class="row g-3 align-items-end">
+      <div class="col-sm-6 col-lg-3">
+        <label class="form-label" for="consulta-desde">Fecha desde</label>
+        <input id="consulta-desde" name="desde" type="date" class="form-control"
+               [(ngModel)]="filtros.desde">
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <label class="form-label" for="consulta-hasta">Fecha hasta</label>
+        <input id="consulta-hasta" name="hasta" type="date" class="form-control"
+               [(ngModel)]="filtros.hasta">
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <label class="form-label" for="consulta-page-size">Registros por página</label>
+        <select id="consulta-page-size" name="pageSize" class="form-select"
+                [ngModel]="pageSize" (ngModelChange)="cambiarTamanoPagina($event)">
+          <option [ngValue]="10">10</option>
+          <option [ngValue]="20">20</option>
+          <option [ngValue]="50">50</option>
+          <option [ngValue]="100">100</option>
+        </select>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-3 consultas-filtros__actions">
+        <button type="submit" class="btn btn-primary" [disabled]="cargando">
+          <i class="bi bi-search" aria-hidden="true"></i> Buscar
+        </button>
+        <button type="button" class="btn btn-outline-secondary" (click)="limpiarFiltros()"
+                [disabled]="cargando">
+          <i class="bi bi-x-lg" aria-hidden="true"></i> Limpiar
+        </button>
+      </div>
+    </div>
+  </form>
+
+  @if (cargando) {
+    <div class="text-center py-5" role="status" aria-live="polite">
+      <div class="spinner-border text-primary" aria-hidden="true"></div>
+      <p class="text-muted mt-2 mb-0">Cargando consultas…</p>
+    </div>
+  } @else if (error) {
+    <div class="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2"
+         role="alert">
+      <span>{{ error }}</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="reintentar()">
+        Reintentar
+      </button>
+    </div>
+  } @else if (consultas.length === 0) {
+    <div class="alert alert-info text-center">No se encontraron consultas con los filtros aplicados.</div>
+  } @else {
+    <div class="ui-table-wrap">
+      <table class="table table-striped table-hover ui-table consultas-table">
+        <thead>
+          <tr>
+            <th scope="col" class="ui-col-index">No.</th>
+            <th scope="col">Paciente</th>
+            <th scope="col" class="consultas-evaluacion">Evaluación inicial</th>
+            <th scope="col" class="ui-col-date">Fecha</th>
+            <th scope="col">Médico</th>
+            <th scope="col">Sucursal</th>
+            <th scope="col">Clínica</th>
+            <th scope="col">Estado</th>
+            <th scope="col" class="ui-col-actions">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (consulta of consultas; track consulta.idConsulta; let index = $index) {
+            <tr>
+              <td class="ui-col-index">{{ correlativo(index, page, pageSize) }}</td>
+              <td>
+                <div class="consultas-identidad">
+                  @if (consulta.nombrePaciente !== null && fotoUrl(consulta.idPaciente); as foto) {
+                    <img class="consultas-avatar" [src]="foto" alt="" width="44" height="44">
+                  } @else {
+                    <span class="consultas-avatar consultas-avatar--empty" aria-hidden="true"><i class="bi bi-person-fill"></i></span>
+                  }
+                  <div>
+                    <span class="d-block fw-semibold">{{ nombrePaciente(consulta) }}</span>
+                  </div>
+                </div>
+              </td>
+              <td class="consultas-evaluacion">{{ evaluacionInicial(consulta) }}</td>
+              <td class="ui-col-date">{{ consulta.fechaConsulta | date:'dd/MM/yyyy HH:mm' }}</td>
+              <td>
+                <span class="d-block">{{ nombreMedico(consulta) }}</span>
+              </td>
+              <td>{{ nombreSucursal(consulta) }}</td>
+              <td>{{ nombreClinica(consulta) }}</td>
+              <td><span class="consultas-estado">{{ estadoConsulta(consulta) }}</span></td>
+              <td class="ui-col-actions">
+                <div class="consultas-actions">
+                  @if (permisos.puedeConsultar(MODULOS_PERMISO.HISTORIAL)) {
+                    <a class="btn btn-sm btn-outline-info" aria-label="Ver detalle de consulta" title="Abrir consulta"
+                       [routerLink]="['/historial', consulta.idPaciente, 'consulta', consulta.idConsulta]">
+                      <i class="bi bi-eye" aria-hidden="true"></i> Abrir consulta
+                    </a>
+                    <a class="btn btn-sm btn-outline-secondary" aria-label="Ver historial del paciente" title="Ver historial"
+                       [routerLink]="['/historial', consulta.idPaciente]">
+                      <i class="bi bi-journal-medical" aria-hidden="true"></i> Historial
+                    </a>
+                  }
+                  @if (permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)) {
+                    <a class="btn btn-sm btn-outline-primary" aria-label="Ver ficha médica del paciente" title="Ver ficha"
+                       [routerLink]="['/pacientes', consulta.idPaciente, 'ficha']">
+                      <i class="bi bi-person-vcard" aria-hidden="true"></i> Ficha médica
+                    </a>
+                  }
+                  @if (!permisos.puedeConsultar(MODULOS_PERMISO.HISTORIAL) &&
+                       !permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)) {
+                    <span class="text-muted">Sin acceso clínico</span>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mt-3">
+      <span>Total: {{ totalCount }} consultas</span>
+      <nav aria-label="Paginación de consultas">
+        <div class="consultas-pagination">
+          <button type="button" class="btn btn-outline-secondary btn-sm"
+                  (click)="cambiarPagina(page - 1)" [disabled]="page <= 1 || cargando">
+            Anterior
+          </button>
+          <span class="consultas-pagination__status" aria-current="page">
+            Página {{ page }} de {{ totalPages }}
+          </span>
+          <button type="button" class="btn btn-outline-secondary btn-sm"
+                  (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages || cargando">
+            Siguiente
+          </button>
+        </div>
+      </nav>
+    </div>
+  }
+</div>

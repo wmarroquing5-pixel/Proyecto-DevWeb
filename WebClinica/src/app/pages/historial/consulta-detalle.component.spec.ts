@@ -17,6 +17,9 @@ import { By } from '@angular/platform-browser';
 import { TratamientoFormComponent } from './tratamiento-form.component';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaDetalleComponent } from './consulta-detalle.component';
+import { PacientesService } from '../../core/services/paciente.service';
+import { EmpleadosService } from '../../core/services/empleado.service';
+import { CatalogosService } from '../../core/services/catalogos.service';
 
 describe('ConsultaDetalleComponent: consumo clínico', () => {
   let fixture: ComponentFixture<ConsultaDetalleComponent>;
@@ -80,6 +83,9 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
       imports: [ConsultaDetalleComponent],
       providers: [
         { provide: InventarioService, useValue: {} },
+        { provide: PacientesService, useValue: { obtener: () => of({ idPaciente: 11, nombres: 'Ana', apellidos: 'López' }) } },
+        { provide: EmpleadosService, useValue: { obtener: () => of({ idEmpleado: 7, nombres: 'Luis', apellidos: 'Pérez' }) } },
+        { provide: CatalogosService, useValue: { obtenerSucursal: () => of({ idSucursal: 3, nombre: 'Centro' }), obtenerClinica: () => of(null) } },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: {
           get: (key: string) => key === 'id' ? '11' : '17',
         } } } },

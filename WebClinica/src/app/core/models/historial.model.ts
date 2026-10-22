@@ -8,6 +8,12 @@ export interface ConsultaListadoDto {
   idSucursal: number;
   idClinica: number | null;
   fechaConsulta: string; // ISO DateTime
+  estadoConsulta?: string | null;
+  motivoConsulta?: string | null;
+  nombrePaciente?: string | null;
+  nombreMedico?: string | null;
+  nombreSucursal?: string | null;
+  nombreClinica?: string | null;
 }
 
 export interface ConsultaDetalleDto extends ConsultaListadoDto {

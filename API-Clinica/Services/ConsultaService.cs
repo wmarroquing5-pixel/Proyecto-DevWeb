@@ -15,15 +15,16 @@ public sealed class ConsultaService(
     ICommonParameterValidator parameterValidator,
     IAccesoActualService accesoActual) : IConsultaService
 {
-    private static readonly Expression<Func<Consulta, ConsultaListadoDto>> Listado = c =>
-        new ConsultaListadoDto(c.IdConsulta, c.IdPaciente, c.IdMedico,
-            c.IdSucursal, c.IdClinica, c.FechaConsulta);
-
     private static readonly Expression<Func<Consulta, ConsultaDetalleDto>> Detalle = c =>
         new ConsultaDetalleDto(c.IdConsulta, c.IdPaciente, c.IdMedico,
             c.IdSucursal, c.IdClinica, c.FechaConsulta, c.MotivoConsulta,
             c.Sintomas, c.Observaciones, c.PesoLb, c.PresionDiastolica,
-            c.PresionSistolica, c.AlturaCm);
+            c.PresionSistolica, c.AlturaCm)
+        {
+            EstadoConsulta = c.EstadoConsulta,
+            TemperaturaC = c.TemperaturaC,
+            FrecuenciaCardiaca = c.FrecuenciaCardiaca
+        };
 
     public async Task<PagedResponse<ConsultaListadoDto>> ListarAsync(
         ConsultaFiltroDto filtro, ClaimsPrincipal principal,
@@ -38,6 +39,14 @@ public sealed class ConsultaService(
         ValidarFiltroId(filtro.IdClinica, nameof(filtro.IdClinica));
         if (filtro.Desde.HasValue && filtro.Hasta.HasValue && filtro.Desde > filtro.Hasta)
             throw Invalid(nameof(filtro.Hasta), "Debe ser posterior o igual a Desde.");
+
+        var permisos = await accesoActual.ObtenerPermisosAsync(principal, cancellationToken);
+        bool PuedeConsultar(string modulo) => permisos.Any(p =>
+            p.PuedeConsultar && string.Equals(p.Modulo, modulo, StringComparison.OrdinalIgnoreCase));
+        var puedeVerPacientes = PuedeConsultar("Pacientes");
+        var puedeVerMedicos = PuedeConsultar("Empleados");
+        var puedeVerSucursales = PuedeConsultar("Sucursales");
+        var puedeVerClinicas = PuedeConsultar("Clinicas");
 
         var query = context.Consultas.AsNoTracking();
         if (idMedicoAutorizado.HasValue)
@@ -56,11 +65,47 @@ public sealed class ConsultaService(
             query = query.Where(c => c.FechaConsulta <= filtro.Hasta.Value);
 
         var total = await query.LongCountAsync(cancellationToken);
-        var items = await query.OrderBy(c => c.IdConsulta)
-            .Skip(pagination.Skip).Take(pagination.PageSize)
-            .Select(Listado).ToListAsync(cancellationToken);
+        var pagina = query.OrderBy(c => c.IdConsulta)
+            .Skip(pagination.Skip).Take(pagination.PageSize);
+        var items = await ProyectarListado(context, pagina, puedeVerPacientes,
+            puedeVerMedicos, puedeVerSucursales, puedeVerClinicas)
+            .ToListAsync(cancellationToken);
         return new(items, filtro.Page, filtro.PageSize, total);
     }
+
+    internal static IQueryable<ConsultaListadoDto> ProyectarListado(
+        ClinicaDbContext context, IQueryable<Consulta> pagina,
+        bool puedeVerPacientes, bool puedeVerMedicos,
+        bool puedeVerSucursales, bool puedeVerClinicas) =>
+        (
+            from consulta in pagina
+            join paciente in context.Pacientes.AsNoTracking()
+                on consulta.IdPaciente equals paciente.IdPaciente into pacientes
+            from paciente in pacientes.DefaultIfEmpty()
+            join medico in context.Empleados.AsNoTracking()
+                on consulta.IdMedico equals medico.IdEmpleado into medicos
+            from medico in medicos.DefaultIfEmpty()
+            join sucursal in context.Sucursales.AsNoTracking()
+                on consulta.IdSucursal equals sucursal.IdSucursal into sucursales
+            from sucursal in sucursales.DefaultIfEmpty()
+            join clinica in context.Clinicas.AsNoTracking()
+                on consulta.IdClinica equals (int?)clinica.IdClinica into clinicas
+            from clinica in clinicas.DefaultIfEmpty()
+            select new ConsultaListadoDto(consulta.IdConsulta, consulta.IdPaciente,
+                consulta.IdMedico, consulta.IdSucursal, consulta.IdClinica,
+                consulta.FechaConsulta)
+            {
+                EstadoConsulta = consulta.EstadoConsulta,
+                MotivoConsulta = consulta.MotivoConsulta,
+                NombrePaciente = puedeVerPacientes && paciente != null
+                    ? paciente.Nombres + " " + paciente.Apellidos : null,
+                NombreMedico = puedeVerMedicos && medico != null
+                    ? medico.Nombres + " " + medico.Apellidos : null,
+                NombreSucursal = puedeVerSucursales && sucursal != null
+                    ? sucursal.Nombre : null,
+                NombreClinica = puedeVerClinicas && clinica != null
+                    ? clinica.NombreClinica : null
+            });
 
     public async Task<ConsultaDetalleDto> ObtenerAsync(
         int id, ClaimsPrincipal principal, CancellationToken cancellationToken)
@@ -248,6 +293,10 @@ public sealed class ConsultaService(
         consulta.PresionSistolica = Finito(request.PresionSistolica,
             nameof(request.PresionSistolica));
         consulta.AlturaCm = request.AlturaCm;
+        if (request.TemperaturaCEnviada)
+            consulta.TemperaturaC = TemperaturaValida(request.TemperaturaC);
+        if (request.FrecuenciaCardiacaEnviada)
+            consulta.FrecuenciaCardiaca = FrecuenciaCardiacaValida(request.FrecuenciaCardiaca);
     }
 
     private async Task<bool> TieneRegistrosClinicosAsync(int id, CancellationToken ct) =>
@@ -288,6 +337,25 @@ public sealed class ConsultaService(
         return valor;
     }
 
+    private static decimal? TemperaturaValida(decimal? valor)
+    {
+        if (valor is < -999.9m or > 999.9m)
+            throw Invalid(nameof(ConsultaDatosRequest.TemperaturaC),
+                "Debe caber en decimal(4,1).");
+        if (valor.HasValue && decimal.Round(valor.Value, 1) != valor.Value)
+            throw Invalid(nameof(ConsultaDatosRequest.TemperaturaC),
+                "Se admite como máximo un decimal, sin redondeo.");
+        return valor;
+    }
+
+    private static short? FrecuenciaCardiacaValida(short? valor)
+    {
+        if (valor is < 0)
+            throw Invalid(nameof(ConsultaDatosRequest.FrecuenciaCardiaca),
+                "No puede ser negativa.");
+        return valor;
+    }
+
     private static AppValidationException Invalid(string campo, string mensaje) =>
         new("Datos de la consulta no válidos.",
             new Dictionary<string, string[]> { [campo] = [mensaje] });
@@ -296,5 +364,10 @@ public sealed class ConsultaService(
         new(c.IdConsulta, c.IdPaciente, c.IdMedico, c.IdSucursal,
             c.IdClinica, c.FechaConsulta, c.MotivoConsulta, c.Sintomas,
             c.Observaciones, c.PesoLb, c.PresionDiastolica,
-            c.PresionSistolica, c.AlturaCm);
+            c.PresionSistolica, c.AlturaCm)
+        {
+            EstadoConsulta = c.EstadoConsulta,
+            TemperaturaC = c.TemperaturaC,
+            FrecuenciaCardiaca = c.FrecuenciaCardiaca
+        };
 }

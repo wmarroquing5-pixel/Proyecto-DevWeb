@@ -1,0 +1,17 @@
+[
+  {
+    "path": "WebClinica/src/app/pages/historial/consultas-list.component.ts",
+    "bytes": 30150,
+    "sha256": "2FCBF38F997E2353AADC78E3FA39DB8382E39755E7AC100F931A5FB9D6BC362C"
+  },
+  {
+    "path": "WebClinica/src/app/pages/historial/consultas-list-conux02.spec.ts",
+    "bytes": 29006,
+    "sha256": "9617D6C2D68F262BF7B5510B600682C617F25D07D3EB782FFF8FEB10D58459B4"
+  },
+  {
+    "path": "WebClinica/src/app/pages/historial/consultas-list.component.html",
+    "bytes": 16067,
+    "sha256": "D0D8DCDA228072586BF0972A1C429D6E63DA821FF23606E6CB60246AA43FED68"
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "phase": "CON-UX-01",
+  "createdUtc": "2026-10-22T09:14:03.7379124Z",
+  "repository": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "files": [
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+      "bytes": 35900,
+      "sha256": "902A2EBFCE05D846AEC0F83F897B1693EEBE355D79DF6A08C9186C93E0044C55"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+      "bytes": 12448,
+      "sha256": "1FC6952FC047166B9F125853E485235319E785ACCB3EA53B6A3E41927F7B2B41"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/historial-close07d.spec.ts",
+      "bytes": 20166,
+      "sha256": "6EA7A6F77AD181D79FAD6C2C5FD032C00F373D68CFBF9C250736EF315B6E4C52"
+    }
+  ]
+}

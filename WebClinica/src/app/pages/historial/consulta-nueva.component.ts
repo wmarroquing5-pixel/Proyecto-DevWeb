@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, OnDestroy, OnInit } from '@angular/core';
 
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -19,59 +20,93 @@ import { Subscription } from 'rxjs';
     selector: 'app-consulta-nueva',
     imports: [RouterModule, FormsModule],
     template: `
-    <div class="container mt-4">
-      <h2>Nueva Consulta Médica</h2>
-      <p class="text-muted">Seleccione un paciente existente antes de registrar la consulta.</p>
+    <div class="container mt-4 consulta-nueva-page">
+      <header class="page-header consulta-nueva-page__header">
+        <div>
+          <h1>Nueva Consulta</h1>
+          <p class="page-header__subtitle">Registra una nueva atención médica para un paciente existente.</p>
+        </div>
+        <a routerLink="/consultas" class="btn btn-outline-secondary">Volver al listado</a>
+      </header>
 
       @if (error) { <div class="alert alert-danger">{{ error }}</div> }
 
-      <section class="card p-3 mb-3" aria-label="Selección de paciente">
-        <label for="buscar-paciente" class="form-label">Buscar paciente activo</label>
-        <div class="d-flex gap-2">
-          <input id="buscar-paciente" class="form-control" type="search" name="buscarPaciente"
-            [(ngModel)]="busquedaPaciente" maxlength="100" placeholder="Nombre o apellido"
-            [disabled]="cargando || cargandoPacientes">
-          <button type="button" class="btn btn-outline-primary" (click)="cargarPacientes(1)"
-            [disabled]="cargando || cargandoPacientes">Buscar</button>
+      <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-paciente-title">
+        <h2 id="consulta-paciente-title" class="h5 consulta-nueva-page__heading">Paciente</h2>
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-lg-6">
+            <label for="buscar-paciente" class="form-label">Buscar paciente activo</label>
+            <div class="input-group">
+              <input id="buscar-paciente" class="form-control" type="search" name="buscarPaciente"
+                [(ngModel)]="busquedaPaciente" maxlength="100" placeholder="Nombre o apellido"
+                [disabled]="cargando || cargandoPacientes">
+              <button type="button" class="btn btn-outline-primary" (click)="cargarPacientes(1)"
+                [disabled]="cargando || cargandoPacientes">Buscar</button>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <label for="paciente-consulta" class="form-label">Paciente <span class="text-danger" aria-hidden="true">*</span></label>
+            <select id="paciente-consulta" class="form-select" name="idPaciente" required
+              [ngModel]="idPaciente" (ngModelChange)="seleccionarPaciente($event)"
+              [disabled]="cargando || cargandoPacientes || (!pacientesPagina.length && !pacienteSeleccionado)">
+              <option [ngValue]="0">Seleccione...</option>
+              @if (pacienteSeleccionado && !seleccionPacienteEnPagina()) {
+                <option [ngValue]="pacienteSeleccionado.idPaciente">{{ pacienteSeleccionado.nombres }} {{ pacienteSeleccionado.apellidos }} · ID {{ pacienteSeleccionado.idPaciente }}</option>
+              }
+              @for (paciente of pacientesPagina; track paciente.idPaciente) {
+                <option [ngValue]="paciente.idPaciente">{{ paciente.nombres }} {{ paciente.apellidos }} · ID {{ paciente.idPaciente }}</option>
+              }
+            </select>
+          </div>
         </div>
-        @if (pacienteSeleccionado) {
-          <p class="mt-2 mb-1" role="status">Paciente seleccionado: {{ pacienteSeleccionado.nombres }}
-            {{ pacienteSeleccionado.apellidos }} (ID {{ pacienteSeleccionado.idPaciente }})</p>
-        }
         @if (errorPacientes) { <p class="alert alert-danger mt-2" role="alert">{{ errorPacientes }}</p> }
         @if (cargandoPacientes) { <p role="status">Cargando pacientes...</p> }
         @if (!cargandoPacientes && pacientesPagina.length === 0 && !errorPacientes) {
-          <p class="text-muted mt-2">No hay pacientes activos en esta página.</p>
+          <p class="text-muted mt-2 mb-0">No hay pacientes activos en esta página.</p>
         }
-        @if (pacientesPagina.length) {
-          <label for="paciente-consulta" class="form-label mt-2">Paciente *</label>
-          <select id="paciente-consulta" class="form-select" name="idPaciente" required
-            [ngModel]="idPaciente" (ngModelChange)="seleccionarPaciente($event)"
-            [disabled]="cargando || cargandoPacientes">
-            <option [ngValue]="0">Seleccione...</option>
-            @if (pacienteSeleccionado && !seleccionPacienteEnPagina()) {
-              <option [ngValue]="pacienteSeleccionado.idPaciente">{{ pacienteSeleccionado.nombres }} {{ pacienteSeleccionado.apellidos }} · ID {{ pacienteSeleccionado.idPaciente }}</option>
-            }
-            @for (paciente of pacientesPagina; track paciente.idPaciente) {
-              <option [ngValue]="paciente.idPaciente">{{ paciente.nombres }} {{ paciente.apellidos }} · ID {{ paciente.idPaciente }}</option>
-            }
-          </select>
-        }
-        <div class="d-flex gap-2 align-items-center mt-2">
+        <div class="consulta-nueva-page__pager mt-3" aria-label="Páginas de pacientes">
           <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarPacientes(paginaPacientes - 1)"
             [disabled]="cargando || cargandoPacientes || paginaPacientes <= 1">Anterior</button>
-          <span>Página {{ paginaPacientes }} de {{ totalPaginasPacientes }} · {{ totalPacientes }} pacientes</span>
+          @if (errorPacientes) {
+            <span>Catálogo no disponible</span>
+          } @else if (totalPaginasPacientes === 0) {
+            <span>0 pacientes</span>
+          } @else {
+            <span>Página {{ paginaPacientes }} de {{ totalPaginasPacientes }} · {{ totalPacientes }} pacientes</span>
+          }
           <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarPacientes(paginaPacientes + 1)"
             [disabled]="cargando || cargandoPacientes || paginaPacientes >= totalPaginasPacientes">Siguiente</button>
         </div>
+        @if (pacienteSeleccionado) {
+          <div class="consulta-nueva-page__patient mt-3" role="status">
+            @if (fotoPacienteUrl) {
+              <img [src]="fotoPacienteUrl" alt="Fotografía del paciente seleccionado" class="consulta-nueva-page__avatar">
+            } @else {
+              <span class="consulta-nueva-page__avatar consulta-nueva-page__avatar--empty" aria-hidden="true"><i class="bi bi-person-fill"></i></span>
+            }
+            <div class="consulta-nueva-page__patient-copy">
+              <strong>{{ pacienteSeleccionado.nombres }} {{ pacienteSeleccionado.apellidos }}</strong>
+              <span>Identificador interno: {{ pacienteSeleccionado.idPaciente }}</span>
+              <span class="badge text-bg-success align-self-start">Activo</span>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm consulta-nueva-page__photo-button"
+              (click)="cargarFotoPaciente()" [disabled]="cargando || cargandoFoto || !puedeConsultarPacientes()">
+              {{ cargandoFoto ? 'Cargando fotografía...' : 'Ver fotografía' }}
+            </button>
+          </div>
+          @if (avisoFoto) { <p class="text-muted mt-2 mb-0" role="status">{{ avisoFoto }}</p> }
+          @if (errorFoto) { <p class="text-danger mt-2 mb-0" role="alert">{{ errorFoto }}</p> }
+        }
       </section>
 
-      <form (ngSubmit)="guardar()" class="card p-4 shadow-sm">
+      <form id="consulta-nueva-form" (ngSubmit)="guardar()" class="consulta-nueva-page__form">
         <fieldset [disabled]="cargando || !puedeCrear() || !puedeConsultarPacientes() || !pacienteSeleccionado">
-        <div class="row g-3">
-          <div class="col-12">
+        <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-datos-title">
+          <h2 id="consulta-datos-title" class="h5 consulta-nueva-page__heading">Datos de la consulta</h2>
+          <div class="row g-3">
+          <div class="col-12 col-md-6">
             @if (modoMedico === 'inferencia') {
-              <p class="alert alert-info">El servidor asignará el médico vinculado a su sesión.
+              <p class="alert alert-info mb-0">Médico responsable: el servidor asignará el médico vinculado a su sesión.
                 @if (!puedeConsultarEmpleados()) {
                   No tiene permiso para consultar empleados ni seleccionar otro médico.
                   Si su vínculo no es médico, solicite revisión de acceso al catálogo.
@@ -90,7 +125,7 @@ import { Subscription } from 'rxjs';
                   <option [ngValue]="medico.idEmpleado">{{ etiquetaMedico(medico) }}</option>
                 }
               </select>
-              <div class="d-flex gap-2 align-items-center mt-2">
+              <div class="consulta-nueva-page__pager mt-2">
                 <button type="button" class="btn btn-outline-secondary btn-sm"
                   [disabled]="cargandoMedicos || paginaMedicos <= 1" (click)="cargarMedicos(paginaMedicos - 1)">Anterior</button>
                 <span>Página {{ paginaMedicos }} de {{ totalPaginasMedicos }} · {{ totalMedicos }} médicos</span>
@@ -109,9 +144,9 @@ import { Subscription } from 'rxjs';
             }
             @if (errorMedicos) { <p class="alert alert-danger" role="alert">{{ errorMedicos }}</p> }
           </div>
-          <div class="col-md-6">
-            <label class="form-label">Sucursal *</label>
-            <select class="form-select" [(ngModel)]="form.idSucursal" name="idSucursal" required>
+          <div class="col-12 col-md-6">
+            <label for="consulta-sucursal" class="form-label">Sucursal <span class="text-danger" aria-hidden="true">*</span></label>
+            <select id="consulta-sucursal" class="form-select" [(ngModel)]="form.idSucursal" name="idSucursal" required>
               <option [ngValue]="null">Seleccione...</option>
               @for (s of sucursales; track s.idSucursal) {
                 <option [ngValue]="s.idSucursal">{{ s.nombre }}</option>
@@ -119,7 +154,7 @@ import { Subscription } from 'rxjs';
             </select>
           </div>
           @if (puedeConsultarClinicas()) {
-            <div class="col-md-6">
+            <div class="col-12 col-md-6">
               <label for="consulta-clinica" class="form-label">Clínica (opcional)</label>
               <select id="consulta-clinica" class="form-select" [(ngModel)]="form.idClinica" name="idClinica">
                 <option [ngValue]="null">Sin clínica</option>
@@ -130,52 +165,79 @@ import { Subscription } from 'rxjs';
               @if (errorClinicas) { <p class="text-danger" role="alert">{{ errorClinicas }}</p> }
             </div>
           }
-          <div class="col-md-6">
-            <label class="form-label">Fecha de Consulta *</label>
-            <input type="datetime-local" class="form-control" [(ngModel)]="form.fechaConsulta" name="fechaConsulta" required>
+          <div class="col-12 col-md-6">
+            <label for="consulta-fecha" class="form-label">Fecha y hora de consulta <span class="text-danger" aria-hidden="true">*</span></label>
+            <input id="consulta-fecha" type="datetime-local" class="form-control" [(ngModel)]="form.fechaConsulta" name="fechaConsulta" required>
+          </div>
+          </div>
+        </section>
+
+        <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-evaluacion-title">
+          <h2 id="consulta-evaluacion-title" class="h5 consulta-nueva-page__heading">Evaluación inicial</h2>
+          <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label for="consulta-motivo" class="form-label">Motivo de consulta</label>
+            <textarea id="consulta-motivo" class="form-control" rows="2" [(ngModel)]="form.motivoConsulta" name="motivoConsulta" maxlength="300"></textarea>
+          </div>
+          <div class="col-12 col-md-6">
+            <label for="consulta-sintomas" class="form-label">Síntomas</label>
+            <textarea id="consulta-sintomas" class="form-control" rows="2" [(ngModel)]="form.sintomas" name="sintomas" maxlength="300"></textarea>
+          </div>
+          <div class="col-12">
+            <label for="consulta-observaciones" class="form-label">Observaciones</label>
+            <textarea id="consulta-observaciones" class="form-control" rows="2" [(ngModel)]="form.observaciones" name="observaciones" maxlength="300"></textarea>
           </div>
 
-          <div class="col-12">
-            <label class="form-label">Motivo de Consulta</label>
-            <textarea class="form-control" rows="2" [(ngModel)]="form.motivoConsulta" name="motivoConsulta" maxlength="300"></textarea>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <label for="consulta-peso" class="form-label">Peso (lb)</label>
+            <input id="consulta-peso" type="number" step="0.1" class="form-control" [(ngModel)]="form.pesoLb" name="pesoLb">
           </div>
-          <div class="col-12">
-            <label class="form-label">Síntomas</label>
-            <textarea class="form-control" rows="2" [(ngModel)]="form.sintomas" name="sintomas" maxlength="300"></textarea>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <label for="consulta-altura" class="form-label">Altura (cm)</label>
+            <input id="consulta-altura" type="number" class="form-control" [(ngModel)]="form.alturaCm" name="alturaCm">
           </div>
-          <div class="col-12">
-            <label class="form-label">Observaciones</label>
-            <textarea class="form-control" rows="2" [(ngModel)]="form.observaciones" name="observaciones" maxlength="300"></textarea>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <label for="consulta-sistolica" class="form-label">Presión sistólica</label>
+            <input id="consulta-sistolica" type="number" class="form-control" [(ngModel)]="form.presionSistolica" name="presionSistolica">
           </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <label for="consulta-diastolica" class="form-label">Presión diastólica</label>
+            <input id="consulta-diastolica" type="number" class="form-control" [(ngModel)]="form.presionDiastolica" name="presionDiastolica">
+          </div>
+          </div>
+        </section>
 
-          <div class="col-md-3">
-            <label class="form-label">Peso (lb)</label>
-            <input type="number" step="0.1" class="form-control" [(ngModel)]="form.pesoLb" name="pesoLb">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Altura (cm)</label>
-            <input type="number" class="form-control" [(ngModel)]="form.alturaCm" name="alturaCm">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Presión Sistólica</label>
-            <input type="number" class="form-control" [(ngModel)]="form.presionSistolica" name="presionSistolica">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Presión Diastólica</label>
-            <input type="number" class="form-control" [(ngModel)]="form.presionDiastolica" name="presionDiastolica">
-          </div>
-        </div>
-
-        <div class="d-flex gap-2 mt-4">
-          <button type="submit" class="btn btn-success" [disabled]="cargando || modoMedico === 'bloqueado' || modoMedico === 'cargando' || cargandoMedicos">
-            {{ cargando ? 'Guardando...' : 'Guardar Consulta' }}
-          </button>
+        <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-acciones-title">
+          <h2 id="consulta-acciones-title" class="h5 consulta-nueva-page__heading">Acciones</h2>
+          <div class="consulta-nueva-page__actions">
           <a routerLink="/consultas" class="btn btn-secondary">Cancelar</a>
-        </div>
+          <button type="submit" class="btn btn-success" [disabled]="cargando || modoMedico === 'bloqueado' || modoMedico === 'cargando' || cargandoMedicos">
+            {{ cargando ? 'Guardando...' : 'Guardar consulta' }}
+          </button>
+          </div>
+        </section>
         </fieldset>
       </form>
     </div>
-  `
+  `,
+  styles: [`
+    .consulta-nueva-page__header { align-items: start; gap: 1rem; }
+    .consulta-nueva-page__card { padding: 1.4rem; margin-bottom: 1.25rem; }
+    .consulta-nueva-page__heading { color: var(--ui-heading); font-weight: 700; margin-bottom: 1rem; }
+    .consulta-nueva-page__form fieldset { border: 0; padding: 0; min-width: 0; }
+    .consulta-nueva-page .form-control, .consulta-nueva-page .form-select { min-height: 2.5rem; }
+    .consulta-nueva-page__pager, .consulta-nueva-page__actions { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; }
+    .consulta-nueva-page__patient { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; border-top: 1px solid #dce6f0; padding-top: 1rem; }
+    .consulta-nueva-page__avatar { width: 4rem; height: 4rem; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+    .consulta-nueva-page__avatar--empty { display: grid; place-items: center; background: #edf3f8; color: #647b9d; font-size: 1.8rem; }
+    .consulta-nueva-page__patient-copy { display: grid; gap: .2rem; min-width: 0; overflow-wrap: anywhere; color: var(--ui-heading); }
+    .consulta-nueva-page__patient-copy span:not(.badge) { color: var(--ui-muted); font-size: .9rem; }
+    .consulta-nueva-page__photo-button { margin-left: auto; }
+    @media (max-width: 575.98px) {
+      .consulta-nueva-page__card { padding: 1rem; }
+      .consulta-nueva-page__header .btn, .consulta-nueva-page__photo-button { margin-left: 0; }
+    }
+  `]
 })
 export class ConsultaNuevaComponent implements OnInit, OnDestroy {
   private service = inject(HistorialService);
@@ -205,9 +267,15 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
   errorPacientes = '';
   private idSugerido = 0;
   private solicitudPacientes?: Subscription;
+  private solicitudFoto?: Subscription;
   private revisionPacientes = 0;
+  private revisionFoto = 0;
   private revisionSeleccionPaciente = 0;
   readonly tamanoPaginaPacientes = 20;
+  fotoPacienteUrl: string | null = null;
+  cargandoFoto = false;
+  avisoFoto = '';
+  errorFoto = '';
   cargando = false;
   error = '';
   sucursales: Sucursal[] = [];
@@ -262,10 +330,52 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.revisionSeleccionPaciente++;
     const paciente = this.pacientesPagina.find(item => item.idPaciente === id && item.activo)
       ?? (this.pacienteSeleccionado?.idPaciente === id ? this.pacienteSeleccionado : null);
+    if (paciente?.idPaciente !== this.idPaciente) this.limpiarFoto();
     this.pacienteSeleccionado = paciente;
     this.idPaciente = paciente?.idPaciente ?? 0;
     this.form.idPaciente = this.idPaciente;
-    this.errorPacientes = '';
+  }
+
+  cargarFotoPaciente(): void {
+    const id = this.pacienteSeleccionado?.idPaciente;
+    if (!id || id !== this.idPaciente || !this.vigente(this.contexto) || this.cargandoFoto) return;
+    const contexto = this.contexto, revision = ++this.revisionFoto;
+    this.solicitudFoto?.unsubscribe();
+    if (this.fotoPacienteUrl) URL.revokeObjectURL(this.fotoPacienteUrl);
+    this.fotoPacienteUrl = null;
+    this.cargandoFoto = true;
+    this.avisoFoto = this.errorFoto = '';
+    this.solicitudFoto = this.pacientesService.obtenerFoto(id).subscribe({
+      next: blob => {
+        if (!this.vigente(contexto) || revision !== this.revisionFoto || this.idPaciente !== id) return;
+        this.cargandoFoto = false;
+        if (!(blob instanceof Blob) || blob.size === 0 || !['image/jpeg', 'image/png', 'image/webp'].includes(blob.type)) {
+          this.errorFoto = 'La fotografía recibida no es válida.';
+          return;
+        }
+        if (this.fotoPacienteUrl) URL.revokeObjectURL(this.fotoPacienteUrl);
+        this.fotoPacienteUrl = URL.createObjectURL(blob);
+      },
+      error: err => {
+        if (!this.vigente(contexto) || revision !== this.revisionFoto || this.idPaciente !== id) return;
+        this.cargandoFoto = false;
+        if (err instanceof HttpErrorResponse && err.status === 404) {
+          this.avisoFoto = 'El paciente no tiene fotografía.';
+        } else {
+          this.errorFoto = this.errores.messageFor(err, 'No se pudo cargar la fotografía.');
+        }
+      },
+    });
+  }
+
+  private limpiarFoto(): void {
+    this.revisionFoto++;
+    this.solicitudFoto?.unsubscribe();
+    this.solicitudFoto = undefined;
+    if (this.fotoPacienteUrl) URL.revokeObjectURL(this.fotoPacienteUrl);
+    this.fotoPacienteUrl = null;
+    this.cargandoFoto = false;
+    this.avisoFoto = this.errorFoto = '';
   }
 
   cargarPacientes(pagina: number): void {
@@ -283,6 +393,8 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
         this.cargandoPacientes = false;
         if (!this.paginaPacientesValida(data, pagina)) {
           this.pacientesPagina = [];
+          this.paginaPacientes = 1;
+          this.totalPacientes = this.totalPaginasPacientes = 0;
           this.errorPacientes = 'El catálogo de pacientes devolvió una paginación incoherente.';
           return;
         }
@@ -297,6 +409,8 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
         if (!this.vigente(contexto) || revision !== this.revisionPacientes) return;
         this.cargandoPacientes = false;
         this.pacientesPagina = [];
+        this.paginaPacientes = 1;
+        this.totalPacientes = this.totalPaginasPacientes = 0;
         this.errorPacientes = this.errores.messageFor(err, 'No se pudieron cargar los pacientes.');
       },
     });
@@ -311,6 +425,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
           this.errorPacientes = 'El paciente indicado no está disponible para una consulta.';
           return;
         }
+        if (this.idPaciente !== id) this.limpiarFoto();
         this.pacienteSeleccionado = paciente;
         this.idPaciente = this.form.idPaciente = id;
       },
@@ -326,6 +441,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     return Array.isArray(data.items) && data.page === pagina && data.pageSize === this.tamanoPaginaPacientes &&
       Number.isSafeInteger(data.totalCount) && data.totalCount >= 0 &&
       data.totalPages === Math.ceil(data.totalCount / data.pageSize) &&
+      (data.totalPages >= pagina || (pagina === 1 && data.totalCount === 0)) &&
       data.items.length === Math.min(data.pageSize, Math.max(0, data.totalCount - (pagina - 1) * data.pageSize)) &&
       new Set(data.items.map(item => item.idPaciente)).size === data.items.length &&
       data.items.every(item => this.idValido(item.idPaciente) && item.activo === true);
@@ -396,6 +512,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
       next: actual => {
         if (!this.vigente(contexto)) return;
         if (actual.idPaciente !== request.idPaciente || !actual.activo) {
+          this.limpiarFoto();
           this.pacienteSeleccionado = null;
           this.idPaciente = this.form.idPaciente = 0;
           this.error = 'El paciente seleccionado ya no está disponible para una consulta.';
@@ -470,6 +587,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.solicitudPacientes?.unsubscribe();
     this.revisionPacientes++;
     this.revisionSeleccionPaciente++;
+    this.limpiarFoto();
     this.contexto = this.contextoActual();
     this.cargando = false;
     this.cargandoMedicos = false;
@@ -636,5 +754,6 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.solicitudes.unsubscribe();
     this.paginaSolicitud?.unsubscribe();
     this.solicitudPacientes?.unsubscribe();
+    this.limpiarFoto();
   }
 }

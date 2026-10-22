@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { EMPTY, Observable, Subscription, defer, expand, finalize, reduce, tap } from 'rxjs';
+import { EMPTY, Observable, Subscription, catchError, defer, expand, finalize, forkJoin, of, reduce, tap } from 'rxjs';
 import { HistorialService } from '../../core/services/historial.service';
 import {
   ConsultaDetalleDto,
@@ -19,56 +19,92 @@ import { PermisosService } from '../../core/services/permisos.service';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { TratamientoFormComponent } from './tratamiento-form.component';
+import { PacientesService } from '../../core/services/paciente.service';
+import { EmpleadosService } from '../../core/services/empleado.service';
+import { CatalogosService } from '../../core/services/catalogos.service';
+import { PacienteResponse } from '../../core/models/paciente.model';
+import { EmpleadoDetalleResponse } from '../../core/models/empleado.model';
+import { Clinica, Sucursal } from '../../core/models/catalogos.model';
+
+type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamientos' | 'evoluciones' | 'hospitalizacion';
 
 @Component({
     selector: 'app-consulta-detalle',
     imports: [CommonModule, RouterModule, FormsModule, TratamientoFormComponent],
     template: `
-    <div class="container mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Detalle de Consulta #{{ idConsulta }}</h2>
+    <div class="container consulta-shell py-4">
+      <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+          <h1 class="h2 mb-1">Consulta médica</h1>
+          <p class="text-muted mb-0">Atención clínica y registros asociados.</p>
+        </div>
         <a [routerLink]="['/historial', idPaciente]" class="btn btn-secondary">
-          <i class="fa fa-arrow-left"></i> Volver
+          <i class="bi bi-arrow-left me-1" aria-hidden="true"></i> Volver
         </a>
-      </div>
+      </header>
 
       @if (cargando) {
-        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+        <div class="text-center py-5" role="status"><div class="spinner-border text-primary" aria-hidden="true"></div><span class="visually-hidden">Cargando consulta…</span></div>
       } @else if (error) {
-        <div class="alert alert-danger">{{ error }}</div>
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
       } @else if (consulta) {
-        <!-- Info general -->
-        <div class="card mb-4">
+        <section class="card shadow-sm mb-4 consulta-card" aria-label="Encabezado de atención">
           <div class="card-body">
-            <div class="row">
-              <div class="col-md-3"><strong>Fecha:</strong><br>{{ consulta.fechaConsulta | date:'dd/MM/yyyy HH:mm' }}</div>
-              <div class="col-md-3"><strong>Médico:</strong><br>{{ consulta.idMedico }}</div>
-              <div class="col-md-3"><strong>Sucursal:</strong><br>{{ consulta.idSucursal }}</div>
-              <div class="col-md-3"><strong>Paciente:</strong><br>{{ idPaciente }}</div>
+            <div class="row g-3 align-items-start">
+              <div class="col-12 col-lg-6">
+                <span class="text-muted small">Paciente</span>
+                <h2 class="h4 mb-0">{{ nombrePaciente }}</h2>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-3"><span class="text-muted small">Fecha de consulta</span><div>{{ consulta.fechaConsulta | date:'dd/MM/yyyy HH:mm' }}</div></div>
+              <div class="col-12 col-sm-6 col-lg-3"><span class="text-muted small">Médico responsable</span><div>{{ nombreMedico }}</div></div>
+              <div class="col-12 col-sm-6"><span class="text-muted small">Sede de atención</span><div>{{ lugarAtencion }}</div></div>
+              @if (consulta.motivoConsulta) {
+                <div class="col-12 col-sm-6"><span class="text-muted small">Motivo de consulta</span><div>{{ consulta.motivoConsulta }}</div></div>
+              }
             </div>
-            @if (consulta.motivoConsulta) { <p class="mt-3"><strong>Motivo:</strong> {{ consulta.motivoConsulta }}</p> }
-            @if (consulta.sintomas) { <p><strong>Síntomas:</strong> {{ consulta.sintomas }}</p> }
-            @if (consulta.observaciones) { <p><strong>Observaciones:</strong> {{ consulta.observaciones }}</p> }
-            <div class="row mt-3">
-              @if (consulta.pesoLb) { <div class="col"><strong>Peso:</strong> {{ consulta.pesoLb }} lb</div> }
-              @if (consulta.alturaCm) { <div class="col"><strong>Altura:</strong> {{ consulta.alturaCm }} cm</div> }
-              @if (consulta.presionSistolica) { <div class="col"><strong>PA:</strong> {{ consulta.presionSistolica }}/{{ consulta.presionDiastolica }}</div> }
-            </div>
+            @if (cargandoEncabezado) { <p class="text-muted small mt-3 mb-0" role="status">Cargando nombres relacionados…</p> }
+            @if (errorEncabezado) { <p class="alert alert-warning mt-3 mb-0" role="alert">{{ errorEncabezado }}</p> }
           </div>
-        </div>
+        </section>
 
-        <!-- Tabs -->
-        <ul class="nav nav-tabs">
-          <li class="nav-item"><button class="nav-link" [class.active]="tab==='diagnosticos'" (click)="tab='diagnosticos'">Diagnósticos</button></li>
-          <li class="nav-item"><button class="nav-link" [class.active]="tab==='tratamientos'" (click)="tab='tratamientos'">Tratamientos</button></li>
-          <li class="nav-item"><button class="nav-link" [class.active]="tab==='examenes'" (click)="tab='examenes'">Exámenes</button></li>
-          <li class="nav-item"><button class="nav-link" [class.active]="tab==='evoluciones'" (click)="tab='evoluciones'">Evoluciones</button></li>
-        </ul>
+        <nav class="nav nav-pills flex-nowrap gap-2 overflow-auto pb-2 consulta-tabs" role="tablist" aria-label="Apartados de la consulta">
+          @for (apartado of apartados; track apartado.id) {
+            <button type="button" class="nav-link consulta-tab" role="tab"
+              [id]="'tab-' + apartado.id" [class.active]="tab === apartado.id"
+              [attr.aria-selected]="tab === apartado.id" [attr.aria-controls]="'panel-' + apartado.id"
+              [attr.tabindex]="tab === apartado.id ? 0 : -1"
+              (click)="seleccionarTab(apartado.id)" (keydown)="navegarTabs($event, apartado.id)">
+              <i class="bi me-1" [ngClass]="apartado.icono" aria-hidden="true"></i>{{ apartado.nombre }}
+            </button>
+          }
+        </nav>
+
+        @if (tab === 'evaluacion') {
+          <section class="card shadow-sm mt-3 consulta-card" id="panel-evaluacion" role="tabpanel" aria-labelledby="tab-evaluacion" tabindex="0">
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Evaluación</h3></div>
+            <div class="card-body">
+              @if (!tieneEvaluacion) { <p class="text-muted mb-0">No hay datos de evaluación registrados.</p> }
+              @else {
+                <dl class="row g-2 mb-0">
+                  @if (consulta.motivoConsulta) { <dt class="col-sm-4">Motivo de consulta</dt><dd class="col-sm-8">{{ consulta.motivoConsulta }}</dd> }
+                  @if (consulta.sintomas) { <dt class="col-sm-4">Síntomas</dt><dd class="col-sm-8">{{ consulta.sintomas }}</dd> }
+                  @if (consulta.observaciones) { <dt class="col-sm-4">Observaciones</dt><dd class="col-sm-8">{{ consulta.observaciones }}</dd> }
+                  @if (consulta.pesoLb !== null) { <dt class="col-sm-4">Peso</dt><dd class="col-sm-8">{{ consulta.pesoLb }} lb</dd> }
+                  @if (consulta.alturaCm !== null) { <dt class="col-sm-4">Altura</dt><dd class="col-sm-8">{{ consulta.alturaCm }} cm</dd> }
+                  @if (consulta.presionSistolica !== null || consulta.presionDiastolica !== null) {
+                    <dt class="col-sm-4">Presión arterial</dt><dd class="col-sm-8">{{ consulta.presionSistolica ?? '—' }}/{{ consulta.presionDiastolica ?? '—' }}</dd>
+                  }
+                </dl>
+              }
+            </div>
+          </section>
+        }
 
         <!-- DIAGNÓSTICOS -->
         @if (tab === 'diagnosticos') {
-          <div class="card p-3 mt-3">
-            <h4>Diagnósticos</h4>
+          <section class="card shadow-sm mt-3 consulta-card" id="panel-diagnosticos" role="tabpanel" aria-labelledby="tab-diagnosticos" tabindex="0">
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Diagnóstico</h3></div>
+            <div class="card-body">
             @if (errorDiagnostico) { <div class="alert alert-danger" role="alert">{{ errorDiagnostico }}</div> }
             @if (avisoDiagnostico) { <div class="alert alert-success" role="status">{{ avisoDiagnostico }}</div> }
             @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
@@ -89,18 +125,20 @@ import { TratamientoFormComponent } from './tratamiento-form.component';
             @else {
               @for (d of diagnosticos; track d.idDiagnostico) {
                 <div class="border-bottom py-2">
-                  <strong>#{{ d.idDiagnostico }}</strong> - {{ d.descripcion }}
+                  <strong>{{ d.descripcion }}</strong>
                   <small class="text-muted ms-2">{{ d.fechaRegistro | date:'dd/MM/yyyy HH:mm' }}</small>
                 </div>
               }
             }
-          </div>
+            </div>
+          </section>
         }
 
         <!-- TRATAMIENTOS -->
         @if (tab === 'tratamientos') {
-          <div class="card p-3 mt-3">
-            <h4>Tratamientos</h4>
+          <section class="card shadow-sm mt-3 consulta-card" id="panel-tratamientos" role="tabpanel" aria-labelledby="tab-tratamientos" tabindex="0">
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Tratamiento</h3></div>
+            <div class="card-body">
             @if (errorTratamientos) {
               <div class="alert alert-warning" role="alert">{{ errorTratamientos }}</div>
             }
@@ -112,11 +150,14 @@ import { TratamientoFormComponent } from './tratamiento-form.component';
                 [revisionStock]="revisionStock" (registrado)="onTratamientoRegistrado($event)">
               </app-tratamiento-form>
             }
+            @if (!errorTratamientos && tratamientos.length === 0) {
+              <p class="text-muted">No hay tratamientos registrados.</p>
+            }
             @for (t of tratamientos; track t.idTratamiento) {
               <div class="border-bottom py-2">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                   <div>
-                    <strong>#{{ t.idTratamiento }}</strong> - {{ t.descripcion }}
+                    <strong>{{ t.descripcion }}</strong>
                     <small class="text-muted ms-2">({{ t.fechaInicio }} {{ t.fechaFin ? 'hasta ' + t.fechaFin : '' }})</small>
                     @if (t.idLote) {
                       <div class="small text-muted">Lote #{{ t.idLote }} · Cantidad indicada: {{ t.cantidad ?? 'no especificada' }}</div>
@@ -152,13 +193,15 @@ import { TratamientoFormComponent } from './tratamiento-form.component';
                 }
               </div>
             }
-          </div>
+            </div>
+          </section>
         }
 
         <!-- EXÁMENES -->
         @if (tab === 'examenes') {
-          <div class="card p-3 mt-3">
-            <h4>Exámenes</h4>
+          <section class="card shadow-sm mt-3 consulta-card" id="panel-examenes" role="tabpanel" aria-labelledby="tab-examenes" tabindex="0">
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Exámenes</h3></div>
+            <div class="card-body">
             @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
               <form (ngSubmit)="agregarExamen()" class="row g-2 mb-3">
                 <div class="col-md-6"><input type="text" class="form-control" [(ngModel)]="nuevoExamen.nombreExamen" name="nombreExamen" placeholder="Nombre del examen" required></div>
@@ -166,20 +209,25 @@ import { TratamientoFormComponent } from './tratamiento-form.component';
                 <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
               </form>
             }
+            @if (cargandoExamenes) { <p class="text-muted" role="status">Cargando exámenes…</p> }
+            @else if (errorExamenes) { <div class="alert alert-warning" role="alert">{{ errorExamenes }}</div> }
+            @else if (examenes.length === 0) { <p class="text-muted">No hay exámenes registrados.</p> }
             @for (e of examenes; track e.idExamen) {
               <div class="border-bottom py-2">
-                <strong>#{{ e.idExamen }}</strong> - {{ e.nombreExamen }}
+                <strong>{{ e.nombreExamen }}</strong>
                 <small class="text-muted ms-2">{{ e.fechaExamen | date:'dd/MM/yyyy HH:mm' }}</small>
                 @if (e.prioridad) { <span class="badge ms-2" [class.bg-danger]="e.prioridad==='Alta'" [class.bg-warning]="e.prioridad==='Media'" [class.bg-success]="e.prioridad==='Baja'">{{ e.prioridad }}</span> }
               </div>
             }
-          </div>
+            </div>
+          </section>
         }
 
         <!-- EVOLUCIONES -->
         @if (tab === 'evoluciones') {
-          <div class="card p-3 mt-3">
-            <h4>Evoluciones</h4>
+          <section class="card shadow-sm mt-3 consulta-card" id="panel-evoluciones" role="tabpanel" aria-labelledby="tab-evoluciones" tabindex="0">
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Evolución</h3></div>
+            <div class="card-body">
             @if (cargandoEvoluciones) { <div class="text-muted" role="status">Cargando evoluciones…</div> }
             @if (errorEvoluciones) { <div class="alert alert-warning" role="alert">{{ errorEvoluciones }}</div> }
             @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
@@ -200,20 +248,44 @@ import { TratamientoFormComponent } from './tratamiento-form.component';
                 </form>
               }
             }
+            @if (!cargandoEvoluciones && !errorEvoluciones && evoluciones.length === 0) {
+              <p class="text-muted">No hay evoluciones registradas.</p>
+            }
             @for (h of evoluciones; track h.idHistorial) {
               <div class="border-bottom py-2">
-                <strong>#{{ h.idHistorial }}</strong> - {{ h.descripcion }}
+                <strong>{{ h.descripcion }}</strong>
                 <small class="text-muted ms-2">{{ h.fechaHistorial | date:'dd/MM/yyyy HH:mm' }}</small>
               </div>
             }
-          </div>
+            </div>
+          </section>
+        }
+
+        @if (tab === 'hospitalizacion') {
+          <section class="card shadow-sm mt-3 consulta-card" id="panel-hospitalizacion" role="tabpanel" aria-labelledby="tab-hospitalizacion" tabindex="0">
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Hospitalización <span class="badge text-bg-secondary ms-2">Opcional</span></h3></div>
+            <div class="card-body">
+              <p class="text-muted mb-0">No hay información de hospitalización vinculada a esta consulta. Las asignaciones de habitación se registran por paciente y no identifican una consulta concreta.</p>
+            </div>
+          </section>
         }
       }
     </div>
-  `
+  `,
+    styles: [`
+      .consulta-shell { color: #102746; }
+      .consulta-card { border: 1px solid #d8e4ef; border-radius: .6rem; }
+      .consulta-section-heading { background: #edf4f9; border-bottom-color: #d8e4ef; color: #0e2749; }
+      .consulta-tab { white-space: nowrap; border: 1px solid #cbd9e7; color: #173b64; }
+      .consulta-tab.active { background: #0d6efd; border-color: #0d6efd; color: #fff; }
+      .consulta-tab:focus-visible { outline: 3px solid #174d9b; outline-offset: 2px; }
+    `]
 })
 export class ConsultaDetalleComponent implements OnInit {
   private service = inject(HistorialService);
+  private pacientesService = inject(PacientesService);
+  private empleadosService = inject(EmpleadosService);
+  private catalogosService = inject(CatalogosService);
   private route = inject(ActivatedRoute);
   private session = inject(AuthSessionService);
   private apiErrors = inject(ApiErrorService);
@@ -224,13 +296,29 @@ export class ConsultaDetalleComponent implements OnInit {
   idPaciente!: number;
   idConsulta!: number;
   consulta: ConsultaDetalleDto | null = null;
+  paciente: PacienteResponse | null = null;
+  medico: EmpleadoDetalleResponse | null = null;
+  sucursal: Sucursal | null = null;
+  clinica: Clinica | null = null;
+  cargandoEncabezado = false;
+  errorEncabezado = '';
   cargando = false;
   error = '';
-  tab: 'diagnosticos' | 'tratamientos' | 'examenes' | 'evoluciones' = 'diagnosticos';
+  readonly apartados: ReadonlyArray<{ id: ApartadoConsulta; nombre: string; icono: string }> = [
+    { id: 'evaluacion', nombre: 'Evaluación', icono: 'bi-clipboard2-pulse' },
+    { id: 'examenes', nombre: 'Exámenes', icono: 'bi-file-medical' },
+    { id: 'diagnosticos', nombre: 'Diagnóstico', icono: 'bi-heart-pulse' },
+    { id: 'tratamientos', nombre: 'Tratamiento', icono: 'bi-capsule' },
+    { id: 'evoluciones', nombre: 'Evolución', icono: 'bi-graph-up' },
+    { id: 'hospitalizacion', nombre: 'Hospitalización', icono: 'bi-hospital' },
+  ];
+  tab: ApartadoConsulta = 'evaluacion';
 
   diagnosticos: DiagnosticoResponse[] = [];
   tratamientos: TratamientoResponseDto[] = [];
   examenes: ExamenResponseDto[] = [];
+  cargandoExamenes = false;
+  errorExamenes = '';
   evoluciones: HistorialMedicoResponseDto[] = [];
   tratamientoConsumo: TratamientoResponseDto | null = null;
   cantidadConsumo = 1;
@@ -252,14 +340,19 @@ export class ConsultaDetalleComponent implements OnInit {
   cargandoEvoluciones = false;
   errorEvoluciones = '';
   private lecturaConsulta?: Subscription;
+  private lecturaEncabezado?: Subscription;
+  private lecturaExamenes?: Subscription;
   private lecturaDiagnosticos?: Subscription;
   private lecturaEvoluciones?: Subscription;
   private solicitudDiagnostico?: Subscription;
   private revisionConsulta = 0;
+  private revisionEncabezado = 0;
+  private revisionExamenes = 0;
   private revisionDiagnosticos = 0;
   private revisionEvoluciones = 0;
   private revisionDiagnostico = 0;
   private contextoLecturaObservado: string | null | undefined;
+  private permisosEncabezadoObservados: string | undefined;
   private crearDiagnosticoObservado: boolean | undefined;
 
   nuevoDiag: CrearDiagnosticoRequest = { idConsulta: 0, idMedico: null, descripcion: '' };
@@ -270,6 +363,10 @@ export class ConsultaDetalleComponent implements OnInit {
     effect(() => {
       const identidad = this.identidadActual();
       const contextoLectura = this.contextoLecturaActual();
+      const permisosEncabezado = this.permisosEncabezado();
+      const cambioPermisosEncabezado = this.permisosEncabezadoObservados !== undefined
+        && this.permisosEncabezadoObservados !== permisosEncabezado;
+      this.permisosEncabezadoObservados = permisosEncabezado;
       const cambioLectura = this.contextoLecturaObservado !== undefined
         && this.contextoLecturaObservado !== contextoLectura;
       this.contextoLecturaObservado = contextoLectura;
@@ -291,6 +388,8 @@ export class ConsultaDetalleComponent implements OnInit {
       }
       if (!contextoLectura || cambioLectura) {
         this.cancelarLecturasClinicas();
+      } else if (cambioPermisosEncabezado && this.consulta) {
+        this.cargarEncabezado(this.consulta);
       }
       if (!identidad || cambioIdentidad || revocoDiagnostico) this.cancelarDiagnosticoProtegido();
     });
@@ -308,6 +407,8 @@ export class ConsultaDetalleComponent implements OnInit {
 
   cargarTodo() {
     this.lecturaConsulta?.unsubscribe();
+    this.cancelarEncabezado();
+    this.cancelarExamenes();
     const revision = ++this.revisionConsulta;
     const contexto = this.contextoLecturaActual();
     const consulta = this.idConsulta;
@@ -317,6 +418,7 @@ export class ConsultaDetalleComponent implements OnInit {
     }
     this.cargando = true;
     this.error = '';
+    this.consulta = null;
     this.lecturaConsulta = this.service.obtenerConsulta(consulta).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (c) => {
         if (revision !== this.revisionConsulta || contexto !== this.contextoLecturaActual()
@@ -327,6 +429,7 @@ export class ConsultaDetalleComponent implements OnInit {
         }
         this.consulta = c;
         this.cargando = false;
+        this.cargarEncabezado(c);
         this.cargarSecciones();
       },
       error: (err: HttpErrorResponse) => {
@@ -339,8 +442,138 @@ export class ConsultaDetalleComponent implements OnInit {
   cargarSecciones() {
     this.cargarDiagnosticos();
     this.recargarTratamientos();
-    this.service.listarExamenes({ idConsulta: this.idConsulta, page: 1, pageSize: 100 }).subscribe(r => this.examenes = r.items);
+    this.cargarExamenes();
     this.cargarEvoluciones();
+  }
+
+  seleccionarTab(apartado: ApartadoConsulta): void {
+    this.tab = apartado;
+  }
+
+  navegarTabs(event: KeyboardEvent, apartado: ApartadoConsulta): void {
+    const indice = this.apartados.findIndex(item => item.id === apartado);
+    const ultimo = this.apartados.length - 1;
+    let destino = indice;
+    if (event.key === 'ArrowRight') destino = (indice + 1) % this.apartados.length;
+    else if (event.key === 'ArrowLeft') destino = (indice + ultimo) % this.apartados.length;
+    else if (event.key === 'Home') destino = 0;
+    else if (event.key === 'End') destino = ultimo;
+    else return;
+    event.preventDefault();
+    this.seleccionarTab(this.apartados[destino].id);
+    const tablist = (event.currentTarget as HTMLElement).closest('[role="tablist"]');
+    tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[destino]?.focus();
+  }
+
+  get nombrePaciente(): string {
+    return this.paciente ? `${this.paciente.nombres.trim()} ${this.paciente.apellidos.trim()}` : 'Paciente no disponible';
+  }
+
+  get nombreMedico(): string {
+    return this.medico ? `${this.medico.nombres.trim()} ${this.medico.apellidos.trim()}` : 'Médico no disponible';
+  }
+
+  get lugarAtencion(): string {
+    return this.clinica?.nombreClinica?.trim() || this.sucursal?.nombre?.trim() || 'Sede no disponible';
+  }
+
+  get tieneEvaluacion(): boolean {
+    const c = this.consulta;
+    return !!(c && (c.motivoConsulta || c.sintomas || c.observaciones
+      || c.pesoLb !== null || c.alturaCm !== null
+      || c.presionSistolica !== null || c.presionDiastolica !== null));
+  }
+
+  private permisosEncabezado(): string {
+    return [MODULOS_PERMISO.PACIENTES, MODULOS_PERMISO.EMPLEADOS,
+      MODULOS_PERMISO.SUCURSALES, MODULOS_PERMISO.CLINICAS]
+      .map(modulo => this.permisos.puedeConsultar(modulo) ? '1' : '0').join('');
+  }
+
+  private cargarEncabezado(consulta: ConsultaDetalleDto): void {
+    this.cancelarEncabezado();
+    const revision = this.revisionEncabezado;
+    const contexto = this.contextoLecturaActual();
+    const paciente = this.idPaciente;
+    const idConsulta = this.idConsulta;
+    if (!contexto || consulta.idConsulta !== idConsulta || consulta.idPaciente !== paciente) return;
+    const fallos: string[] = [];
+    const leer = <T>(source: Observable<T>, nombre: string): Observable<T | null> => source.pipe(
+      catchError(() => { fallos.push(nombre); return of(null); }),
+    );
+    this.cargandoEncabezado = true;
+    this.lecturaEncabezado = forkJoin({
+      paciente: this.permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)
+        ? leer(this.pacientesService.obtener(paciente), 'paciente') : of(null),
+      medico: this.permisos.puedeConsultar(MODULOS_PERMISO.EMPLEADOS)
+        ? leer(this.empleadosService.obtener(consulta.idMedico), 'médico') : of(null),
+      sucursal: this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)
+        ? leer(this.catalogosService.obtenerSucursal(consulta.idSucursal), 'sucursal') : of(null),
+      clinica: consulta.idClinica && this.permisos.puedeConsultar(MODULOS_PERMISO.CLINICAS)
+        ? leer(this.catalogosService.obtenerClinica(consulta.idClinica), 'clínica') : of(null),
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(datos => {
+      if (revision !== this.revisionEncabezado || contexto !== this.contextoLecturaActual()
+        || idConsulta !== this.idConsulta || paciente !== this.idPaciente) return;
+      this.paciente = this.permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)
+        && datos.paciente?.idPaciente === paciente && datos.paciente.nombres?.trim()
+        && datos.paciente.apellidos?.trim() ? datos.paciente : null;
+      this.medico = this.permisos.puedeConsultar(MODULOS_PERMISO.EMPLEADOS)
+        && datos.medico?.idEmpleado === consulta.idMedico && datos.medico.nombres?.trim()
+        && datos.medico.apellidos?.trim() ? datos.medico : null;
+      this.sucursal = this.permisos.puedeConsultar(MODULOS_PERMISO.SUCURSALES)
+        && datos.sucursal?.idSucursal === consulta.idSucursal && datos.sucursal.nombre?.trim()
+        ? datos.sucursal : null;
+      this.clinica = this.permisos.puedeConsultar(MODULOS_PERMISO.CLINICAS)
+        && datos.clinica?.idClinica === consulta.idClinica
+        && datos.clinica.idSucursal === consulta.idSucursal && datos.clinica.nombreClinica?.trim()
+        ? datos.clinica : null;
+      this.cargandoEncabezado = false;
+      if (fallos.length) this.errorEncabezado = `No se pudieron cargar los nombres de: ${fallos.join(', ')}.`;
+      else if ((datos.paciente && !this.paciente) || (datos.medico && !this.medico)
+        || (datos.sucursal && !this.sucursal) || (datos.clinica && !this.clinica))
+        this.errorEncabezado = 'La API devolvió datos descriptivos contradictorios.';
+    });
+  }
+
+  private cancelarEncabezado(): void {
+    this.revisionEncabezado++;
+    this.lecturaEncabezado?.unsubscribe();
+    this.lecturaEncabezado = undefined;
+    this.paciente = null; this.medico = null; this.sucursal = null; this.clinica = null;
+    this.cargandoEncabezado = false; this.errorEncabezado = '';
+  }
+
+  private cargarExamenes(): void {
+    this.cancelarExamenes();
+    const revision = this.revisionExamenes;
+    const contexto = this.contextoLecturaActual();
+    const consulta = this.idConsulta;
+    const paciente = this.idPaciente;
+    if (!contexto || this.consulta?.idConsulta !== consulta || this.consulta.idPaciente !== paciente) return;
+    this.cargandoExamenes = true;
+    this.lecturaExamenes = this.cargarPaginasClinicas(
+      page => this.service.listarExamenes({ idConsulta: consulta, page, pageSize: 100 }),
+      item => item.idExamen,
+      item => item.idConsulta === consulta && item.idPaciente === paciente,
+    ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: items => {
+        if (!this.lecturaVigente(revision, this.revisionExamenes, contexto, consulta, paciente)) return;
+        this.examenes = items; this.cargandoExamenes = false;
+      },
+      error: (err: HttpErrorResponse | Error) => {
+        if (!this.lecturaVigente(revision, this.revisionExamenes, contexto, consulta, paciente)) return;
+        this.examenes = []; this.cargandoExamenes = false;
+        this.errorExamenes = err instanceof HttpErrorResponse
+          ? this.apiErrors.messageFor(err, 'No fue posible leer todos los exámenes.') : err.message;
+      },
+    });
+  }
+
+  private cancelarExamenes(): void {
+    this.revisionExamenes++;
+    this.lecturaExamenes?.unsubscribe();
+    this.lecturaExamenes = undefined;
+    this.examenes = []; this.cargandoExamenes = false; this.errorExamenes = '';
   }
 
   agregarDiagnostico() {
@@ -438,7 +671,10 @@ export class ConsultaDetalleComponent implements OnInit {
     ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: items => {
         if (!this.lecturaVigente(revision, this.revisionEvoluciones, contexto, consulta, paciente)) return;
-        this.evoluciones = items; this.cargandoEvoluciones = false;
+        this.evoluciones = [...items].sort((a, b) =>
+          Date.parse(a.fechaHistorial) - Date.parse(b.fechaHistorial)
+          || (a.idHistorial ?? 0) - (b.idHistorial ?? 0));
+        this.cargandoEvoluciones = false;
       },
       error: (err: HttpErrorResponse | Error) => {
         if (!this.lecturaVigente(revision, this.revisionEvoluciones, contexto, consulta, paciente)) return;
@@ -665,6 +901,8 @@ export class ConsultaDetalleComponent implements OnInit {
   }
 
   private cancelarLecturasClinicas(): void {
+    this.cancelarEncabezado();
+    this.cancelarExamenes();
     this.revisionConsulta++;
     this.revisionDiagnosticos++;
     this.revisionEvoluciones++;

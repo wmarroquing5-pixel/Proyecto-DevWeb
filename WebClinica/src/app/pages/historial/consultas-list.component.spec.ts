@@ -7,7 +7,10 @@ import { Observable, Subject, of, throwError } from 'rxjs';
 import { ConsultaFiltroDto, ConsultaListadoDto, PagedResponse } from '../../core/models/historial.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { AuthSessionService } from '../../core/services/auth-session.service';
+import { CatalogosService } from '../../core/services/catalogos.service';
+import { EmpleadosService } from '../../core/services/empleado.service';
 import { HistorialService } from '../../core/services/historial.service';
+import { PacientesService } from '../../core/services/paciente.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultasListComponent } from './consultas-list.component';
 
@@ -59,6 +62,26 @@ describe('ConsultasListComponent', () => {
       providers: [
         provideRouter([]),
         { provide: HistorialService, useValue: { listarConsultas } },
+        { provide: CatalogosService, useValue: {
+          getSucursales: () => of([{ idSucursal: 3, nombre: 'Central', direccion: null, activa: true }]),
+          getClinicas: () => of([]),
+        } },
+        { provide: PacientesService, useValue: {
+          listar: (_nombre: string, _activo: boolean, page: number, pageSize: number) => of({
+            items: [{ idPaciente: 11, nombres: 'Ana', apellidos: 'Pérez', activo: true }],
+            page, pageSize, totalCount: 1, totalPages: 1,
+          }),
+          obtener: (id: number) => of({ idPaciente: id, nombres: 'Ana', apellidos: 'Pérez' }),
+          obtenerFoto: () => throwError(() => new HttpErrorResponse({ status: 404 })),
+        } },
+        { provide: EmpleadosService, useValue: {
+          listar: (_nombre: string, _tipo: string, _sucursal: number, _activo: boolean,
+                   page: number, pageSize: number) => of({
+            items: [{ idEmpleado: 8, nombres: 'Dra. Luz', apellidos: 'García', tipoEmpleado: 'Medico', activo: true, idSucursal: 3 }],
+            page, pageSize, totalCount: 1, totalPages: 1,
+          }),
+          obtener: (id: number) => of({ idEmpleado: id, nombres: 'Dra. Luz', apellidos: 'García' }),
+        } },
         { provide: AuthSessionService, useValue: {
           isAuthenticated: () => authenticated(),
           currentUser: () => ({ idUsuario: userId() }),
@@ -95,17 +118,56 @@ describe('ConsultasListComponent', () => {
     crearAllowed.set(true); pacientesAllowed.set(false); fixture.detectChanges(); expect(enlace()).toBeNull();
   });
 
-  it('presenta únicamente los campos disponibles en ConsultaListadoDto', () => {
+  it('mantiene legible una respuesta anterior sin campos enriquecidos', () => {
     render();
     const element = fixture.nativeElement as HTMLElement;
     const text = element.textContent ?? '';
     expect(element.querySelector('thead th')?.textContent?.trim()).toBe('No.');
+    expect(text).toContain('Evaluación inicial');
+    expect(text).toContain('No disponible');
     expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('1');
     expect(text).toContain('11');
     expect(text).toContain('8');
     expect(text).toContain('3');
     expect(text).not.toContain('Motivo');
     expect(text).not.toContain('Síntomas');
+  });
+
+  it('muestra Estado sin inventar clasificaciones y admite respuestas antiguas', () => {
+    listarConsultas.and.returnValue(of(page([
+      { ...consulta, idConsulta: 1, estadoConsulta: null },
+      { ...consulta, idConsulta: 2 },
+      { ...consulta, idConsulta: 3, estadoConsulta: '   ' },
+      { ...consulta, idConsulta: 4, estadoConsulta: 'En seguimiento' },
+      { ...consulta, idConsulta: 5, estadoConsulta: 'Valor heredado' },
+    ])));
+    render();
+    const element = fixture.nativeElement as HTMLElement;
+    const headers = Array.from(element.querySelectorAll('thead th'), th => th.textContent?.trim());
+    expect(headers).toEqual([
+      'No.', 'Paciente', 'Evaluación inicial', 'Fecha', 'Médico', 'Estado', 'Acciones',
+    ]);
+    const states = Array.from(element.querySelectorAll('tbody tr td:nth-child(6) .consultas-estado'),
+      cell => cell.textContent?.trim());
+    expect(states).toEqual([
+      'Sin estado registrado', 'Sin estado registrado', 'Sin estado registrado',
+      'En seguimiento', 'Valor heredado',
+    ]);
+    expect(element.querySelectorAll('.consultas-estado--vacio').length).toBe(3);
+    expect(element.querySelectorAll('tbody tr td:nth-child(6) button').length).toBe(0);
+    expect(element.querySelector('.ui-table-wrap .consultas-table')).not.toBeNull();
+    expect(getComputedStyle(element.querySelector('.consultas-table')!).minWidth).toBe('0px');
+    expect(element.querySelectorAll('tbody tr:first-child .consultas-actions a').length).toBe(2);
+  });
+
+  it('interpola un estado desconocido como texto, sin contenido HTML activo', () => {
+    listarConsultas.and.returnValue(of(page([
+      { ...consulta, estadoConsulta: '<img src=x onerror=alert(1)>' },
+    ])));
+    render();
+    const cell = (fixture.nativeElement as HTMLElement).querySelector('tbody td:nth-child(6)');
+    expect(cell?.textContent?.trim()).toBe('<img src=x onerror=alert(1)>');
+    expect(cell?.querySelector('img')).toBeNull();
   });
 
   it('calcula el correlativo con la página y tamaño devueltos por la API', () => {
@@ -188,19 +250,23 @@ describe('ConsultasListComponent', () => {
     expect(component.consultas).toEqual([consulta]);
   });
 
-  it('construye rutas de detalle e historial con ambos identificadores correctos', () => {
+  it('construye rutas de detalle y ficha con ambos identificadores correctos', () => {
     render();
     const hrefs = fixture.debugElement.queryAll(By.css('a')).map(link =>
       link.nativeElement.getAttribute('href'));
     expect(hrefs).toContain('/historial/11/consulta/17');
-    expect(hrefs).toContain('/historial/11');
+    expect(hrefs).toContain('/pacientes/11/ficha');
+    expect(hrefs).not.toContain('/historial/11');
   });
 
-  it('oculta enlaces clínicos sin Historial/Consultar', () => {
+  it('mantiene Ficha médica con Pacientes/Consultar aunque falte Historial/Consultar', () => {
     historialAllowed.set(false);
     render();
-    expect(fixture.debugElement.queryAll(By.css('a')).length).toBe(0);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Sin acceso clínico');
+    const hrefs = fixture.debugElement.queryAll(By.css('a')).map(link =>
+      link.nativeElement.getAttribute('href'));
+    expect(hrefs).toContain('/pacientes/11/ficha');
+    expect(hrefs).not.toContain('/historial/11/consulta/17');
+    expect(hrefs).not.toContain('/historial/11');
   });
 
   it('no solicita ni conserva datos sin Consultas/Consultar', () => {

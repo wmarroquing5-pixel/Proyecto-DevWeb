@@ -2,9 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Models.Entities;
+using API_Clinica.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -69,6 +71,181 @@ public sealed class ConsultasTests
         Assert.Null(consulta.IdClinica);
         Assert.Null(consulta.MotivoConsulta);
         Assert.Null(consulta.PesoLb);
+        Assert.Null(consulta.TemperaturaC);
+        Assert.Null(consulta.FrecuenciaCardiaca);
+    }
+
+    [Fact]
+    public async Task CreaYConsultaTemperaturaDecimalYFrecuenciaSinAmpliarElListado()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        body["temperaturaC"] = 36.7m;
+        body["frecuenciaCardiaca"] = (short)72;
+
+        var created = await client.PostAsJsonAsync("/api/consultas", body);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var result = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(result);
+        Assert.Equal(36.7m, result.TemperaturaC);
+        Assert.Equal((short)72, result.FrecuenciaCardiaca);
+        var detail = await client.GetFromJsonAsync<ConsultaDetalleDto>(
+            $"/api/consultas/{result.IdConsulta}");
+        Assert.Equal(result.TemperaturaC, detail?.TemperaturaC);
+        Assert.Equal(result.FrecuenciaCardiaca, detail?.FrecuenciaCardiaca);
+        using var listJson = JsonDocument.Parse(await client.GetStringAsync("/api/consultas"));
+        var item = listJson.RootElement.GetProperty("items")[0];
+        Assert.False(item.TryGetProperty("temperaturaC", out _));
+        Assert.False(item.TryGetProperty("frecuenciaCardiaca", out _));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PermiteEnviarSoloUnoDeLosSignosVitales(bool temperatura)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        if (temperatura) body["temperaturaC"] = 37.0m;
+        else body["frecuenciaCardiaca"] = (short)80;
+
+        var created = await client.PostAsJsonAsync("/api/consultas", body);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var detail = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(detail);
+        Assert.Equal(temperatura ? 37.0m : null, detail.TemperaturaC);
+        Assert.Equal(temperatura ? null : (short)80, detail.FrecuenciaCardiaca);
+    }
+
+    [Fact]
+    public async Task PutDistingueOmitidoDeNullYConservaEstadoConsulta()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        await factory.SeedConsultasAsync();
+        using (var seedScope = factory.Services.CreateScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            var row = await db.Consultas.SingleAsync(c => c.IdConsulta == 1);
+            row.TemperaturaC = 36.5m;
+            row.FrecuenciaCardiaca = 68;
+            row.EstadoConsulta = "Estado existente";
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        body["idClinica"] = 1;
+        body["motivoConsulta"] = "Motivo";
+
+        var omitted = await client.PutAsJsonAsync("/api/consultas/1", body);
+        Assert.Equal(HttpStatusCode.OK, omitted.StatusCode);
+        var unchanged = await omitted.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.Equal(36.5m, unchanged?.TemperaturaC);
+        Assert.Equal((short)68, unchanged?.FrecuenciaCardiaca);
+        body["temperaturaC"] = 37.1m;
+        var changed = await client.PutAsJsonAsync("/api/consultas/1", body);
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        var partial = await changed.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.Equal(37.1m, partial?.TemperaturaC);
+        Assert.Equal((short)68, partial?.FrecuenciaCardiaca);
+        body["temperaturaC"] = null;
+        body["frecuenciaCardiaca"] = null;
+        var cleared = await client.PutAsJsonAsync("/api/consultas/1", body);
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        var result = await cleared.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.Null(result?.TemperaturaC);
+        Assert.Null(result?.FrecuenciaCardiaca);
+        Assert.Equal("Estado existente", result?.EstadoConsulta);
+        using var verifyScope = factory.Services.CreateScope();
+        var stored = await verifyScope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
+        Assert.Null(stored.TemperaturaC);
+        Assert.Null(stored.FrecuenciaCardiaca);
+        Assert.Equal("Estado existente", stored.EstadoConsulta);
+    }
+
+    [Theory]
+    [InlineData("temperaturaC", "36.55")]
+    [InlineData("temperaturaC", "1000.0")]
+    [InlineData("frecuenciaCardiaca", "-1")]
+    [InlineData("frecuenciaCardiaca", "32768")]
+    public async Task RechazaValoresQueNoCabenOExigenRedondeo(string campo, string valor)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        using var json = JsonDocument.Parse(valor);
+        body[campo] = json.RootElement.Clone();
+
+        var response = await client.PostAsJsonAsync("/api/consultas", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RechazaSignosVitalesSinPermisoDeModificarYSinPersistirlos()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        body["idClinica"] = 1;
+        body["temperaturaC"] = 36.8m;
+        body["frecuenciaCardiaca"] = (short)75;
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PutAsJsonAsync("/api/consultas/1", body)).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
+        Assert.Null(stored.TemperaturaC);
+        Assert.Null(stored.FrecuenciaCardiaca);
+    }
+
+    [Fact]
+    public async Task MedicoNoPuedeModificarSignosVitalesDeConsultaAjena()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.ConfigureCurrentUserAsMedicoAsync(1);
+        await factory.GrantReadAsync(2);
+        await factory.GrantWriteAsync();
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        body["idSucursal"] = 2;
+        body["idMedico"] = 2;
+        body["idClinica"] = 2;
+        body["temperaturaC"] = 36.8m;
+        body["frecuenciaCardiaca"] = (short)75;
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PutAsJsonAsync("/api/consultas/3", body)).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 3);
+        Assert.Null(stored.TemperaturaC);
+        Assert.Null(stored.FrecuenciaCardiaca);
     }
 
     [Theory]
@@ -211,8 +388,11 @@ public sealed class ConsultasTests
         Assert.NotNull(filtered);
         Assert.Single(filtered.Items);
         Assert.Equal(1, filtered.Items[0].IdConsulta);
-        var listJson = await client.GetStringAsync("/api/consultas");
-        Assert.DoesNotContain("motivoConsulta", listJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Motivo", filtered.Items[0].MotivoConsulta);
+        Assert.Null(filtered.Items[0].NombrePaciente);
+        Assert.Null(filtered.Items[0].NombreMedico);
+        Assert.Null(filtered.Items[0].NombreSucursal);
+        Assert.Null(filtered.Items[0].NombreClinica);
         var detail = await client.GetFromJsonAsync<ConsultaDetalleDto>("/api/consultas/1");
         Assert.NotNull(detail);
         Assert.Equal("Motivo", detail.MotivoConsulta);
@@ -227,12 +407,229 @@ public sealed class ConsultasTests
     }
 
     [Fact]
+    public async Task EstadoPersistidoSeLeeEnListadoYDetalleSinInferirEstadoParaNull()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.SeedConsultasAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 1)).EstadoConsulta = "En seguimiento";
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var pagina = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
+            "/api/consultas?page=1&pageSize=2");
+        Assert.NotNull(pagina);
+        Assert.Equal(3, pagina.TotalCount);
+        Assert.Equal("En seguimiento", pagina.Items[0].EstadoConsulta);
+        Assert.Null(pagina.Items[1].EstadoConsulta);
+
+        var primero = await client.GetFromJsonAsync<ConsultaDetalleDto>("/api/consultas/1");
+        var historico = await client.GetFromJsonAsync<ConsultaDetalleDto>("/api/consultas/2");
+        Assert.Equal("En seguimiento", primero?.EstadoConsulta);
+        Assert.Null(historico?.EstadoConsulta);
+    }
+
+    [Fact]
+    public async Task LosDtosGeneralesNoPermitenEscribirEstadoNiAlteranHistoricos()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.GrantWriteAsync();
+        await factory.SeedConsultasAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 1)).EstadoConsulta = "Estado existente";
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var body = CuerpoBase();
+        body["estadoConsulta"] = "Valor no autorizado";
+        var updated = await client.PutAsJsonAsync("/api/consultas/1", body);
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        Assert.Equal("Estado existente",
+            (await updated.Content.ReadFromJsonAsync<ConsultaDetalleDto>())?.EstadoConsulta);
+
+        var created = await client.PostAsJsonAsync("/api/consultas", body);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Null((await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>())?.EstadoConsulta);
+        using var verificationScope = factory.Services.CreateScope();
+        var stored = await verificationScope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().OrderBy(c => c.IdConsulta).ToListAsync();
+        Assert.Equal("Estado existente", stored[0].EstadoConsulta);
+        Assert.Null(stored[1].EstadoConsulta);
+        Assert.Null(stored[2].EstadoConsulta);
+        Assert.Null(stored[3].EstadoConsulta);
+    }
+
+    [Fact]
+    public async Task ListaMuestraNombresSoloConPermisosRelacionadosYRespetaClinicaOpcional()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.GrantRelatedReadAsync(1, "Pacientes", "Empleados", "Sucursales", "Clinicas");
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>("/api/consultas");
+        Assert.NotNull(page);
+        Assert.Equal(3, page.TotalCount);
+        var primera = page.Items[0];
+        Assert.Equal("Motivo", primera.MotivoConsulta);
+        Assert.Equal("Paciente Uno", primera.NombrePaciente);
+        Assert.Equal("Médico Uno", primera.NombreMedico);
+        Assert.Equal("Uno", primera.NombreSucursal);
+        Assert.Equal("Uno", primera.NombreClinica);
+        var sinClinica = page.Items[1];
+        Assert.Null(sinClinica.IdClinica);
+        Assert.Null(sinClinica.NombreClinica);
+        Assert.Equal("Paciente Dos", sinClinica.NombrePaciente);
+        var json = await client.GetStringAsync("/api/consultas?page=1&pageSize=1");
+        var clienteAnterior = JsonSerializer.Deserialize<PagedResponse<ConsultaListadoAnterior>>(
+            json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(clienteAnterior);
+        Assert.Equal(1, Assert.Single(clienteAnterior.Items).IdConsulta);
+    }
+
+    [Fact]
+    public async Task ListaConPermisosParcialesNoExponeOtrosNombresYRevocaEnTiempoReal()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.GrantRelatedReadAsync(1, "Pacientes", "Sucursales");
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>("/api/consultas");
+        Assert.NotNull(page);
+        var item = page.Items[0];
+        Assert.Equal("Paciente Uno", item.NombrePaciente);
+        Assert.Equal("Uno", item.NombreSucursal);
+        Assert.Null(item.NombreMedico);
+        Assert.Null(item.NombreClinica);
+        await factory.RevokeRelatedReadAsync("Pacientes");
+        var revocado = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>("/api/consultas");
+        Assert.NotNull(revocado);
+        Assert.Null(revocado.Items[0].NombrePaciente);
+        Assert.Equal("Uno", revocado.Items[0].NombreSucursal);
+    }
+
+    [Theory]
+    [InlineData("Pacientes")]
+    [InlineData("Empleados")]
+    [InlineData("Sucursales")]
+    [InlineData("Clinicas")]
+    public async Task CadaNombreRequiereSuPropioPermisoDeConsulta(string modulo)
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.GrantRelatedReadAsync(1, modulo);
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>("/api/consultas");
+        Assert.NotNull(page);
+        var item = page.Items[0];
+        Assert.Equal(modulo == "Pacientes" ? "Paciente Uno" : null, item.NombrePaciente);
+        Assert.Equal(modulo == "Empleados" ? "Médico Uno" : null, item.NombreMedico);
+        Assert.Equal(modulo == "Sucursales" ? "Uno" : null, item.NombreSucursal);
+        Assert.Equal(modulo == "Clinicas" ? "Uno" : null, item.NombreClinica);
+    }
+
+    [Fact]
+    public async Task ListaConReferenciasFaltantesConservaIdsYSuprimeNombresInexistentes()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantReadAsync();
+        await factory.GrantRelatedReadAsync(1, "Pacientes", "Empleados", "Sucursales", "Clinicas");
+        await factory.SeedConsultasAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Pacientes.Remove(await db.Pacientes.SingleAsync(p => p.IdPaciente == 1));
+            db.Empleados.Remove(await db.Empleados.SingleAsync(e => e.IdEmpleado == 2));
+            db.Sucursales.Remove(await db.Sucursales.SingleAsync(s => s.IdSucursal == 2));
+            db.Clinicas.Remove(await db.Clinicas.SingleAsync(c => c.IdClinica == 2));
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
+            "/api/consultas?page=3&pageSize=1");
+        Assert.NotNull(page);
+        Assert.Equal(3, page.TotalCount);
+        var item = Assert.Single(page.Items);
+        Assert.Equal(3, item.IdConsulta);
+        Assert.Equal(1, item.IdPaciente);
+        Assert.Equal(2, item.IdClinica);
+        Assert.Null(item.NombrePaciente);
+        Assert.Null(item.NombreMedico);
+        Assert.Null(item.NombreSucursal);
+        Assert.Null(item.NombreClinica);
+    }
+
+    [Fact]
+    public void ProyeccionRelacionalUsaUnaConsultaPaginadaConJoinsEnLugarDeNMasUno()
+    {
+        var options = new DbContextOptionsBuilder<ClinicaDbContext>()
+            .UseSqlServer("Server=(local);Database=NotUsed;Trusted_Connection=True;TrustServerCertificate=True")
+            .Options;
+        using var db = new ClinicaDbContext(options);
+        var page = db.Consultas.AsNoTracking().OrderBy(c => c.IdConsulta).Skip(20).Take(20);
+        var sql = ConsultaService.ProyectarListado(db, page, true, true, true, true)
+            .ToQueryString();
+        Assert.Contains("LEFT JOIN [Paciente]", sql);
+        Assert.Contains("LEFT JOIN [Empleado]", sql);
+        Assert.Contains("LEFT JOIN [Sucursal]", sql);
+        Assert.Contains("LEFT JOIN [Clinica]", sql);
+        Assert.Contains("OFFSET", sql);
+    }
+
+    [Fact]
+    public void DtoAnteriorSigueDeserializandoSinCamposNuevos()
+    {
+        const string anterior = """
+            {"idConsulta":1,"idPaciente":2,"idMedico":3,"idSucursal":4,
+             "idClinica":null,"fechaConsulta":"2026-01-15T10:30:00Z"}
+            """;
+        var dto = JsonSerializer.Deserialize<ConsultaListadoDto>(anterior,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(dto);
+        Assert.Equal(1, dto.IdConsulta);
+        Assert.Null(dto.NombrePaciente);
+        Assert.Null(dto.MotivoConsulta);
+        Assert.Null(dto.EstadoConsulta);
+    }
+
+    private sealed record ConsultaListadoAnterior(
+        int IdConsulta, int IdPaciente, int IdMedico, int IdSucursal,
+        int? IdClinica, DateTime FechaConsulta);
+
+    [Fact]
     public async Task MedicoListaSoloSusConsultasYElFiltroNoAmpliaSuAlcance()
     {
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.ConfigureCurrentUserAsMedicoAsync(1);
         await factory.GrantReadAsync(2);
+        await factory.GrantRelatedReadAsync(2, "Pacientes", "Empleados", "Sucursales", "Clinicas");
         await factory.SeedConsultasAsync();
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
@@ -242,6 +639,8 @@ public sealed class ConsultasTests
         Assert.NotNull(propias);
         Assert.Equal(2, propias.TotalCount);
         Assert.All(propias.Items, consulta => Assert.Equal(1, consulta.IdMedico));
+        Assert.All(propias.Items, consulta => Assert.Equal("Médico Uno", consulta.NombreMedico));
+        Assert.DoesNotContain(propias.Items, consulta => consulta.IdConsulta == 3);
 
         var filtroAjeno = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
             "/api/consultas?idMedico=2");
@@ -501,7 +900,7 @@ public sealed class ConsultasTests
     }
 
     [Fact]
-    public void MapeoConservaTreceColumnasYCuatroFkEntrantesYSalientes()
+    public void MapeoIncluyeEstadoNullableDeTreintaCaracteresYConservaLasFk()
     {
         using var factory = new ConsultaApiFactory();
         using var scope = factory.Services.CreateScope();
@@ -509,13 +908,74 @@ public sealed class ConsultasTests
         var entity = db.Model.FindEntityType(typeof(Consulta));
         Assert.NotNull(entity);
         Assert.Equal("Consulta", entity.GetTableName());
-        Assert.Equal(13, entity.GetProperties().Count());
+        Assert.Equal(16, entity.GetProperties().Count());
+        var estado = entity.FindProperty(nameof(Consulta.EstadoConsulta));
+        Assert.NotNull(estado);
+        Assert.Equal("nvarchar(30)", estado.FindAnnotation("Relational:ColumnType")?.Value);
+        Assert.Equal(30, estado.GetMaxLength());
+        Assert.True(estado.IsNullable);
+        var temperatura = entity.FindProperty(nameof(Consulta.TemperaturaC));
+        Assert.NotNull(temperatura);
+        Assert.Equal("decimal(4,1)", temperatura.FindAnnotation("Relational:ColumnType")?.Value);
+        Assert.Equal(4, temperatura.GetPrecision());
+        Assert.Equal(1, temperatura.GetScale());
+        Assert.True(temperatura.IsNullable);
+        var frecuencia = entity.FindProperty(nameof(Consulta.FrecuenciaCardiaca));
+        Assert.NotNull(frecuencia);
+        Assert.Equal("smallint", frecuencia.FindAnnotation("Relational:ColumnType")?.Value);
+        Assert.True(frecuencia.IsNullable);
         Assert.All(entity.GetProperties(), p => Assert.NotNull(p.PropertyInfo));
         Assert.Equal(4, entity.GetForeignKeys().Count());
         Assert.Equal(4, entity.GetReferencingForeignKeys().Count());
         Assert.All(entity.GetForeignKeys(), fk => Assert.Equal(DeleteBehavior.NoAction, fk.DeleteBehavior));
         Assert.All(entity.GetReferencingForeignKeys(), fk => Assert.Equal(DeleteBehavior.NoAction, fk.DeleteBehavior));
         Assert.True(entity.FindProperty("IdClinica")!.IsNullable);
+    }
+
+    [Fact]
+    public void ProveedorSqlServerProyectaAmbasColumnasSinConectarseALaBase()
+    {
+        var options = new DbContextOptionsBuilder<ClinicaDbContext>()
+            .UseSqlServer("Server=(local);Database=NotUsed;Trusted_Connection=True;TrustServerCertificate=True")
+            .Options;
+        using var db = new ClinicaDbContext(options);
+        var entity = db.Model.FindEntityType(typeof(Consulta));
+        Assert.NotNull(entity);
+        Assert.Equal("decimal(4,1)", entity.FindProperty(nameof(Consulta.TemperaturaC))?.GetColumnType());
+        Assert.Equal("smallint", entity.FindProperty(nameof(Consulta.FrecuenciaCardiaca))?.GetColumnType());
+        var sql = db.Consultas.AsNoTracking().Select(c => new
+        {
+            c.TemperaturaC,
+            c.FrecuenciaCardiaca
+        }).ToQueryString();
+        Assert.Contains("[TemperaturaC]", sql);
+        Assert.Contains("[FrecuenciaCardiaca]", sql);
+    }
+
+    [Fact]
+    public void DtoDeActualizacionDistingueCamposOmitidosDeNullExplicito()
+    {
+        const string anterior = """
+            {"idPaciente":1,"idMedico":1,"idSucursal":1,"idClinica":1,
+             "fechaConsulta":"2026-01-15T10:30:00Z"}
+            """;
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var oldClient = JsonSerializer.Deserialize<ConsultaUpdateDto>(anterior, options);
+        Assert.NotNull(oldClient);
+        Assert.False(oldClient.TemperaturaCEnviada);
+        Assert.False(oldClient.FrecuenciaCardiacaEnviada);
+        const string conNull = """
+            {"idPaciente":1,"idMedico":1,"idSucursal":1,"idClinica":1,
+             "fechaConsulta":"2026-01-15T10:30:00Z",
+             "temperaturaC":null,"frecuenciaCardiaca":null}
+            """;
+        var explicitNull = JsonSerializer.Deserialize<ConsultaUpdateDto>(conNull, options);
+        Assert.NotNull(explicitNull);
+        Assert.True(explicitNull.TemperaturaCEnviada);
+        Assert.True(explicitNull.FrecuenciaCardiacaEnviada);
+        var outgoing = JsonSerializer.Serialize(oldClient, options);
+        Assert.DoesNotContain("temperaturaC", outgoing, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("frecuenciaCardiaca", outgoing, StringComparison.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, object?> CuerpoBase() => new()
@@ -689,6 +1149,23 @@ public sealed class ConsultasTests
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             db.Permisos.Add(new Permiso
                 { IdRol = idRol, Modulo = "Consultas", PuedeConsultar = true });
+            await db.SaveChangesAsync();
+        }
+
+        public async Task GrantRelatedReadAsync(int idRol, params string[] modulos)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Permisos.AddRange(modulos.Select(modulo => new Permiso
+                { IdRol = idRol, Modulo = modulo, PuedeConsultar = true }));
+            await db.SaveChangesAsync();
+        }
+
+        public async Task RevokeRelatedReadAsync(string modulo)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Permisos.SingleAsync(p => p.Modulo == modulo)).PuedeConsultar = false;
             await db.SaveChangesAsync();
         }
 
