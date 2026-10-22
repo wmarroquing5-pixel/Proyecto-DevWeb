@@ -4,6 +4,9 @@
       <h2 class="mb-1">Consultas médicas</h2>
       <p class="text-muted mb-0">Listado global de consultas disponibles para tu sesión.</p>
     </div>
+    @if (permisos.puedeCrear(MODULOS_PERMISO.CONSULTAS) && permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)) {
+      <a routerLink="/consultas/nueva" class="btn btn-primary">Nueva consulta</a>
+    }
   </header>
 
   <form class="ui-card ui-form mb-4" (ngSubmit)="buscar()">

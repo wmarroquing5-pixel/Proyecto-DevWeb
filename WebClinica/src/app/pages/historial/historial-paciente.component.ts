@@ -23,8 +23,8 @@ import { ApiErrorService } from '../../core/services/api-error.service';
           <h2>Historial Médico</h2>
           <p class="text-muted mb-0">Paciente ID: {{ idPaciente }}</p>
         </div>
-        @if (permisos.puedeCrear(MODULOS_PERMISO.CONSULTAS)) {
-          <a [routerLink]="['/historial', idPaciente, 'nueva-consulta']" class="btn btn-primary" title="Crear consulta">
+        @if (permisos.puedeCrear(MODULOS_PERMISO.CONSULTAS) && permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)) {
+          <a routerLink="/consultas/nueva" [queryParams]="{ idPaciente: idPaciente }" class="btn btn-primary" title="Crear consulta">
             <i class="bi bi-plus-lg" aria-hidden="true"></i> Nueva Consulta
           </a>
         }

@@ -62,6 +62,18 @@ export const routes: Routes = [
             .then(m => m.ConsultasListComponent),
       },
       {
+        path: 'consultas/nueva',
+        canActivate: [permisoGuard],
+        data: { permisos: [
+          permiso(MODULOS_PERMISO.CONSULTAS, OPERACIONES_PERMISO.CREAR),
+          permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CONSULTAR),
+          permiso(MODULOS_PERMISO.SUCURSALES, OPERACIONES_PERMISO.CONSULTAR),
+        ] },
+        loadComponent: () =>
+          import('./pages/historial/consulta-nueva.component')
+            .then(m => m.ConsultaNuevaComponent),
+      },
+      {
         path: 'admin/roles',
         canActivate: [permisoGuard],
         data: { permisos: [permiso(MODULOS_PERMISO.ROLES, OPERACIONES_PERMISO.CONSULTAR)] },
@@ -93,6 +105,13 @@ export const routes: Routes = [
         data: { permisos: [permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CREAR)] },
         loadComponent: () =>
           import('./pages/pacientes/paciente-form.component').then(m => m.PacienteFormComponent),
+      },
+      {
+        path: 'pacientes/:id/ficha',
+        canActivate: [permisoGuard],
+        data: { permisos: [permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CONSULTAR)] },
+        loadComponent: () =>
+          import('./pages/pacientes/paciente-ficha.component').then(m => m.PacienteFichaComponent),
       },
       {
         path: 'pacientes/editar/:id',
@@ -187,6 +206,7 @@ export const routes: Routes = [
   canActivate: [permisoGuard],
   data: { permisos: [
     permiso(MODULOS_PERMISO.CONSULTAS, OPERACIONES_PERMISO.CREAR),
+    permiso(MODULOS_PERMISO.PACIENTES, OPERACIONES_PERMISO.CONSULTAR),
     permiso(MODULOS_PERMISO.SUCURSALES, OPERACIONES_PERMISO.CONSULTAR),
   ] },
   loadComponent: () =>

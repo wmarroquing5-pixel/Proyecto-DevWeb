@@ -9,6 +9,7 @@ import { authInterceptor } from '../../core/interceptors/auth.interceptor';
 import { GuardarPacienteRequest, PacienteListadoResponse, PacienteResponse, PagedResponse } from '../../core/models/paciente.model';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { PacientesService } from '../../core/services/paciente.service';
+import { ContactosEmergenciaService } from '../../core/services/contacto-emergencia.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { PacienteFormComponent } from './paciente-form.component';
 import { PacientesComponent } from './pacientes.component';
@@ -50,6 +51,7 @@ describe('Pacientes CLOSE-07C: formularios y contexto local', () => {
       providers: [provideRouter([]),
         { provide: ActivatedRoute, useValue: { snapshot: { get paramMap() { return convertToParamMap(ruta === null ? {} : { id: ruta }); } } } },
         { provide: PacientesService, useValue: api },
+        { provide: ContactosEmergenciaService, useValue: { listar: () => of({ items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 }) } },
         { provide: AuthSessionService, useValue: {
           currentUser: usuario, isAuthenticated: () => !!usuario(), get token() { return token; },
         } },

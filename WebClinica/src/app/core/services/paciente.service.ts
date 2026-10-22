@@ -6,6 +6,7 @@ import {
   PacienteListadoResponse,
   PacienteResponse,
   GuardarPacienteRequest,
+  FotoPacienteResponse,
   PagedResponse
 } from '../models/paciente.model';
 
@@ -59,5 +60,19 @@ export class PacientesService {
    */
   eliminar(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`);
+  }
+
+  guardarFoto(id: number, foto: File): Observable<FotoPacienteResponse> {
+    const form = new FormData();
+    form.append('foto', foto, foto.name);
+    return this.http.post<FotoPacienteResponse>(`${this.apiUrl}/${id}/foto`, form);
+  }
+
+  obtenerFoto(id: number): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/${id}/foto`, { responseType: 'blob' });
+  }
+
+  eliminarFoto(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${id}/foto`);
   }
 }

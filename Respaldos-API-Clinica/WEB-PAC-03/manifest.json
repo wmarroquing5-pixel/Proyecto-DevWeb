@@ -1,0 +1,46 @@
+{
+  "createdUtc": "2026-10-22T02:26:36.8448664Z",
+  "sourceRoot": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "files": [
+    {
+      "relativePath": "WebClinica/src/app/core/models/paciente.model.ts",
+      "sha256": "C2A478BACFE695261D6B5F96575B5A49258D50D69D783866CF1E152EB938E0C9",
+      "bytes": 1406
+    },
+    {
+      "relativePath": "WebClinica/src/app/core/services/paciente.service.ts",
+      "sha256": "9BE5172E4B17CC2D83CAC387D5C1B20345EDDFB5695451A64E1332ECD46EF96A",
+      "bytes": 2380
+    },
+    {
+      "relativePath": "WebClinica/src/app/pages/pacientes/paciente-form.component.ts",
+      "sha256": "B5514004332F59E470B6257ADAB818ACFC718CB0021648A30B2D199CDF6D548E",
+      "bytes": 23223
+    },
+    {
+      "relativePath": "WebClinica/src/app/pages/pacientes/pacientes-close07c.spec.ts",
+      "sha256": "1B430C1560A30C70FD0CC38DB93A14DAD76FBF3424621E30EC8670D63E6F36B6",
+      "bytes": 22148
+    },
+    {
+      "relativePath": "WebClinica/src/app/core/models/contacto-emergencia.model.ts",
+      "sha256": "5D2284555F044A3C183AC08F75C967A7C1ECC66460EC8C349E7008DDDE32BEB4",
+      "bytes": 482
+    },
+    {
+      "relativePath": "WebClinica/src/app/core/services/contacto-emergencia.service.ts",
+      "sha256": "8AEEDDC494A39626E463550399BA495BE8351DE1F56B31EDCBED4F9035D8FC9D",
+      "bytes": 1372
+    },
+    {
+      "relativePath": "WebClinica/src/app/pages/pacientes/paciente-contactos.component.ts",
+      "sha256": "B10E2FE8BCF0FC7EB9EC7BD1BF25C9ABC3E2459AF3FE86B6CB863DBFE44A4BF9",
+      "bytes": 16157
+    },
+    {
+      "relativePath": "WebClinica/src/app/pages/pacientes/pacientes-webpac01.spec.ts",
+      "sha256": "D086358B6A653199793F6011E91418BAED066E66F04E66FC49BF3FC8D2093076",
+      "bytes": 23410
+    }
+  ]
+}

@@ -53,7 +53,7 @@ describe('PacientesComponent WEB-UX-01C1', () => {
     expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('1');
     expect(element.textContent).toContain('María López');
     expect(element.querySelector<HTMLAnchorElement>('[aria-label="Editar paciente"]')?.getAttribute('href')).toBe('/pacientes/editar/41');
-    expect(element.querySelector<HTMLAnchorElement>('[aria-label="Ver historial del paciente"]')?.getAttribute('href')).toBe('/historial/41');
+    expect(element.querySelector<HTMLAnchorElement>('[aria-label="Ver ficha médica del paciente"]')?.getAttribute('href')).toBe('/pacientes/41/ficha');
   });
 
   it('respeta los permisos dinámicos de acciones', () => {

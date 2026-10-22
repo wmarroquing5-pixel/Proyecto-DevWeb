@@ -3,7 +3,7 @@ namespace API_Clinica.Common;
 public sealed class R2Options
 {
     public const string SectionName = "R2";
-    public const string ExpectedBucketName = "clinica-fotos";
+    public const string ExpectedBucketName = "fotos-clinica";
 
     public string AccountId { get; init; } = string.Empty;
     public string AccessKeyId { get; init; } = string.Empty;

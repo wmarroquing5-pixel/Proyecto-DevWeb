@@ -17,6 +17,8 @@ describe('ConsultasListComponent', () => {
   let authenticated: WritableSignal<boolean>;
   let consultasAllowed: WritableSignal<boolean>;
   let historialAllowed: WritableSignal<boolean>;
+  let crearAllowed: WritableSignal<boolean>;
+  let pacientesAllowed: WritableSignal<boolean>;
   let userId: WritableSignal<number>;
   let token: string;
 
@@ -45,6 +47,8 @@ describe('ConsultasListComponent', () => {
     authenticated = signal(true);
     consultasAllowed = signal(true);
     historialAllowed = signal(true);
+    crearAllowed = signal(true);
+    pacientesAllowed = signal(true);
     userId = signal(7);
     token = 'session-one';
     listarConsultas = jasmine.createSpy('listarConsultas')
@@ -61,8 +65,10 @@ describe('ConsultasListComponent', () => {
           get token(): string { return token; },
         } },
         { provide: PermisosService, useValue: {
+          puedeCrear: (modulo: string) => modulo === MODULOS_PERMISO.CONSULTAS && crearAllowed(),
           puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.CONSULTAS
-            ? consultasAllowed() : historialAllowed(),
+            ? consultasAllowed() : modulo === MODULOS_PERMISO.PACIENTES
+              ? pacientesAllowed() : historialAllowed(),
         } },
       ],
     });
@@ -79,6 +85,14 @@ describe('ConsultasListComponent', () => {
     expect(listarConsultas).toHaveBeenCalledOnceWith(jasmine.objectContaining({ page: 1, pageSize: 20 }));
     expect(component.consultas).toEqual([consulta]);
     expect(component.totalCount).toBe(41);
+  });
+
+  it('ofrece Nueva consulta en Consultas solo con Crear y Pacientes/Consultar', () => {
+    render();
+    const enlace = () => (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a[href="/consultas/nueva"]');
+    expect(enlace()?.textContent).toContain('Nueva consulta');
+    crearAllowed.set(false); fixture.detectChanges(); expect(enlace()).toBeNull();
+    crearAllowed.set(true); pacientesAllowed.set(false); fixture.detectChanges(); expect(enlace()).toBeNull();
   });
 
   it('presenta únicamente los campos disponibles en ConsultaListadoDto', () => {

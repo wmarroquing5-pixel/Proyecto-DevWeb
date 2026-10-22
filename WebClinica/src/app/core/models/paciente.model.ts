@@ -38,7 +38,12 @@ export interface GuardarPacienteRequest {
   nit?: string | null;
   nombreFacturacion?: string | null;
   direccion?: string | null;
+  /** Compatibilidad del DTO legado; la UI no debe enviarlo. La foto usa /pacientes/{id}/foto. */
   urlFoto?: string | null;
+}
+
+export interface FotoPacienteResponse {
+  url: string;
 }
 
 // Respuesta paginada genérica

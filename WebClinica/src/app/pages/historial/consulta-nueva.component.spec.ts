@@ -10,6 +10,7 @@ import { ConsultaNuevaComponent } from './consulta-nueva.component';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { EmpleadosService } from '../../core/services/empleado.service';
+import { PacientesService } from '../../core/services/paciente.service';
 import { User } from '../../core/models/user.model';
 import { EmpleadoDetalleResponse, EmpleadoListadoResponse, PagedResponse } from '../../core/models/empleado.model';
 import { ConsultaCreateDto, ConsultaDetalleDto } from '../../core/models/historial.model';
@@ -39,7 +40,11 @@ describe('ConsultaNuevaComponent catálogos activos', () => {
           currentUser: signal({ idUsuario: 1, idRol: 2, username: 'medico', idEmpleado: 2 }),
           isAuthenticated: () => true, token: 'test-token',
         } },
-        { provide: PermisosService, useValue: { puedeCrear: () => true, puedeConsultar: () => false } },
+        { provide: PermisosService, useValue: { puedeCrear: () => true, puedeConsultar: (modulo: string) => modulo === 'Pacientes' } },
+        { provide: PacientesService, useValue: {
+          listar: () => of({ items: [{ idPaciente: 8, nombres: 'Luis', apellidos: 'Paz', activo: true }], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }),
+          obtener: () => of({ idPaciente: 8, nombres: 'Luis', apellidos: 'Paz', activo: true }),
+        } },
         { provide: EmpleadosService, useValue: {} },
         { provide: CatalogosService, useValue: {
           getSucursales: () => of([
@@ -116,7 +121,11 @@ describe('ConsultaNuevaComponent: atribución médica y autorización', () => {
       } },
       { provide: PermisosService, useValue: {
         puedeCrear: (modulo: string) => modulo === 'Consultas' && crearPermitido(),
-        puedeConsultar: (modulo: string) => modulo === 'Empleados' && consultarPermitido(),
+        puedeConsultar: (modulo: string) => modulo === 'Pacientes' || (modulo === 'Empleados' && consultarPermitido()),
+      } },
+      { provide: PacientesService, useValue: {
+        listar: () => of({ items: [{ idPaciente: 8, nombres: 'Luis', apellidos: 'Paz', activo: true }], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }),
+        obtener: () => of({ idPaciente: 8, nombres: 'Luis', apellidos: 'Paz', activo: true }),
       } },
       { provide: HistorialService, useValue: { crearConsulta: crear } },
       { provide: EmpleadosService, useValue: { listar, obtener } },

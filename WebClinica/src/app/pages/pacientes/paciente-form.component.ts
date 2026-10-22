@@ -1,23 +1,36 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, ViewChild, inject, OnInit } from '@angular/core';
 
-import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { PacientesService } from '../../core/services/paciente.service';
 import { GuardarPacienteRequest, PacienteResponse } from '../../core/models/paciente.model';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { ContextoInventario, fechaInventarioValida, idInventarioValido } from '../inventario/inventario-ui';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
+import { PacienteContactosComponent } from './paciente-contactos.component';
+import { ContactoBorrador, contactoBorradorValido } from './paciente-contactos.component';
+import { ContactosEmergenciaService } from '../../core/services/contacto-emergencia.service';
+import { ContactoEmergenciaResponse } from '../../core/models/contacto-emergencia.model';
+
+interface ResultadoContactoAlta extends ContactoBorrador {
+  estado: 'pendiente' | 'confirmado' | 'fallido' | 'incierto';
+  idContacto?: number;
+  detalle?: string;
+}
 
 @Component({
     selector: 'app-paciente-form',
-    imports: [RouterModule, FormsModule],
+    imports: [FormsModule, ConfirmDialogComponent, PacienteContactosComponent],
     template: `
     <div class="container mt-4">
       <h2>{{ esEdicion ? 'Editar Paciente' : 'Nuevo Paciente' }}</h2>
 
       @if (error) { <div class="alert alert-danger">{{ error }}</div> }
 
-      <form (ngSubmit)="guardar()" class="card p-4 shadow-sm">
+      <form id="paciente-datos-form" (ngSubmit)="guardar()" class="card p-4 shadow-sm" aria-labelledby="datos-paciente-title">
+        <h3 id="datos-paciente-title" class="h5">Datos del paciente</h3>
         <fieldset [disabled]="cargando || !puedeGuardar || !registroCargado">
         <div class="row g-3">
           <!-- Datos Personales -->
@@ -84,33 +97,95 @@ import { ContextoInventario, fechaInventarioValida, idInventarioValido } from '.
             <input id="paciente-form-direccion" type="text" class="form-control" [(ngModel)]="form.direccion" name="direccion" maxlength="150">
           </div>
 
-          <!-- Foto -->
-          <div class="col-12">
-            <label for="paciente-form-foto" class="form-label">URL de Foto</label>
-            <input id="paciente-form-foto" type="url" class="form-control" [(ngModel)]="form.urlFoto" name="urlFoto" maxlength="500">
-          </div>
         </div>
 
-        <div class="d-flex gap-2 mt-4">
-          <button type="submit" class="btn btn-success" [disabled]="cargando">
-            {{ cargando ? 'Guardando...' : 'Guardar' }}
-          </button>
-          <a routerLink="/pacientes" class="btn btn-secondary">Cancelar</a>
-        </div>
         </fieldset>
       </form>
+
+      <section class="card p-4 shadow-sm mt-4" aria-labelledby="foto-title">
+        <h3 id="foto-title" class="h5">Fotografía</h3>
+        <p class="text-muted">JPEG, PNG o WebP; máximo 5 MB. La imagen se almacena mediante el endpoint protegido.</p>
+        @if (errorFoto) { <div class="alert alert-danger" role="alert">{{ errorFoto }}</div> }
+        @if (avisoFoto) { <div class="alert alert-success" role="status">{{ avisoFoto }}</div> }
+        @if (cargandoFoto) { <p role="status">Cargando fotografía…</p> }
+        @if (vistaPreviaFoto) { <img [src]="vistaPreviaFoto" alt="Fotografía del paciente" class="img-thumbnail mb-3" style="max-width: 240px; max-height: 240px; object-fit: contain"> }
+        @else if (esEdicion && !cargandoFoto) { <p class="text-muted">El paciente no tiene fotografía.</p> }
+        <div class="d-flex gap-2 flex-wrap align-items-end">
+          <div>
+            <label for="paciente-foto-archivo" class="form-label">Seleccionar fotografía</label>
+            <input id="paciente-foto-archivo" type="file" class="form-control" accept="image/jpeg,image/png,image/webp"
+              (change)="seleccionarFoto($event)" [disabled]="guardandoFoto || cargando">
+          </div>
+          @if (esEdicion && permisos.puedeModificar('Pacientes')) {
+            <button type="button" class="btn btn-primary" (click)="guardarFoto()" [disabled]="!archivoFoto || guardandoFoto || cargando">{{ guardandoFoto ? 'Subiendo…' : (fotoDisponible ? 'Sustituir fotografía' : 'Subir fotografía') }}</button>
+            @if (fotoDisponible) { <button type="button" class="btn btn-outline-danger" (click)="solicitarEliminarFoto()" [disabled]="guardandoFoto || cargando">Eliminar fotografía</button> }
+          }
+        </div>
+        @if (esEdicion) { <p class="small text-muted mt-2 mb-0">Subir, sustituir o eliminar la fotografía se confirma inmediatamente y de forma independiente de los datos generales.</p> }
+        @if (!esEdicion) { <p class="small text-muted mt-2 mb-0">La fotografía seleccionada se subirá después de confirmar el alta del paciente.</p> }
+      </section>
+
+      @if (registroCargado) {
+        <app-paciente-contactos [idPaciente]="idPaciente" />
+      }
+
+      @if (idPaciente !== null && contactosAlta.length) {
+        <section class="card p-4 shadow-sm mt-4" aria-labelledby="contactos-alta-title">
+          <h3 id="contactos-alta-title" class="h5">Resultado del alta de contactos del paciente ID {{ idPaciente }}</h3>
+          <ul class="mb-0">@for (contacto of contactosAlta; track contacto.localId) {
+            <li>{{ contacto.datos.nombres }} {{ contacto.datos.apellidos }}: {{ contacto.estado }}
+              @if (contacto.idContacto) { (ID {{ contacto.idContacto }}) }
+              @if (contacto.detalle) { — {{ contacto.detalle }} }
+              @if (contacto.estado !== 'confirmado') {
+                <div class="small">Teléfono: {{ contacto.datos.telefono }}; dirección: {{ contacto.datos.direccion }};
+                  parentesco: {{ contacto.datos.parentesco || '—' }}; correo: {{ contacto.datos.correoElectronico || '—' }}.</div>
+              }
+            </li>
+          }</ul>
+          @if (contactosAltaPendientes) { <p class="mt-2 mb-0">Los contactos fallidos o de resultado incierto conservan sus datos aquí. Use «Actualizar contactos» si tiene permiso de consulta y revise todas las páginas antes de crearlos manualmente; no se reintentan automáticamente.</p> }
+        </section>
+      }
+
+      <section class="card p-4 shadow-sm mt-4 mb-4" aria-labelledby="acciones-paciente-title">
+        <h3 id="acciones-paciente-title" class="h5">Acciones</h3>
+        <p class="small text-muted">
+          {{ esEdicion ? 'Guardar confirma únicamente los datos generales.' : 'Guardar crea el paciente y después confirma los contactos preparados y la fotografía.' }} Cancelar abandona los cambios generales y la selección local de fotografía;
+          no revierte fotografías ni contactos confirmados mediante sus propias acciones.
+        </p>
+        <div class="d-flex gap-2">
+          <a href="/pacientes" class="btn btn-secondary" (click)="cancelar($event)">Cancelar</a>
+          <button type="submit" form="paciente-datos-form" class="btn btn-success"
+            [disabled]="cargando || !puedeGuardar || !registroCargado">
+            {{ cargando ? 'Guardando...' : 'Guardar' }}
+          </button>
+        </div>
+      </section>
+
+      @if (confirmarEliminarFoto) {
+        <app-confirm-dialog title="Eliminar fotografía" description="¿Deseas eliminar la fotografía actual del paciente?"
+          consequence="La referencia se retirará del paciente y la imagen dejará de estar disponible."
+          confirmLabel="Eliminar" [busy]="guardandoFoto" (confirm)="eliminarFoto()" (cancel)="cancelarEliminarFoto()" />
+      }
+      @if (confirmarSalidaParcial) {
+        <app-confirm-dialog title="Salir del alta parcial" description="El paciente ya fue creado. Hay operaciones secundarias pendientes o de resultado incierto."
+          consequence="Salir no revierte el paciente ni los contactos confirmados; anote su identificador para conciliar los pendientes."
+          confirmLabel="Salir" (confirm)="confirmarSalida()" (cancel)="confirmarSalidaParcial = false" />
+      }
     </div>
   `
 })
 export class PacienteFormComponent implements OnInit {
   private service = inject(PacientesService);
+  private readonly contactosService = inject(ContactosEmergenciaService);
+  @ViewChild(PacienteContactosComponent) private contactosComponente?: PacienteContactosComponent;
   private router = inject(Router);
   private route = inject(ActivatedRoute);
-  private readonly permisos = inject(PermisosService);
+  readonly permisos = inject(PermisosService);
   private readonly apiErrors = inject(ApiErrorService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly contexto = new ContextoInventario(['Pacientes']);
   private contextoFormulario = this.contexto.clave();
-  private idPaciente: number | null = null;
+  idPaciente: number | null = null;
   registroCargado = false;
   get puedeGuardar(): boolean {
     return this.esEdicion ? this.permisos.puedeModificar('Pacientes') : this.permisos.puedeCrear('Pacientes');
@@ -119,12 +194,28 @@ export class PacienteFormComponent implements OnInit {
   esEdicion = false;
   cargando = false;
   error = '';
+  archivoFoto: File | null = null;
+  vistaPreviaFoto: string | null = null;
+  fotoDisponible = false;
+  cargandoFoto = false;
+  guardandoFoto = false;
+  errorFoto = '';
+  avisoFoto = '';
+  confirmarEliminarFoto = false;
+  altaConfirmadaFotoPendiente = false;
+  contactosAlta: ResultadoContactoAlta[] = [];
+  confirmarSalidaParcial = false;
+  altaResultadoIncierto = false;
+  get contactosAltaPendientes(): boolean { return this.contactosAlta.some(c => c.estado !== 'confirmado'); }
+  private vistaPreviaEsObjeto = false;
 
   form: GuardarPacienteRequest = this.formVacio();
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.revocarVistaPrevia());
     this.contexto.observar(() => {
-      this.cargando = false; this.form = this.formVacio(); this.ngOnInit();
+      this.cargando = this.cargandoFoto = this.guardandoFoto = false; this.form = this.formVacio(); this.limpiarEstadoFoto();
+      this.contactosAlta = []; this.confirmarSalidaParcial = this.altaResultadoIncierto = false; this.ngOnInit();
     });
   }
 
@@ -175,10 +266,12 @@ export class PacienteFormComponent implements OnInit {
             nit: paciente.nit,
             nombreFacturacion: paciente.nombreFacturacion,
             direccion: paciente.direccion,
-            urlFoto: paciente.urlFoto
+            urlFoto: null
           };
           this.cargando = false;
           this.registroCargado = true;
+          if (paciente.urlFoto) this.cargarFoto(paciente.idPaciente, this.contextoFormulario);
+          else this.fotoDisponible = false;
         },
         error: err => {
           if (!this.contexto.vigente(clave)) return;
@@ -191,9 +284,24 @@ export class PacienteFormComponent implements OnInit {
 
   guardar() {
     if (this.cargando) return;
+    if (this.altaResultadoIncierto) { this.error = 'El resultado del alta del paciente es incierto. Consulte el listado antes de intentar otra creación.'; return; }
+    if (this.contactosAltaPendientes) { this.error = `El paciente #${this.idPaciente} ya existe. Concilie los contactos pendientes en el listado antes de continuar.`; return; }
+    if (this.altaConfirmadaFotoPendiente) {
+      this.error = 'El paciente ya fue creado. Complete o descarte la fotografía pendiente desde su sección antes de salir.'; return;
+    }
     const clave = this.contextoFormulario;
     if (!this.contexto.vigente(clave) || !this.puedeGuardar || !this.registroCargado) {
       this.error = 'Verifique la sesión, el permiso y el paciente antes de guardar.'; return;
+    }
+    const borradores = this.esEdicion ? [] : (this.contactosComponente?.borradores ?? []).map(c => ({ localId: c.localId, datos: { ...c.datos } }));
+    if (!this.esEdicion && this.contactosComponente?.mostrarFormulario) {
+      this.error = 'Guarde o cancele el contacto que está editando antes de crear al paciente.'; return;
+    }
+    if (borradores.some(c => !contactoBorradorValido(c.datos)) || (borradores.length && !this.permisos.puedeCrear('ContactosEmergencia'))) {
+      this.error = 'Revise los contactos preparados, la sesión y el permiso ContactosEmergencia/Crear.'; return;
+    }
+    if (!this.esEdicion && this.archivoFoto && !this.permisos.puedeModificar('Pacientes')) {
+      this.error = 'Se requiere Pacientes/Modificar para subir la fotografía después del alta.'; return;
     }
     const normalizar = (valor: string | null | undefined) => valor?.trim().replace(/\s+/g, ' ') || null;
     const nombres = normalizar(this.form.nombres), apellidos = normalizar(this.form.apellidos);
@@ -211,9 +319,9 @@ export class PacienteFormComponent implements OnInit {
 
     // Convertir campos vacíos a null
     const formData: GuardarPacienteRequest = {
-      ...this.form,
       nombres,
       apellidos,
+      fechaNacimiento: this.form.fechaNacimiento,
       dpi: this.form.dpi || null,
       genero: this.form.genero || null,
       telefono: this.form.telefono || null,
@@ -221,8 +329,7 @@ export class PacienteFormComponent implements OnInit {
       tipoSangre: this.form.tipoSangre || null,
       nit: this.form.nit || null,
       nombreFacturacion: this.form.nombreFacturacion || null,
-      direccion: this.form.direccion || null,
-      urlFoto: this.form.urlFoto || null
+      direccion: this.form.direccion || null
     };
 
     const request = this.esEdicion ? this.service.actualizar(this.idPaciente!, formData) : this.service.crear(formData);
@@ -230,15 +337,196 @@ export class PacienteFormComponent implements OnInit {
       next: paciente => {
         if (!this.contexto.vigente(clave)) return;
         if (!paciente || !idInventarioValido(paciente.idPaciente) || (this.esEdicion && paciente.idPaciente !== this.idPaciente)) {
+          this.altaResultadoIncierto = !this.esEdicion;
           this.error = 'La respuesta no confirma el paciente guardado. Compruebe el listado antes de repetir.'; this.cargando = false; return;
+        }
+        if (!this.esEdicion) {
+          this.idPaciente = paciente.idPaciente; this.esEdicion = true; this.registroCargado = true;
+          this.contactosAlta = borradores.map(c => ({ ...c, estado: 'pendiente' }));
+          this.altaConfirmadaFotoPendiente = !!this.archivoFoto;
+          if (this.archivoFoto) this.subirFotoTrasCrear(this.idPaciente, clave, () => this.guardarContactosAlta(0, clave));
+          else this.guardarContactosAlta(0, clave);
+          return;
         }
         this.router.navigate(['/pacientes']);
       },
       error: err => {
         if (!this.contexto.vigente(clave)) return;
+        if (!this.esEdicion && (err.status === 0 || err.status >= 500)) this.altaResultadoIncierto = true;
         this.error = this.apiErrors.messageFor(err, this.esEdicion ? 'Error al actualizar el paciente.' : 'Error al crear el paciente.');
         this.cargando = false;
       },
     }));
+  }
+
+  private guardarContactosAlta(indice: number, clave: string): void {
+    if (!this.contexto.vigente(clave) || this.idPaciente === null) return;
+    if (indice >= this.contactosAlta.length) {
+      this.finalizarAlta();
+      return;
+    }
+    const contacto = this.contactosAlta[indice]; const idPaciente = this.idPaciente;
+    if (!this.permisos.puedeCrear('ContactosEmergencia')) {
+      contacto.estado = 'fallido'; contacto.detalle = 'Permiso de creación revocado.';
+      this.guardarContactosAlta(indice + 1, clave); return;
+    }
+    this.contexto.agregar(this.contactosService.crear({ ...contacto.datos, idPaciente }).subscribe({
+      next: (res: ContactoEmergenciaResponse) => {
+        if (!this.contexto.vigente(clave) || this.idPaciente !== idPaciente) return;
+        if (res && idInventarioValido(res.idContacto) && res.idPaciente === idPaciente && res.activo) {
+          contacto.estado = 'confirmado'; contacto.idContacto = res.idContacto;
+        } else { contacto.estado = 'incierto'; contacto.detalle = 'Respuesta no concluyente; consulte el listado autorizado.'; }
+        this.guardarContactosAlta(indice + 1, clave);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (!this.contexto.vigente(clave) || this.idPaciente !== idPaciente) return;
+        contacto.estado = err.status === 0 || err.status >= 500 ? 'incierto' : 'fallido';
+        contacto.detalle = contacto.estado === 'incierto' ? 'Resultado incierto; consulte el listado antes de repetir.' : this.apiErrors.messageFor(err, 'No fue posible guardar el contacto.');
+        this.guardarContactosAlta(indice + 1, clave);
+      },
+    }));
+  }
+
+  private finalizarAlta(): void {
+    this.cargando = false;
+    if (this.contactosAltaPendientes) {
+      this.error = `El paciente #${this.idPaciente} fue creado, pero algunos contactos no quedaron confirmados. Consulte sus resultados antes de salir.`;
+    } else if (!this.altaConfirmadaFotoPendiente) this.router.navigate(['/pacientes']);
+  }
+
+  cancelar(event: MouseEvent): void {
+    event.preventDefault();
+    if (this.cargando || this.guardandoFoto) { this.error = 'Espere a que termine la operación actual.'; return; }
+    if (this.idPaciente !== null && (this.contactosAltaPendientes || this.altaConfirmadaFotoPendiente)) {
+      this.confirmarSalidaParcial = true; return;
+    }
+    this.router.navigate(['/pacientes']);
+  }
+  confirmarSalida(): void { this.confirmarSalidaParcial = false; this.router.navigate(['/pacientes']); }
+
+  seleccionarFoto(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.errorFoto = this.avisoFoto = '';
+    if (!file) { this.archivoFoto = null; if (!this.fotoDisponible) this.revocarVistaPrevia(); return; }
+    if (!(file instanceof File)) {
+      this.archivoFoto = null; this.errorFoto = 'Seleccione un archivo de imagen válido.'; input.value = ''; return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      this.archivoFoto = null; this.errorFoto = 'Solo se admiten imágenes JPEG, PNG o WebP.'; input.value = ''; return;
+    }
+    if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+      this.archivoFoto = null; this.errorFoto = 'La fotografía debe tener contenido y no superar 5 MB.'; input.value = ''; return;
+    }
+    this.archivoFoto = file; this.mostrarBlob(file);
+  }
+
+  guardarFoto(): void {
+    const file = this.archivoFoto; const id = this.idPaciente; const clave = this.contextoFormulario;
+    if (this.guardandoFoto || !file || !id || !idInventarioValido(id) || !this.contexto.vigente(clave) ||
+      !this.permisos.puedeModificar('Pacientes') || !this.registroCargado) {
+      this.errorFoto = 'Verifique el archivo, el paciente, la sesión y el permiso Pacientes/Modificar.'; return;
+    }
+    this.subirFoto(id, file, clave, false);
+  }
+
+  solicitarEliminarFoto(): void {
+    if (this.fotoDisponible && !this.guardandoFoto && this.permisos.puedeModificar('Pacientes')) this.confirmarEliminarFoto = true;
+  }
+  cancelarEliminarFoto(): void { if (!this.guardandoFoto) this.confirmarEliminarFoto = false; }
+  eliminarFoto(): void {
+    const id = this.idPaciente; const clave = this.contextoFormulario;
+    if (!this.confirmarEliminarFoto || this.guardandoFoto || !id || !this.contexto.vigente(clave) ||
+      !this.permisos.puedeModificar('Pacientes') || !this.fotoDisponible) {
+      this.confirmarEliminarFoto = false; this.errorFoto = 'La sesión, el permiso o la fotografía cambiaron.'; return;
+    }
+    this.guardandoFoto = true; this.errorFoto = this.avisoFoto = '';
+    this.contexto.agregar(this.service.eliminarFoto(id).subscribe({
+      next: () => {
+        if (!this.fotoVigente(clave, id)) return;
+        this.guardandoFoto = false; this.confirmarEliminarFoto = false; this.fotoDisponible = false; this.archivoFoto = null;
+        this.revocarVistaPrevia(); this.avisoFoto = 'Fotografía eliminada.';
+      },
+      error: (err: HttpErrorResponse) => {
+        if (!this.fotoVigente(clave, id)) return;
+        this.guardandoFoto = false; this.confirmarEliminarFoto = false;
+        this.errorFoto = err.status === 0 || err.status >= 500
+          ? 'Resultado incierto: vuelva a consultar la fotografía antes de repetir la eliminación.'
+          : this.apiErrors.messageFor(err, 'No fue posible eliminar la fotografía.');
+      },
+    }));
+  }
+
+  private subirFotoTrasCrear(id: number, clave: string, alTerminar: () => void): void {
+    const file = this.archivoFoto!;
+    this.altaConfirmadaFotoPendiente = true;
+    this.subirFoto(id, file, clave, true, alTerminar);
+  }
+
+  private subirFoto(id: number, file: File, clave: string, navegarAlFinal: boolean, alTerminar?: () => void): void {
+    this.guardandoFoto = true; this.cargando = navegarAlFinal; this.errorFoto = this.avisoFoto = '';
+    this.contexto.agregar(this.service.guardarFoto(id, file).subscribe({
+      next: response => {
+        if (!this.fotoVigente(clave, id)) return;
+        if (response?.url !== `/api/pacientes/${id}/foto`) {
+          this.guardandoFoto = false; this.cargando = !!alTerminar;
+          this.errorFoto = 'La respuesta no confirma la fotografía del paciente. Verifique antes de repetir.';
+          alTerminar?.(); return;
+        }
+        this.guardandoFoto = false; this.cargando = !!alTerminar; this.fotoDisponible = true; this.archivoFoto = null; this.avisoFoto = 'Fotografía guardada.';
+        this.altaConfirmadaFotoPendiente = false;
+        if (alTerminar) alTerminar(); else if (navegarAlFinal) this.finalizarAlta(); else this.cargarFoto(id, clave);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (!this.fotoVigente(clave, id)) return;
+        this.guardandoFoto = false; this.cargando = !!alTerminar;
+        const detalle = this.mensajeErrorFoto(err);
+        this.errorFoto = navegarAlFinal ? `El paciente #${id} fue creado, pero la fotografía quedó pendiente. ${detalle}` : detalle;
+        alTerminar?.();
+      },
+    }));
+  }
+
+  private cargarFoto(id: number, clave: string): void {
+    this.cargandoFoto = true; this.errorFoto = '';
+    this.contexto.agregar(this.service.obtenerFoto(id).subscribe({
+      next: blob => {
+        if (!this.fotoVigente(clave, id)) return;
+        this.cargandoFoto = false;
+        if (!blob || blob.size <= 0 || !['image/jpeg', 'image/png', 'image/webp'].includes(blob.type)) {
+          this.fotoDisponible = false; this.errorFoto = 'La API devolvió una fotografía inválida.'; this.revocarVistaPrevia(); return;
+        }
+        this.fotoDisponible = true; this.mostrarBlob(blob);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (!this.fotoVigente(clave, id)) return;
+        this.cargandoFoto = false; this.fotoDisponible = false; this.revocarVistaPrevia();
+        if (err.status !== 404) this.errorFoto = this.apiErrors.messageFor(err, 'No fue posible cargar la fotografía.');
+      },
+    }));
+  }
+
+  private fotoVigente(clave: string, id: number): boolean {
+    return this.contexto.vigente(clave) && this.idPaciente === id && this.registroCargado;
+  }
+  private mensajeErrorFoto(error: HttpErrorResponse): string {
+    if (error.status === 0) return 'Resultado incierto: no se pudo confirmar la respuesta del servidor. Verifique la fotografía antes de repetir.';
+    if (error.status === 400) return this.apiErrors.messageFor(error, 'El contenido de la fotografía no es una imagen válida.');
+    if (error.status === 401) return 'La sesión expiró o dejó de ser válida. Inicie sesión antes de repetir la carga.';
+    if (error.status === 403) return this.apiErrors.messageFor(error, 'No tienes autorización para modificar la fotografía.');
+    if (error.status === 413) return this.apiErrors.messageFor(error, 'La fotografía supera el tamaño permitido.');
+    if (error.status === 415) return this.apiErrors.messageFor(error, 'El formato o el tipo MIME de la fotografía no es compatible.');
+    if (error.status >= 500) return 'Resultado incierto: el procesamiento o almacenamiento no confirmó la operación. Verifique la fotografía antes de repetir. No se reintentó automáticamente.';
+    return this.apiErrors.messageFor(error, 'No fue posible guardar la fotografía.');
+  }
+  private mostrarBlob(blob: Blob): void {
+    this.revocarVistaPrevia(); this.vistaPreviaFoto = URL.createObjectURL(blob); this.vistaPreviaEsObjeto = true;
+  }
+  private revocarVistaPrevia(): void {
+    if (this.vistaPreviaFoto && this.vistaPreviaEsObjeto) URL.revokeObjectURL(this.vistaPreviaFoto);
+    this.vistaPreviaFoto = null; this.vistaPreviaEsObjeto = false;
+  }
+  private limpiarEstadoFoto(): void {
+    this.archivoFoto = null; this.fotoDisponible = false; this.errorFoto = this.avisoFoto = ''; this.confirmarEliminarFoto = false; this.altaConfirmadaFotoPendiente = false; this.revocarVistaPrevia();
   }
 }

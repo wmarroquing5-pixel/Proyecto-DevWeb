@@ -80,9 +80,9 @@ import { ContextoInventario, idInventarioValido } from '../inventario/inventario
                     </span>
                   </td>
                   <td class="ui-actions ui-col-actions">
-                    @if (permisos.puedeConsultar(MODULOS_PERMISO.CONSULTAS)) {
-                      <a [routerLink]="['/historial', paciente.idPaciente]" class="btn btn-sm btn-outline-info" aria-label="Ver historial del paciente" title="Ver historial">
-                        <i class="bi bi-eye" aria-hidden="true"></i><span class="visually-hidden"> Ver historial</span>
+                    @if (permisos.puedeConsultar(MODULOS_PERMISO.PACIENTES)) {
+                      <a [routerLink]="['/pacientes', paciente.idPaciente, 'ficha']" class="btn btn-sm btn-outline-info" aria-label="Ver ficha médica del paciente" title="Ver ficha médica">
+                        <i class="bi bi-eye" aria-hidden="true"></i><span class="visually-hidden"> Ver ficha médica</span>
                       </a>
                     }
                     @if (permisos.puedeModificar(MODULOS_PERMISO.PACIENTES)) {
