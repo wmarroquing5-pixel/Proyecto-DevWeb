@@ -136,6 +136,33 @@ describe('WEB-PAC-01 fotografía del paciente', () => {
     expect(guardar[0].disabled).toBeTrue(); expect(guardar[0].textContent).toContain('Guardando');
   });
 
+  it('presenta seis filas de datos, etiquetas asociadas y el selector de foto del diseño', async () => {
+    abrir(); await fixture.whenStable(); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const form = host.querySelector('#paciente-datos-form') as HTMLFormElement;
+    const columnas = [...form.querySelectorAll<HTMLElement>('.row > div')];
+    expect(columnas.length).toBe(11);
+    expect(columnas.slice(0, 10).every(col => col.classList.contains('col-md-6'))).toBeTrue();
+    expect(columnas[10].classList.contains('col-12')).toBeTrue();
+    const campos = [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')];
+    expect(campos.map(campo => campo.name)).toEqual([
+      'nombres', 'apellidos', 'dpi', 'fechaNacimiento', 'genero', 'tipoSangre',
+      'telefono', 'correo', 'nit', 'nombreFacturacion', 'direccion',
+    ]);
+    for (const campo of campos) {
+      expect(form.querySelector(`label[for="${campo.id}"]`)).not.toBeNull();
+    }
+    expect(campos.filter(campo => campo.required).map(campo => campo.name)).toEqual(['nombres', 'apellidos', 'fechaNacimiento']);
+    expect((host.querySelector('#paciente-form-nombres') as HTMLInputElement).placeholder).toBe('Ingrese nombres');
+    expect((host.querySelector('#paciente-form-genero') as HTMLSelectElement).selectedOptions[0].textContent).toBe('Seleccionar género');
+    expect((host.querySelector('#paciente-form-sangre') as HTMLSelectElement).selectedOptions[0].textContent).toBe('Seleccionar tipo de sangre');
+    const foto = host.querySelector('#paciente-foto-archivo') as HTMLInputElement;
+    expect(foto.accept).toBe('image/jpeg,image/png,image/webp');
+    expect(host.querySelector('label[for="paciente-foto-archivo"]')?.textContent).toContain('Seleccionar archivo');
+    expect(host.querySelector('[aria-labelledby="foto-title"]')?.textContent).toContain('JPG, PNG y WebP (máx. 5 MB)');
+    expect(api.crear).not.toHaveBeenCalled(); expect(api.guardarFoto).not.toHaveBeenCalled();
+  });
+
   it('rechaza una entrada que no sea realmente File aunque imite nombre, MIME y tamaño', () => {
     const c = abrir();
     c.seleccionarFoto({ target: { files: [{ name: 'falsa.png', type: 'image/png', size: 100 }], value: 'x' } } as unknown as Event);
@@ -143,7 +170,12 @@ describe('WEB-PAC-01 fotografía del paciente', () => {
   });
 
   it('acepta JPEG, PNG y WebP válidos y crea una vista previa local', () => {
-    for (const type of ['image/jpeg', 'image/png', 'image/webp']) { const c = abrir(); elegir(c, archivo(type)); expect(c.archivoFoto?.type).toBe(type); expect(c.vistaPreviaFoto).toBe('blob:preview'); fixture.destroy(); }
+    for (const type of ['image/jpeg', 'image/png', 'image/webp']) {
+      const c = abrir(); elegir(c, archivo(type)); fixture.detectChanges();
+      expect(c.archivoFoto?.type).toBe(type); expect(c.vistaPreviaFoto).toBe('blob:preview');
+      expect((fixture.nativeElement as HTMLElement).querySelector<HTMLImageElement>('img[alt="Fotografía del paciente"]')?.src).toContain('blob:preview');
+      expect(api.guardarFoto).not.toHaveBeenCalled(); fixture.destroy();
+    }
   });
   it('rechaza tipo inválido y archivo vacío o mayor de 5 MB', () => {
     let c = abrir(); elegir(c, archivo('image/gif')); expect(c.archivoFoto).toBeNull(); expect(c.errorFoto).toContain('JPEG'); fixture.destroy();
@@ -168,6 +200,22 @@ describe('WEB-PAC-01 fotografía del paciente', () => {
     const c = abrir('41', true); c.solicitarEliminarFoto(); c.eliminarFoto(); c.eliminarFoto();
     expect(api.eliminarFoto).toHaveBeenCalledOnceWith(41); pending.next();
     expect(c.fotoDisponible).toBeFalse(); expect(c.avisoFoto).toContain('eliminada');
+  });
+  it('cierra el diálogo al pulsar Cancelar y solo elimina la fotografía al pulsar Eliminar', () => {
+    const c = abrir('41', true);
+    const dialogo = () => (fixture.nativeElement as HTMLElement).querySelector('app-confirm-dialog');
+    const boton = (texto: string) => Array.from(dialogo()!.querySelectorAll('button'))
+      .find(elemento => elemento.textContent?.trim() === texto) as HTMLButtonElement;
+
+    c.solicitarEliminarFoto(); fixture.detectChanges();
+    boton('Cancelar').click(); fixture.detectChanges();
+    expect(c.confirmarEliminarFoto).toBeFalse(); expect(dialogo()).toBeNull();
+    expect(api.eliminarFoto).not.toHaveBeenCalled();
+
+    c.solicitarEliminarFoto(); fixture.detectChanges();
+    boton('Eliminar').click(); fixture.detectChanges();
+    expect(api.eliminarFoto).toHaveBeenCalledOnceWith(41);
+    expect(c.fotoDisponible).toBeFalse();
   });
   it('no modifica fotografía sin Pacientes/Modificar', () => {
     const c = abrir('41'); elegir(c, archivo()); operaciones.update(x => new Set([...x].filter(o => o !== 'Modificar'))); c.guardarFoto();
@@ -264,6 +312,17 @@ describe('WEB-PAC-01 contactos de emergencia', () => {
   it('retira el contacto seleccionado por ID solo tras confirmar', () => {
     api.listar.and.returnValue(of(pagina([contacto(7), contacto(8)]))); const c = abrir(); c.solicitarRetiro(c.contactos[1]); c.confirmarRetiro(); c.confirmarRetiro();
     expect(api.eliminar).toHaveBeenCalledOnceWith(8); expect(api.listar).toHaveBeenCalledTimes(2);
+  });
+  it('cancela el retiro desde el botón del diálogo sin llamar a la API', () => {
+    api.listar.and.returnValue(of(pagina([contacto(7)])));
+    const c = abrir(); c.solicitarRetiro(c.contactos[0]); fixture.detectChanges();
+    const dialogo = (fixture.nativeElement as HTMLElement).querySelector('app-confirm-dialog')!;
+    const cancelar = Array.from(dialogo.querySelectorAll('button'))
+      .find(boton => boton.textContent?.trim() === 'Cancelar') as HTMLButtonElement;
+    cancelar.click(); fixture.detectChanges();
+    expect(c.pendienteRetiro).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-confirm-dialog')).toBeNull();
+    expect(api.eliminar).not.toHaveBeenCalled();
   });
   it('rechaza campos obligatorios vacíos y longitudes fuera de contrato', () => {
     const c = abrir(); c.nuevo(); c.guardar(); expect(api.crear).not.toHaveBeenCalled();

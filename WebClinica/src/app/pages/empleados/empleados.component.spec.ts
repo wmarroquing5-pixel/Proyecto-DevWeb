@@ -53,6 +53,19 @@ describe('EmpleadosComponent WEB-UX-01C1', () => {
     expect(element.querySelector<HTMLAnchorElement>('[aria-label="Editar empleado"]')?.getAttribute('href')).toBe('/admin/empleados/editar/73');
   });
 
+  it('alinea filtros y muestra acciones con texto sin cambiar su significado', () => {
+    const element = render();
+    const filtros = element.querySelector('.empleados-filtros');
+    expect(filtros?.classList.contains('align-items-end')).toBeTrue();
+    expect(filtros?.querySelector('label[for="empleado-nombre"]')).not.toBeNull();
+    expect(filtros?.querySelector('label[for="empleado-tipo"]')).not.toBeNull();
+    expect(filtros?.querySelector('label[for="empleado-estado"]')).not.toBeNull();
+    expect(filtros?.querySelector('.col-md-2.d-flex.align-items-end button')?.textContent).toContain('Limpiar');
+    expect(element.querySelector('.empleados-actions a')?.textContent).toContain('Modificar');
+    expect(element.querySelector('.empleados-actions button')?.textContent).toContain('Eliminar');
+    expect(element.querySelector('nav[aria-label="Páginas de empleados"]')?.classList.contains('flex-wrap')).toBeTrue();
+  });
+
   it('respeta los permisos dinámicos de acciones', () => {
     operaciones.clear();
     const element = render();

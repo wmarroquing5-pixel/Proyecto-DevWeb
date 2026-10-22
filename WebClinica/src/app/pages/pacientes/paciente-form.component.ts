@@ -24,44 +24,44 @@ interface ResultadoContactoAlta extends ContactoBorrador {
     selector: 'app-paciente-form',
     imports: [FormsModule, ConfirmDialogComponent, PacienteContactosComponent],
     template: `
-    <div class="container mt-4">
-      <h2>{{ esEdicion ? 'Editar Paciente' : 'Nuevo Paciente' }}</h2>
+    <div class="container mt-4 paciente-form-page">
+      <h2 class="paciente-form-page__title">{{ esEdicion ? 'Editar Paciente' : 'Nuevo Paciente' }}</h2>
 
       @if (error) { <div class="alert alert-danger">{{ error }}</div> }
 
-      <form id="paciente-datos-form" (ngSubmit)="guardar()" class="card p-4 shadow-sm" aria-labelledby="datos-paciente-title">
-        <h3 id="datos-paciente-title" class="h5">Datos del paciente</h3>
+      <form id="paciente-datos-form" (ngSubmit)="guardar()" class="ui-card ui-form paciente-form-page__card" aria-labelledby="datos-paciente-title">
+        <h3 id="datos-paciente-title" class="h5 paciente-form-page__heading">Datos del paciente</h3>
         <fieldset [disabled]="cargando || !puedeGuardar || !registroCargado">
         <div class="row g-3">
           <!-- Datos Personales -->
           <div class="col-md-6">
-            <label for="paciente-form-nombres" class="form-label">Nombres *</label>
-            <input id="paciente-form-nombres" type="text" class="form-control" [(ngModel)]="form.nombres" name="nombres" required maxlength="100">
+            <label for="paciente-form-nombres" class="form-label">Nombres <span class="text-danger" aria-hidden="true">*</span></label>
+            <input id="paciente-form-nombres" type="text" class="form-control" placeholder="Ingrese nombres" [(ngModel)]="form.nombres" name="nombres" required maxlength="100">
           </div>
           <div class="col-md-6">
-            <label for="paciente-form-apellidos" class="form-label">Apellidos *</label>
-            <input id="paciente-form-apellidos" type="text" class="form-control" [(ngModel)]="form.apellidos" name="apellidos" required maxlength="100">
+            <label for="paciente-form-apellidos" class="form-label">Apellidos <span class="text-danger" aria-hidden="true">*</span></label>
+            <input id="paciente-form-apellidos" type="text" class="form-control" placeholder="Ingrese apellidos" [(ngModel)]="form.apellidos" name="apellidos" required maxlength="100">
           </div>
           <div class="col-md-6">
             <label for="paciente-form-dpi" class="form-label">DPI</label>
-            <input id="paciente-form-dpi" type="text" class="form-control" [(ngModel)]="form.dpi" name="dpi" maxlength="20">
+            <input id="paciente-form-dpi" type="text" class="form-control" placeholder="Ingrese DPI" [(ngModel)]="form.dpi" name="dpi" maxlength="20">
           </div>
           <div class="col-md-6">
-            <label for="paciente-form-fecha" class="form-label">Fecha de Nacimiento *</label>
+            <label for="paciente-form-fecha" class="form-label">Fecha de nacimiento <span class="text-danger" aria-hidden="true">*</span></label>
             <input id="paciente-form-fecha" type="date" class="form-control" [(ngModel)]="form.fechaNacimiento" name="fechaNacimiento" required>
           </div>
           <div class="col-md-6">
             <label for="paciente-form-genero" class="form-label">Género</label>
             <select id="paciente-form-genero" class="form-select" [(ngModel)]="form.genero" name="genero">
-              <option value="">Seleccione...</option>
+              <option [ngValue]="null">Seleccionar género</option>
               <option value="M">Masculino</option>
               <option value="F">Femenino</option>
             </select>
           </div>
           <div class="col-md-6">
-            <label for="paciente-form-sangre" class="form-label">Tipo de Sangre</label>
+            <label for="paciente-form-sangre" class="form-label">Tipo de sangre</label>
             <select id="paciente-form-sangre" class="form-select" [(ngModel)]="form.tipoSangre" name="tipoSangre">
-              <option value="">Seleccione...</option>
+              <option [ngValue]="null">Seleccionar tipo de sangre</option>
               <option value="A+">A+</option>
               <option value="A-">A-</option>
               <option value="B+">B+</option>
@@ -76,25 +76,25 @@ interface ResultadoContactoAlta extends ContactoBorrador {
           <!-- Contacto -->
           <div class="col-md-6">
             <label for="paciente-form-telefono" class="form-label">Teléfono</label>
-            <input id="paciente-form-telefono" type="tel" class="form-control" [(ngModel)]="form.telefono" name="telefono" maxlength="20">
+            <input id="paciente-form-telefono" type="tel" class="form-control" placeholder="Ingrese teléfono" [(ngModel)]="form.telefono" name="telefono" maxlength="20">
           </div>
           <div class="col-md-6">
-            <label for="paciente-form-correo" class="form-label">Correo Electrónico</label>
-            <input id="paciente-form-correo" type="email" class="form-control" [(ngModel)]="form.correo" name="correo" maxlength="100">
+            <label for="paciente-form-correo" class="form-label">Correo electrónico</label>
+            <input id="paciente-form-correo" type="email" class="form-control" placeholder="Ingrese correo electrónico" [(ngModel)]="form.correo" name="correo" maxlength="100">
           </div>
 
           <!-- Facturación -->
           <div class="col-md-6">
             <label for="paciente-form-nit" class="form-label">NIT</label>
-            <input id="paciente-form-nit" type="text" class="form-control" [(ngModel)]="form.nit" name="nit" maxlength="50">
+            <input id="paciente-form-nit" type="text" class="form-control" placeholder="Ingrese NIT" [(ngModel)]="form.nit" name="nit" maxlength="50">
           </div>
           <div class="col-md-6">
-            <label for="paciente-form-facturacion" class="form-label">Nombre de Facturación</label>
-            <input id="paciente-form-facturacion" type="text" class="form-control" [(ngModel)]="form.nombreFacturacion" name="nombreFacturacion" maxlength="150">
+            <label for="paciente-form-facturacion" class="form-label">Nombre de facturación</label>
+            <input id="paciente-form-facturacion" type="text" class="form-control" placeholder="Ingrese nombre de facturación" [(ngModel)]="form.nombreFacturacion" name="nombreFacturacion" maxlength="150">
           </div>
           <div class="col-12">
             <label for="paciente-form-direccion" class="form-label">Dirección</label>
-            <input id="paciente-form-direccion" type="text" class="form-control" [(ngModel)]="form.direccion" name="direccion" maxlength="150">
+            <input id="paciente-form-direccion" type="text" class="form-control" placeholder="Ingrese dirección" [(ngModel)]="form.direccion" name="direccion" maxlength="150">
           </div>
 
         </div>
@@ -102,25 +102,30 @@ interface ResultadoContactoAlta extends ContactoBorrador {
         </fieldset>
       </form>
 
-      <section class="card p-4 shadow-sm mt-4" aria-labelledby="foto-title">
-        <h3 id="foto-title" class="h5">Fotografía</h3>
-        <p class="text-muted">JPEG, PNG o WebP; máximo 5 MB. La imagen se almacena mediante el endpoint protegido.</p>
+      <section class="ui-card paciente-form-page__card mt-4" aria-labelledby="foto-title">
+        <h3 id="foto-title" class="h5 paciente-form-page__heading">Fotografía</h3>
         @if (errorFoto) { <div class="alert alert-danger" role="alert">{{ errorFoto }}</div> }
         @if (avisoFoto) { <div class="alert alert-success" role="status">{{ avisoFoto }}</div> }
         @if (cargandoFoto) { <p role="status">Cargando fotografía…</p> }
-        @if (vistaPreviaFoto) { <img [src]="vistaPreviaFoto" alt="Fotografía del paciente" class="img-thumbnail mb-3" style="max-width: 240px; max-height: 240px; object-fit: contain"> }
+        @if (vistaPreviaFoto) { <img [src]="vistaPreviaFoto" alt="Fotografía del paciente" class="img-thumbnail mb-3 paciente-form-page__preview"> }
         @else if (esEdicion && !cargandoFoto) { <p class="text-muted">El paciente no tiene fotografía.</p> }
-        <div class="d-flex gap-2 flex-wrap align-items-end">
-          <div>
-            <label for="paciente-foto-archivo" class="form-label">Seleccionar fotografía</label>
-            <input id="paciente-foto-archivo" type="file" class="form-control" accept="image/jpeg,image/png,image/webp"
-              (change)="seleccionarFoto($event)" [disabled]="guardandoFoto || cargando">
+        <div class="paciente-form-page__upload">
+          <div class="paciente-form-page__upload-icon" aria-hidden="true"><i class="bi bi-cloud-arrow-up"></i></div>
+          <div class="paciente-form-page__upload-copy">
+            <strong>Seleccionar archivo</strong>
+            <span>Formatos permitidos: JPG, PNG y WebP (máx. 5 MB)</span>
           </div>
-          @if (esEdicion && permisos.puedeModificar('Pacientes')) {
+          <input id="paciente-foto-archivo" type="file" class="visually-hidden" accept="image/jpeg,image/png,image/webp"
+            (change)="seleccionarFoto($event)" [disabled]="guardandoFoto || cargando">
+          <label for="paciente-foto-archivo" class="btn btn-outline-primary paciente-form-page__upload-button"
+            [class.disabled]="guardandoFoto || cargando">Seleccionar archivo</label>
+        </div>
+        @if (esEdicion && permisos.puedeModificar('Pacientes')) {
+          <div class="d-flex gap-2 flex-wrap mt-3">
             <button type="button" class="btn btn-primary" (click)="guardarFoto()" [disabled]="!archivoFoto || guardandoFoto || cargando">{{ guardandoFoto ? 'Subiendo…' : (fotoDisponible ? 'Sustituir fotografía' : 'Subir fotografía') }}</button>
             @if (fotoDisponible) { <button type="button" class="btn btn-outline-danger" (click)="solicitarEliminarFoto()" [disabled]="guardandoFoto || cargando">Eliminar fotografía</button> }
-          }
-        </div>
+          </div>
+        }
         @if (esEdicion) { <p class="small text-muted mt-2 mb-0">Subir, sustituir o eliminar la fotografía se confirma inmediatamente y de forma independiente de los datos generales.</p> }
         @if (!esEdicion) { <p class="small text-muted mt-2 mb-0">La fotografía seleccionada se subirá después de confirmar el alta del paciente.</p> }
       </section>
@@ -130,7 +135,7 @@ interface ResultadoContactoAlta extends ContactoBorrador {
       }
 
       @if (idPaciente !== null && contactosAlta.length) {
-        <section class="card p-4 shadow-sm mt-4" aria-labelledby="contactos-alta-title">
+        <section class="ui-card paciente-form-page__card mt-4" aria-labelledby="contactos-alta-title">
           <h3 id="contactos-alta-title" class="h5">Resultado del alta de contactos del paciente ID {{ idPaciente }}</h3>
           <ul class="mb-0">@for (contacto of contactosAlta; track contacto.localId) {
             <li>{{ contacto.datos.nombres }} {{ contacto.datos.apellidos }}: {{ contacto.estado }}
@@ -146,12 +151,8 @@ interface ResultadoContactoAlta extends ContactoBorrador {
         </section>
       }
 
-      <section class="card p-4 shadow-sm mt-4 mb-4" aria-labelledby="acciones-paciente-title">
-        <h3 id="acciones-paciente-title" class="h5">Acciones</h3>
-        <p class="small text-muted">
-          {{ esEdicion ? 'Guardar confirma únicamente los datos generales.' : 'Guardar crea el paciente y después confirma los contactos preparados y la fotografía.' }} Cancelar abandona los cambios generales y la selección local de fotografía;
-          no revierte fotografías ni contactos confirmados mediante sus propias acciones.
-        </p>
+      <section class="ui-card paciente-form-page__card mt-4 mb-4" aria-labelledby="acciones-paciente-title">
+        <h3 id="acciones-paciente-title" class="h5 paciente-form-page__heading">Acciones</h3>
         <div class="d-flex gap-2">
           <a href="/pacientes" class="btn btn-secondary" (click)="cancelar($event)">Cancelar</a>
           <button type="submit" form="paciente-datos-form" class="btn btn-success"
@@ -159,20 +160,38 @@ interface ResultadoContactoAlta extends ContactoBorrador {
             {{ cargando ? 'Guardando...' : 'Guardar' }}
           </button>
         </div>
+        @if (esEdicion || altaResultadoIncierto || contactosAltaPendientes || altaConfirmadaFotoPendiente) {
+          <p class="small text-muted mt-3 mb-0">Cancelar no revierte fotografías ni contactos ya confirmados mediante sus propias acciones.</p>
+        }
       </section>
 
       @if (confirmarEliminarFoto) {
         <app-confirm-dialog title="Eliminar fotografía" description="¿Deseas eliminar la fotografía actual del paciente?"
           consequence="La referencia se retirará del paciente y la imagen dejará de estar disponible."
-          confirmLabel="Eliminar" [busy]="guardandoFoto" (confirm)="eliminarFoto()" (cancel)="cancelarEliminarFoto()" />
+          confirmLabel="Eliminar" [busy]="guardandoFoto" (confirmed)="eliminarFoto()" (cancelled)="cancelarEliminarFoto()" />
       }
       @if (confirmarSalidaParcial) {
         <app-confirm-dialog title="Salir del alta parcial" description="El paciente ya fue creado. Hay operaciones secundarias pendientes o de resultado incierto."
           consequence="Salir no revierte el paciente ni los contactos confirmados; anote su identificador para conciliar los pendientes."
-          confirmLabel="Salir" (confirm)="confirmarSalida()" (cancel)="confirmarSalidaParcial = false" />
+          confirmLabel="Salir" (confirmed)="confirmarSalida()" (cancelled)="confirmarSalidaParcial = false" />
       }
     </div>
-  `
+  `,
+  styles: [`
+    .paciente-form-page__title { color: var(--ui-heading); font-size: clamp(1.9rem, 3vw, 2.5rem); font-weight: 700; margin-bottom: 1rem; }
+    .paciente-form-page__card { padding: 1.4rem; }
+    .paciente-form-page__heading { color: var(--ui-heading); font-weight: 700; margin-bottom: 1rem; }
+    .paciente-form-page .form-control, .paciente-form-page .form-select { min-height: 2.5rem; }
+    .paciente-form-page .form-control::placeholder { color: #8090a7; opacity: 1; }
+    .paciente-form-page__preview { max-width: 240px; max-height: 240px; object-fit: contain; }
+    .paciente-form-page__upload { display: flex; align-items: center; flex-wrap: wrap; gap: .9rem; padding: .9rem 1rem; border: 1px dashed #bfd0e3; border-radius: .5rem; background: #f8fbff; }
+    .paciente-form-page__upload-icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; flex: 0 0 auto; border-radius: .4rem; background: #edf3f8; color: #647b9d; font-size: 1.6rem; }
+    .paciente-form-page__upload-copy { display: grid; min-width: 0; color: var(--ui-heading); }
+    .paciente-form-page__upload-copy span { color: var(--ui-muted); font-size: .875rem; }
+    .paciente-form-page__upload-button { margin-left: auto; }
+    .paciente-form-page__upload:focus-within { outline: 3px solid #0d6efd; outline-offset: 2px; }
+    @media (max-width: 575.98px) { .paciente-form-page__card { padding: 1rem; } .paciente-form-page__upload-button { width: 100%; margin-left: 0; } }
+  `]
 })
 export class PacienteFormComponent implements OnInit {
   private service = inject(PacientesService);

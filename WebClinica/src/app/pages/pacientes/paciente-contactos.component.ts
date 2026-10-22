@@ -26,11 +26,10 @@ export function contactoBorradorValido(datos: DatosContactoBorrador): boolean {
   selector: 'app-paciente-contactos',
   imports: [FormsModule, ConfirmDialogComponent],
   template: `
-    <section class="card p-4 shadow-sm mt-4" aria-labelledby="contactos-title">
+    <section class="ui-card paciente-contactos mt-4" aria-labelledby="contactos-title">
       <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
         <div>
-          <h3 id="contactos-title" class="h5 mb-1">Contactos de emergencia</h3>
-          <p class="text-muted mb-0">{{ idPaciente === null ? 'Prepare los contactos; se guardarán después de crear al paciente.' : 'Registros independientes vinculados a este paciente.' }}</p>
+          <h3 id="contactos-title" class="h5 mb-0">Contactos de emergencia</h3>
         </div>
         @if (permisos.puedeCrear(MODULO)) {
           <button type="button" class="btn btn-outline-primary" (click)="nuevo()" [disabled]="guardando || eliminandoId !== null">Agregar contacto</button>
@@ -64,40 +63,49 @@ export function contactoBorradorValido(datos: DatosContactoBorrador): boolean {
         </form>
       }
 
-      @if (idPaciente === null) {
-        @if (borradores.length === 0) { <p class="text-muted mt-3">No hay contactos preparados.</p> }
-        @else {
-          <div class="table-responsive mt-3"><table class="table table-striped align-middle">
-            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Parentesco</th><th>Acciones</th></tr></thead>
-            <tbody>@for (borrador of borradores; track borrador.localId) {
-              <tr><td>{{ borrador.datos.nombres }} {{ borrador.datos.apellidos }}</td><td>{{ borrador.datos.telefono }}</td><td>{{ borrador.datos.parentesco || '—' }}</td>
-                <td class="d-flex gap-2">
-                  <button type="button" class="btn btn-sm btn-outline-primary" [attr.aria-label]="'Editar borrador ' + borrador.localId" (click)="editarBorrador(borrador)" [disabled]="!permisos.puedeCrear(MODULO)">Editar</button>
-                  <button type="button" class="btn btn-sm btn-outline-danger" [attr.aria-label]="'Quitar borrador ' + borrador.localId" (click)="quitarBorrador(borrador.localId)">Quitar</button>
-                </td></tr>
-            }</tbody>
-          </table></div>
-        }
-      } @else if (cargando) { <p class="text-muted mt-3" role="status">Cargando contactos…</p> }
-      @else if (contactos.length === 0) { <p class="text-muted mt-3">No hay contactos de emergencia registrados.</p> }
-      @else {
-        <div class="table-responsive mt-3">
-          <table class="table table-striped align-middle">
-            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Parentesco</th><th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody>
+      <div class="table-responsive ui-table-wrap mt-3">
+        <table class="table ui-table table-striped align-middle">
+          <thead><tr><th scope="col">Nombre</th><th scope="col">Parentesco</th><th scope="col">Teléfono</th><th scope="col">Dirección</th><th scope="col">Acciones</th></tr></thead>
+          <tbody>
+            @if (idPaciente === null) {
+              @for (borrador of borradores; track borrador.localId) {
+                <tr>
+                  <td>{{ borrador.datos.nombres }} {{ borrador.datos.apellidos }}</td>
+                  <td>{{ borrador.datos.parentesco || '—' }}</td>
+                  <td>{{ borrador.datos.telefono }}</td>
+                  <td>{{ borrador.datos.direccion }}</td>
+                  <td><div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" [attr.aria-label]="'Editar borrador ' + borrador.localId" (click)="editarBorrador(borrador)" [disabled]="!permisos.puedeCrear(MODULO)">Editar</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" [attr.aria-label]="'Quitar borrador ' + borrador.localId" (click)="quitarBorrador(borrador.localId)">Quitar</button>
+                  </div></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="paciente-contactos__empty"><i class="bi bi-people-fill" aria-hidden="true"></i> No hay contactos de emergencia registrados.</td></tr>
+              }
+            } @else if (cargando) {
+              <tr><td colspan="5" class="paciente-contactos__empty" role="status">Cargando contactos…</td></tr>
+            } @else {
               @for (contacto of contactos; track contacto.idContacto) {
                 <tr>
-                  <td>{{ contacto.nombres }} {{ contacto.apellidos }}</td><td>{{ contacto.telefono }}</td><td>{{ contacto.parentesco || '—' }}</td>
-                  <td><span class="badge" [class.bg-success]="contacto.activo" [class.bg-secondary]="!contacto.activo">{{ contacto.activo ? 'Activo' : 'Retirado' }}</span></td>
-                  <td class="d-flex gap-2">
+                  <td>{{ contacto.nombres }} {{ contacto.apellidos }} <span class="badge ms-2" [class.bg-success]="contacto.activo" [class.bg-secondary]="!contacto.activo">{{ contacto.activo ? 'Activo' : 'Retirado' }}</span></td>
+                  <td>{{ contacto.parentesco || '—' }}</td>
+                  <td>{{ contacto.telefono }}</td>
+                  <td>{{ contacto.direccion }}</td>
+                  <td><div class="d-flex gap-2">
                     @if (contacto.activo && permisos.puedeModificar(MODULO)) { <button type="button" class="btn btn-sm btn-outline-primary" [attr.aria-label]="'Editar contacto ' + contacto.idContacto" (click)="editar(contacto)" [disabled]="guardando || eliminandoId !== null">Editar</button> }
                     @if (contacto.activo && permisos.puedeEliminar(MODULO)) { <button type="button" class="btn btn-sm btn-outline-danger" [attr.aria-label]="'Retirar contacto ' + contacto.idContacto" (click)="solicitarRetiro(contacto)" [disabled]="guardando || eliminandoId !== null">Retirar</button> }
-                  </td>
+                  </div></td>
                 </tr>
+              } @empty {
+                <tr><td colspan="5" class="paciente-contactos__empty"><i class="bi bi-people-fill" aria-hidden="true"></i> No hay contactos de emergencia registrados.</td></tr>
               }
-            </tbody>
-          </table>
-        </div>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (idPaciente === null) {
+        <p class="small text-muted mt-2 mb-0">Los contactos preparados se guardarán después de crear al paciente.</p>
+      } @else if (contactos.length > 0) {
         <div class="d-flex justify-content-between align-items-center">
           <span>Total: {{ total }}</span>
           <div><button type="button" class="btn btn-sm btn-outline-secondary" (click)="cambiarPagina(page - 1)" [disabled]="page <= 1 || cargando">Anterior</button>
@@ -111,9 +119,16 @@ export function contactoBorradorValido(datos: DatosContactoBorrador): boolean {
         [description]="'¿Deseas retirar a ' + pendienteRetiro.nombres + ' ' + pendienteRetiro.apellidos + '?'"
         consequence="El contacto quedará inactivo y se conservará vinculado al paciente."
         confirmLabel="Retirar" [busy]="eliminandoId === pendienteRetiro.idContacto"
-        (confirm)="confirmarRetiro()" (cancel)="cancelarRetiro()" />
+        (confirmed)="confirmarRetiro()" (cancelled)="cancelarRetiro()" />
     }
   `,
+  styles: [`
+    .paciente-contactos { padding: 1.4rem; }
+    .paciente-contactos h3 { color: var(--ui-heading); font-weight: 700; }
+    .paciente-contactos__empty { padding: 1.15rem; color: var(--ui-muted); text-align: center; }
+    .paciente-contactos__empty i { margin-right: .6rem; color: #95a7bf; }
+    @media (max-width: 575.98px) { .paciente-contactos { padding: 1rem; } }
+  `],
 })
 export class PacienteContactosComponent implements OnInit, OnChanges {
   @Input({ required: true }) idPaciente: number | null = null;

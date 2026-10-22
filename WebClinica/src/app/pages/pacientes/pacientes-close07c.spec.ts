@@ -42,10 +42,11 @@ describe('Pacientes CLOSE-07C: formularios y contexto local', () => {
     ruta = null; token = 'token-inicial';
     permisos = signal(new Set(['Consultar', 'Crear', 'Modificar', 'Eliminar']));
     usuario = signal<{ idUsuario: number; idRol: number } | null>({ idUsuario: 1, idRol: 1 });
-    api = jasmine.createSpyObj<PacientesService>('PacientesService', ['listar', 'obtener', 'crear', 'actualizar', 'eliminar']);
+    api = jasmine.createSpyObj<PacientesService>('PacientesService', ['listar', 'obtener', 'crear', 'actualizar', 'eliminar', 'obtenerFoto']);
     api.listar.and.returnValue(of(pagina())); api.obtener.and.returnValue(of(paciente));
     api.crear.and.returnValue(of(paciente)); api.actualizar.and.returnValue(of(paciente));
     api.eliminar.and.returnValue(of(void 0));
+    api.obtenerFoto.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
     await TestBed.configureTestingModule({
       imports: [PacientesComponent, PacienteFormComponent],
       providers: [provideRouter([]),
@@ -107,9 +108,14 @@ describe('Pacientes CLOSE-07C: formularios y contexto local', () => {
     listado.destroy(); expect(respuesta.observed).toBeFalse();
   });
   it('limpia filas, filtros y confirmación al perder la sesión', () => {
+    api.obtenerFoto.and.returnValue(of(new Blob(['foto'], { type: 'image/webp' })));
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:paciente-anterior');
+    const revocarFoto = spyOn(URL, 'revokeObjectURL');
     const c = abrirListado(); c.solicitarDesactivacion(paciente); c.filtroNombre = 'dato anterior';
     usuario.set(null); listado.detectChanges();
     expect(c.pacientes).toEqual([]); expect(c.filtroNombre).toBe(''); expect(c.pacientePendiente).toBeNull();
+    expect(revocarFoto).toHaveBeenCalledWith('blob:paciente-anterior');
+    expect(c.fotoUrl(41)).toBeNull();
     expect(api.eliminar).not.toHaveBeenCalled(); expect(api.listar).toHaveBeenCalledTimes(1);
   });
   it('cancela el listado pendiente al destruir la vista', () => {
@@ -139,7 +145,7 @@ describe('Pacientes CLOSE-07C: formularios y contexto local', () => {
     const c = abrirListado(); c.solicitarDesactivacion(paciente); c.confirmarDesactivacion(); c.confirmarDesactivacion();
     listado.detectChanges();
     expect(api.eliminar).toHaveBeenCalledOnceWith(41); expect(api.listar).toHaveBeenCalledTimes(1);
-    expect((listado.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[aria-label="Eliminar paciente"]')!.disabled).toBeTrue();
+    expect((listado.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[aria-label="Desactivar paciente"]')!.disabled).toBeTrue();
     c.cancelarDesactivacion(); expect(c.pacientePendiente).not.toBeNull();
     respuesta.next(); expect(api.listar).toHaveBeenCalledTimes(2); expect(c.pacientePendiente).toBeNull();
   });

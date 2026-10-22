@@ -26,7 +26,7 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
 
       <!-- Filtros -->
       <div class="ui-card mb-4" aria-label="Filtros de empleados">
-        <div class="row g-3">
+        <div class="row g-3 align-items-end empleados-filtros">
           <div class="col-md-4">
             <label for="empleado-nombre" class="form-label">Nombre</label><input id="empleado-nombre" type="text" class="form-control" placeholder="Buscar por nombre..." [(ngModel)]="filtroNombre" (input)="buscar()">
           </div>
@@ -46,7 +46,7 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
               <option [ngValue]="false">Inactivos</option>
             </select>
           </div>
-          <div class="col-md-2">
+          <div class="col-md-2 d-flex align-items-end">
             <button type="button" class="btn btn-outline-secondary w-100" (click)="limpiarFiltros()" title="Limpiar filtros"><i class="bi bi-x-lg" aria-hidden="true"></i> Limpiar</button>
           </div>
         </div>
@@ -60,14 +60,14 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
         <app-ui-state kind="empty" title="No se encontraron empleados" description="Ajusta los filtros o registra un nuevo empleado." />
       } @else {
         <div class="ui-table-wrap">
-          <table class="table table-hover ui-table">
+          <table class="table table-hover table-striped ui-table empleados-table">
             <thead>
               <tr>
                 <th scope="col" class="ui-col-index">No.</th>
-                <th>Nombre Completo</th>
-                <th>Sucursal</th>
-                <th>Tipo</th>
-                <th>Estado</th>
+                <th scope="col">Nombre Completo</th>
+                <th scope="col">Sucursal</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Estado</th>
                 <th scope="col" class="ui-col-actions">Acciones</th>
               </tr>
             </thead>
@@ -85,17 +85,19 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
                       {{ emp.activo ? 'Activo' : 'Inactivo' }}
                     </span>
                   </td>
-                  <td class="ui-actions ui-col-actions">
-                    @if (permisos.puedeModificar(MODULOS_PERMISO.EMPLEADOS)) {
-                      <a [routerLink]="['/admin/empleados/editar', emp.idEmpleado]" class="btn btn-sm btn-outline-primary ui-icon-button" aria-label="Editar empleado" title="Editar empleado">
-                        <i class="bi bi-pencil" aria-hidden="true"></i>
-                      </a>
-                    }
-                    @if (permisos.puedeEliminar(MODULOS_PERMISO.EMPLEADOS)) {
-                      <button type="button" (click)="solicitarEliminacion(emp)" class="btn btn-sm btn-outline-danger ui-icon-button" [disabled]="!emp.activo || eliminandoId === emp.idEmpleado" aria-label="Eliminar empleado" title="Eliminar empleado">
-                        <i class="bi bi-trash" aria-hidden="true"></i>
-                      </button>
-                    }
+                  <td class="ui-col-actions">
+                    <div class="empleados-actions">
+                      @if (permisos.puedeModificar(MODULOS_PERMISO.EMPLEADOS)) {
+                        <a [routerLink]="['/admin/empleados/editar', emp.idEmpleado]" class="btn btn-sm btn-outline-primary" aria-label="Editar empleado" title="Editar empleado">
+                          <i class="bi bi-pencil" aria-hidden="true"></i> Modificar
+                        </a>
+                      }
+                      @if (permisos.puedeEliminar(MODULOS_PERMISO.EMPLEADOS)) {
+                        <button type="button" (click)="solicitarEliminacion(emp)" class="btn btn-sm btn-outline-danger" [disabled]="!emp.activo || eliminandoId === emp.idEmpleado" aria-label="Eliminar empleado" title="Eliminar empleado">
+                          <i class="bi bi-trash" aria-hidden="true"></i> Eliminar
+                        </button>
+                      }
+                    </div>
                   </td>
                 </tr>
               }
@@ -104,18 +106,18 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
         </div>
 
         <!-- Paginación -->
-        <div class="d-flex justify-content-between align-items-center mt-3">
+        <nav aria-label="Páginas de empleados" class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
           <span>Total: {{ total }} empleados</span>
-          <div>
-            <button class="btn btn-outline-secondary btn-sm me-2" (click)="cambiarPagina(page - 1)" [disabled]="page <= 1">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cambiarPagina(page - 1)" [disabled]="page <= 1">
               Anterior
             </button>
-            <span class="mx-2">Página {{ page }}</span>
-            <button class="btn btn-outline-secondary btn-sm" (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages">
+            <span>Página {{ page }}</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cambiarPagina(page + 1)" [disabled]="page >= totalPages">
               Siguiente
             </button>
           </div>
-        </div>
+        </nav>
       }
 
       @if (empleadoPendiente) {
@@ -126,7 +128,14 @@ import { correlativoPaginado } from '../../shared/utils/correlativo';
           (confirmed)="confirmarEliminacion()" (cancelled)="cancelarEliminacion()" />
       }
     </div>
-  `
+  `,
+    styles: [`
+      .empleados-filtros .form-label { color: var(--ui-heading); font-weight: 600; }
+      .empleados-table td.ui-col-actions { white-space: normal; }
+      .empleados-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+      .empleados-actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 2.25rem; white-space: nowrap; }
+      @media (max-width: 767.98px) { .empleados-actions { justify-content: flex-start; } }
+    `]
 })
 export class EmpleadosComponent implements OnInit {
   private service = inject(EmpleadosService);

@@ -51,7 +51,7 @@ public static class ServiceCollectionExtensions
         services.AddOptions<R2Options>()
             .BindConfiguration(R2Options.SectionName)
             .Validate(options => options.IsValid(),
-                "R2 debe estar vacío o contener AccountId alfanumérico, AccessKeyId, SecretAccessKey y BucketName=clinica-fotos.")
+                $"R2 debe estar vacío o contener AccountId alfanumérico, AccessKeyId, SecretAccessKey y BucketName={R2Options.ExpectedBucketName}.")
             .ValidateOnStart();
         services.AddHttpContextAccessor();
         services.AddExceptionHandler<GlobalExceptionHandler>();

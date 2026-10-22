@@ -76,6 +76,41 @@ describe('WEB-PAC-03 alta con contactos de emergencia', () => {
     expect(api.crear).toHaveBeenCalledTimes(1); expect(contactosApi.crear).not.toHaveBeenCalled(); expect(navegar).toHaveBeenCalledOnceWith(['/pacientes']);
   });
 
+  it('muestra la tabla vacía y varios borradores con dirección sin anticipar peticiones de escritura', () => {
+    const { contactos } = abrir();
+    const host = fixture.nativeElement as HTMLElement;
+    const tabla = host.querySelector('app-paciente-contactos table') as HTMLTableElement;
+    expect([...tabla.querySelectorAll('thead th')].map(celda => celda.textContent?.trim())).toEqual([
+      'Nombre', 'Parentesco', 'Teléfono', 'Dirección', 'Acciones',
+    ]);
+    expect(tabla.tBodies[0].rows.length).toBe(1);
+    expect(tabla.tBodies[0].rows[0].cells[0].colSpan).toBe(5);
+    expect(tabla.tBodies[0].textContent).toContain('No hay contactos de emergencia registrados.');
+    agregar(contactos, 'Primero'); agregar(contactos, 'Segundo'); fixture.detectChanges();
+    expect(tabla.tBodies[0].rows.length).toBe(2);
+    expect(tabla.tBodies[0].rows[0].cells[3].textContent).toContain('Zona 1');
+    expect(tabla.tBodies[0].rows[1].cells[0].textContent).toContain('Segundo');
+    expect(tabla.tBodies[0].querySelectorAll('button').length).toBe(4);
+    expect(api.crear).not.toHaveBeenCalled(); expect(contactosApi.crear).not.toHaveBeenCalled();
+  });
+
+  it('conserva estado y controles de edición de un contacto existente en la tabla de cinco columnas', () => {
+    contactosApi.listar.and.returnValue(of({ items: [respuesta(7, {
+      idPaciente: 41, nombres: 'Ana', apellidos: 'Paz', telefono: '5555-1234',
+      direccion: 'Zona 1', parentesco: 'Madre', correoElectronico: null,
+    })], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 }));
+    abrir('41');
+    const tabla = (fixture.nativeElement as HTMLElement).querySelector('app-paciente-contactos table') as HTMLTableElement;
+    expect([...tabla.querySelectorAll('thead th')].map(celda => celda.textContent?.trim())).toEqual([
+      'Nombre', 'Parentesco', 'Teléfono', 'Dirección', 'Acciones',
+    ]);
+    expect(tabla.tBodies[0].rows[0].cells[0].textContent).toContain('Activo');
+    expect(tabla.tBodies[0].rows[0].cells[3].textContent).toContain('Zona 1');
+    expect(tabla.tBodies[0].querySelector('button[aria-label="Editar contacto 7"]')).not.toBeNull();
+    expect(tabla.tBodies[0].querySelector('button[aria-label="Retirar contacto 7"]')).not.toBeNull();
+    expect(contactosApi.actualizar).not.toHaveBeenCalled(); expect(contactosApi.eliminar).not.toHaveBeenCalled();
+  });
+
   for (const cantidad of [1, 3, 10, 12]) {
     it(`prepara y registra ${cantidad} contactos sin un límite artificial ni POST anticipado`, () => {
       const { pacienteForm, contactos } = abrir(); completar(pacienteForm);
@@ -163,6 +198,13 @@ describe('WEB-PAC-03 alta con contactos de emergencia', () => {
     const salida = new MouseEvent('click', { cancelable: true }); pacienteForm.cancelar(salida);
     expect(salida.defaultPrevented).toBeTrue(); expect(pacienteForm.confirmarSalidaParcial).toBeTrue();
     expect(pacienteForm.idPaciente).toBe(41); expect(navegar).not.toHaveBeenCalled();
+    fixture.detectChanges();
+    const dialogo = (fixture.nativeElement as HTMLElement).querySelector('app-confirm-dialog')!;
+    const cancelar = Array.from(dialogo.querySelectorAll('button'))
+      .find(boton => boton.textContent?.trim() === 'Cancelar') as HTMLButtonElement;
+    cancelar.click(); fixture.detectChanges();
+    expect(pacienteForm.confirmarSalidaParcial).toBeFalse();
+    expect(navegar).not.toHaveBeenCalled();
   });
 
   it('conserva borradores al revocar Contactos/Crear y permite quitarlos antes del alta', () => {

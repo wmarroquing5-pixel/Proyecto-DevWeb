@@ -29,6 +29,7 @@ La política provisional aprobada permite a cualquier identidad que ya tenga `Pa
 - `Content-Type`: `multipart/form-data`.
 - Campo: `foto`.
 - Formatos de entrada: JPEG, PNG o WebP.
+- Cambiar la extensión de un archivo AVIF a `.png` no convierte su contenido. La API identifica su firma y responde HTTP 415 con la indicación de convertirlo a JPEG, PNG o WebP.
 - Tamaño máximo: 5 MB.
 - La API comprueba el MIME declarado y el formato real, rechaza contenido vacío, animado o malformado y limita dimensiones y píxeles descomprimidos.
 - La salida siempre se vuelve a codificar como WebP, con dimensión máxima de 2048 px. La recodificación desde píxeles elimina EXIF, GPS y otros metadatos del archivo original.
@@ -43,7 +44,7 @@ No se almacenan credenciales en archivos versionados. En desarrollo:
 dotnet user-secrets --project API-Clinica/API-Clinica.csproj set "R2:AccountId" "<account-id>"
 dotnet user-secrets --project API-Clinica/API-Clinica.csproj set "R2:AccessKeyId" "<access-key-id>"
 dotnet user-secrets --project API-Clinica/API-Clinica.csproj set "R2:SecretAccessKey" "<secret-access-key>"
-dotnet user-secrets --project API-Clinica/API-Clinica.csproj set "R2:BucketName" "clinica-fotos"
+dotnet user-secrets --project API-Clinica/API-Clinica.csproj set "R2:BucketName" "fotos-clinica"
 ```
 
 En Azure App Service, crear Application Settings con los nombres:
@@ -51,11 +52,11 @@ En Azure App Service, crear Application Settings con los nombres:
 - `R2__AccountId`
 - `R2__AccessKeyId`
 - `R2__SecretAccessKey`
-- `R2__BucketName=clinica-fotos`
+- `R2__BucketName=fotos-clinica`
 
 La URL S3 se construye como `https://{AccountId}.r2.cloudflarestorage.com`; no se acepta un endpoint arbitrario. Una configuración parcial o un bucket distinto impiden iniciar la aplicación. Si toda la sección está vacía, las demás funciones pueden iniciar y las operaciones fotográficas devuelven ProblemDetails HTTP 503 sin intentar otro almacenamiento.
 
-Las credenciales R2 deben limitarse al bucket `clinica-fotos` y a las operaciones de objeto requeridas. El bucket y sus objetos no deben permitir acceso público.
+Las credenciales R2 deben limitarse al bucket `fotos-clinica` y a las operaciones de objeto requeridas. El bucket y sus objetos no deben permitir acceso público.
 
 El cliente usa firma SigV4 con región de autenticación `auto`, direccionamiento por ruta y un tiempo límite de 30 segundos por operación. Las cargas usan longitud conocida, no usan `aws-chunked` y limitan los checksums flexibles del SDK a `WHEN_REQUIRED`; un `Content-MD5` explícito, la firma del payload y HTTPS conservan la verificación de integridad compatible con R2. `MaxErrorRetry` y `MaxStaleConnectionRetries` se fijan en cero para que el SDK no repita automáticamente escrituras cuyo resultado podría ser ambiguo. La cancelación de la solicitud HTTP se propaga al SDK; un vencimiento interno se traduce a HTTP 503 sin exponer detalles del proveedor.
 
@@ -86,7 +87,7 @@ R2 y Azure SQL no ofrecen una transacción distribuida. Una interrupción del pr
 
 La integración real debe ejecutarse únicamente con un bucket de pruebas independiente, credenciales restringidas a ese bucket y objetos sintéticos. El procedimiento debe comprobar carga, lectura, reemplazo condicionado por ETag, rechazo de una precondición obsoleta, eliminación y limpieza final. No debe usar Azure SQL productivo ni fotografías reales.
 
-La configuración de la aplicación acepta deliberadamente solo `clinica-fotos`, por lo que una prueba contra otro bucket debe realizarse con un arnés aislado que instancie el cliente S3 con configuración exclusiva de prueba. No se debe relajar la validación del bucket de la aplicación para ejecutar esa prueba. Ante timeout no se repite automáticamente una carga, reemplazo o eliminación; primero se consulta el estado del objeto por su clave determinista y ETag.
+La configuración de la aplicación acepta deliberadamente solo `fotos-clinica`, por lo que una prueba contra otro bucket debe realizarse con un arnés aislado que instancie el cliente S3 con configuración exclusiva de prueba. No se debe relajar la validación del bucket de la aplicación para ejecutar esa prueba. Ante timeout no se repite automáticamente una carga, reemplazo o eliminación; primero se consulta el estado del objeto por su clave determinista y ETag.
 
 ## Consumo desde Angular
 

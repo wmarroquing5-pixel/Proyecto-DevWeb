@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Amazon.Runtime;
 using API_Clinica.Common;
 using API_Clinica.Data;
@@ -37,10 +38,17 @@ public sealed class FotografiasTests
             AccountId = "cuenta123",
             AccessKeyId = "access",
             SecretAccessKey = "secret",
-            BucketName = "clinica-fotos"
+            BucketName = R2Options.ExpectedBucketName
         };
 
         Assert.True(options.IsValid());
+        Assert.False(new R2Options
+        {
+            AccountId = options.AccountId,
+            AccessKeyId = options.AccessKeyId,
+            SecretAccessKey = options.SecretAccessKey,
+            BucketName = "clinica-fotos"
+        }.IsValid());
         Assert.Equal("https://cuenta123.r2.cloudflarestorage.com", options.GetServiceUrl());
         var configuration = CloudflareR2PhotoStorageService.BuildConfiguration(options);
         Assert.True(configuration.ForcePathStyle);
@@ -137,6 +145,26 @@ public sealed class FotografiasTests
     }
 
     [Fact]
+    public async Task PacienteAceptaJpegRealEnMultipartYLoNormalizaAWebp()
+    {
+        using var factory = new PhotoApiFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync(read: true, modify: true);
+        using var bitmap = new SKBitmap(32, 24);
+        bitmap.Erase(SKColors.CornflowerBlue);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var jpeg = image.Encode(SKEncodedImageFormat.Jpeg, 90);
+
+        var uploaded = await UploadAsync(client, "/api/pacientes/1/foto", jpeg.ToArray(), "image/jpeg");
+        Assert.Equal(HttpStatusCode.OK, uploaded.StatusCode);
+        var stored = await factory.Storage.GetAsync("pacientes/1/foto.webp", CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal("image/webp", stored.ContentType);
+        using var data = SKData.CreateCopy(stored.Content);
+        using var codec = SKCodec.Create(data);
+        Assert.Equal(SKEncodedImageFormat.Webp, codec?.EncodedFormat);
+    }
+
+    [Fact]
     public async Task MedicamentoCargaConsultaYEliminaFotoSinAlterarInventario()
     {
         using var factory = new PhotoApiFactory();
@@ -230,8 +258,16 @@ public sealed class FotografiasTests
             (await UploadAsync(client, "/api/pacientes/1/foto", [1, 2, 3], "text/plain")).StatusCode);
         Assert.Equal(HttpStatusCode.UnsupportedMediaType,
             (await UploadAsync(client, "/api/pacientes/1/foto", Png(), "image/jpeg")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest,
-            (await UploadAsync(client, "/api/pacientes/1/foto", [1, 2, 3], "image/png")).StatusCode);
+        byte[] avifHeader = [0, 0, 0, 16, (byte)'f', (byte)'t', (byte)'y', (byte)'p',
+            (byte)'a', (byte)'v', (byte)'i', (byte)'f', 0, 0, 0, 0];
+        var disguisedAvif = await UploadAsync(client, "/api/pacientes/1/foto", avifHeader, "image/png");
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, disguisedAvif.StatusCode);
+        Assert.Contains("AVIF", await disguisedAvif.Content.ReadAsStringAsync());
+        var malformed = await UploadAsync(client, "/api/pacientes/1/foto", [1, 2, 3], "image/png");
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        using var problem = JsonDocument.Parse(await malformed.Content.ReadAsStringAsync());
+        Assert.Equal("El contenido de la fotografía está malformado.",
+            problem.RootElement.GetProperty("errors").GetProperty("Foto")[0].GetString());
         Assert.Null(await factory.GetPatientUrlAsync());
         Assert.False(factory.Storage.Contains("pacientes/1/foto.webp"));
     }

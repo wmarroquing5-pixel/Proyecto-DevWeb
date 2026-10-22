@@ -22,7 +22,7 @@ public sealed class PhotoImageProcessor : IPhotoImageProcessor
             [SKEncodedImageFormat.Webp] = "image/webp"
         };
 
-    public Task<ProcessedPhoto> ProcessAsync(
+    public async Task<ProcessedPhoto> ProcessAsync(
         IFormFile? file, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -34,50 +34,59 @@ public sealed class PhotoImageProcessor : IPhotoImageProcessor
             throw new UnsupportedMediaTypeException(
                 "Solo se admiten imágenes JPEG, PNG o WebP.");
 
-        try
+        using var input = file.OpenReadStream();
+        using var buffer = new MemoryStream((int)file.Length);
+        var chunk = new byte[81_920];
+        long total = 0;
+        int read;
+        while ((read = await input.ReadAsync(chunk, cancellationToken)) > 0)
         {
-            using var input = file.OpenReadStream();
-            using var codec = SKCodec.Create(input)
-                ?? throw Invalid("Foto", "El contenido de la fotografía está malformado.");
-            if (!Formats.TryGetValue(codec.EncodedFormat, out var actualContentType))
-                throw new UnsupportedMediaTypeException("Solo se admiten imágenes JPEG, PNG o WebP.");
-            if (!string.Equals(actualContentType, file.ContentType, StringComparison.OrdinalIgnoreCase))
-                throw new UnsupportedMediaTypeException(
-                    "El tipo MIME declarado no coincide con el contenido de la imagen.");
-            if (codec.FrameCount > 1)
-                throw Invalid("Foto", "No se admiten imágenes animadas.");
-
-            ValidateDimensions(codec.Info.Width, codec.Info.Height);
-            input.Position = 0;
-            using var decoded = SKBitmap.Decode(input)
-                ?? throw Invalid("Foto", "No fue posible decodificar la fotografía.");
-            cancellationToken.ThrowIfCancellationRequested();
-
-            using var oriented = ApplyOrientation(decoded, codec.EncodedOrigin);
-            using var resized = Resize(oriented);
-            using var image = SKImage.FromBitmap(resized);
-            using var encoded = image.Encode(SKEncodedImageFormat.Webp, 82)
-                ?? throw Invalid("Foto", "No fue posible normalizar la fotografía.");
-            var content = encoded.ToArray();
-            if (content.Length == 0 || content.Length > MaximumInputBytes)
-                throw new PayloadTooLargeException(
-                    "La fotografía procesada no cumple el límite de 5 MB.");
-
-            return Task.FromResult(new ProcessedPhoto(content, "image/webp"));
+            total += read;
+            if (total > MaximumInputBytes)
+                throw new PayloadTooLargeException("La fotografía no puede superar 5 MB.");
+            buffer.Write(chunk, 0, read);
         }
-        catch (AppException)
-        {
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
-        {
+        if (total != file.Length)
             throw Invalid("Foto", "El contenido de la fotografía está malformado.");
-        }
+
+        var source = buffer.ToArray();
+        if (IsAvif(source))
+            throw new UnsupportedMediaTypeException(
+                "La fotografía es AVIF; conviértala a JPEG, PNG o WebP antes de subirla.");
+
+        using var data = SKData.CreateCopy(source);
+        using var codec = SKCodec.Create(data)
+            ?? throw Invalid("Foto", "El contenido de la fotografía está malformado.");
+        if (!Formats.TryGetValue(codec.EncodedFormat, out var actualContentType))
+            throw new UnsupportedMediaTypeException("Solo se admiten imágenes JPEG, PNG o WebP.");
+        if (!string.Equals(actualContentType, file.ContentType, StringComparison.OrdinalIgnoreCase))
+            throw new UnsupportedMediaTypeException(
+                "El tipo MIME declarado no coincide con el contenido de la imagen.");
+        if (codec.FrameCount > 1)
+            throw Invalid("Foto", "No se admiten imágenes animadas.");
+
+        ValidateDimensions(codec.Info.Width, codec.Info.Height);
+        using var decoded = SKBitmap.Decode(data)
+            ?? throw Invalid("Foto", "No fue posible decodificar la fotografía.");
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var oriented = ApplyOrientation(decoded, codec.EncodedOrigin);
+        using var resized = Resize(oriented);
+        using var image = SKImage.FromBitmap(resized);
+        using var encoded = image.Encode(SKEncodedImageFormat.Webp, 82)
+            ?? throw Invalid("Foto", "No fue posible normalizar la fotografía.");
+        var content = encoded.ToArray();
+        if (content.Length == 0 || content.Length > MaximumInputBytes)
+            throw new PayloadTooLargeException(
+                "La fotografía procesada no cumple el límite de 5 MB.");
+
+        return new ProcessedPhoto(content, "image/webp");
     }
+
+    private static bool IsAvif(ReadOnlySpan<byte> content) =>
+        content.Length >= 12 && content.Slice(4, 4).SequenceEqual("ftyp"u8) &&
+        (content.Slice(8, 4).SequenceEqual("avif"u8) ||
+         content.Slice(8, 4).SequenceEqual("avis"u8));
 
     private static SKBitmap ApplyOrientation(SKBitmap source, SKEncodedOrigin origin)
     {

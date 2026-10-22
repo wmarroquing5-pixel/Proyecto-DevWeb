@@ -20,7 +20,7 @@ La ejecución remota requiere simultáneamente:
 1. evidencia aprobada de la prueba productiva API-12G5;
 2. autorización expresa para API-12I;
 3. las cuatro variables externas `R2__AccountId`, `R2__AccessKeyId`,
-   `R2__SecretAccessKey` y `R2__BucketName=clinica-fotos`;
+   `R2__SecretAccessKey` y `R2__BucketName=fotos-clinica`;
 4. el argumento exacto `--execute-production-r2-adapter-probe`.
 
 El ejecutor acepta exclusivamente la clave

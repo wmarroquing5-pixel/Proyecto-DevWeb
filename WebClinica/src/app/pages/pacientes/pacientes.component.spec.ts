@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Subject, of, throwError } from 'rxjs';
@@ -12,6 +13,7 @@ describe('PacientesComponent WEB-UX-01C1', () => {
   let fixture: ComponentFixture<PacientesComponent>;
   let listar: jasmine.Spy;
   let eliminar: jasmine.Spy;
+  let obtenerFoto: jasmine.Spy;
   let operaciones: Set<string>;
 
   const paciente: PacienteListadoResponse = {
@@ -25,12 +27,13 @@ describe('PacientesComponent WEB-UX-01C1', () => {
     operaciones = new Set(['Crear', 'Modificar', 'Eliminar']);
     listar = jasmine.createSpy('listar').and.returnValue(of(page([paciente])));
     eliminar = jasmine.createSpy('eliminar').and.returnValue(of(void 0));
+    obtenerFoto = jasmine.createSpy('obtenerFoto').and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
     await TestBed.configureTestingModule({
       imports: [PacientesComponent],
       providers: [
         provideRouter([]),
         { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
-        { provide: PacientesService, useValue: { listar, eliminar } },
+        { provide: PacientesService, useValue: { listar, eliminar, obtenerFoto } },
         { provide: PermisosService, useValue: {
           puedeCrear: () => operaciones.has('Crear'),
           puedeModificar: () => operaciones.has('Modificar'),
@@ -52,16 +55,84 @@ describe('PacientesComponent WEB-UX-01C1', () => {
     expect(element.querySelector('th')?.textContent?.trim()).toBe('No.');
     expect(element.querySelector('tbody td')?.textContent?.trim()).toBe('1');
     expect(element.textContent).toContain('María López');
-    expect(element.querySelector<HTMLAnchorElement>('[aria-label="Editar paciente"]')?.getAttribute('href')).toBe('/pacientes/editar/41');
+    expect(element.querySelector<HTMLAnchorElement>('[aria-label="Modificar paciente"]')?.getAttribute('href')).toBe('/pacientes/editar/41');
     expect(element.querySelector<HTMLAnchorElement>('[aria-label="Ver ficha médica del paciente"]')?.getAttribute('href')).toBe('/pacientes/41/ficha');
+    expect(element.querySelector('[aria-label="Ver ficha médica del paciente"]')?.textContent).toContain('Ficha médica');
+    expect(element.querySelector('[aria-label="Modificar paciente"]')?.textContent).toContain('Modificar');
+    expect(element.querySelector('[aria-label="Desactivar paciente"]')?.textContent).toContain('Desactivar');
+    expect(element.querySelector('.pacientes-identidad')?.textContent).toContain('María López');
+    expect(element.querySelector('.pacientes-identidad .pacientes-avatar--empty')).not.toBeNull();
+    expect(element.querySelector('.pacientes-identidad img')).toBeNull();
+    fixture.componentInstance.cargarPacientes();
+    expect(obtenerFoto).toHaveBeenCalledOnceWith(41);
+  });
+
+  it('muestra la fotografía protegida a la izquierda del nombre y libera su URL al salir', () => {
+    const blob = new Blob(['foto'], { type: 'image/webp' });
+    obtenerFoto.and.returnValue(of(blob));
+    const crearUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:paciente-41');
+    const revocarUrl = spyOn(URL, 'revokeObjectURL');
+    const element = render();
+    const identidad = element.querySelector('.pacientes-identidad')!;
+    const imagen = identidad.querySelector('img')!;
+    expect(obtenerFoto).toHaveBeenCalledOnceWith(41);
+    expect(crearUrl).toHaveBeenCalledOnceWith(blob);
+    expect(imagen.getAttribute('src')).toBe('blob:paciente-41');
+    expect(imagen.nextElementSibling?.textContent).toContain('María López');
+    fixture.destroy();
+    expect(revocarUrl).toHaveBeenCalledOnceWith('blob:paciente-41');
+  });
+
+  it('descarta fotografías de la página anterior y no mezcla pacientes', () => {
+    const siguiente = { ...paciente, idPaciente: 42, nombres: 'Rosa', apellidos: 'Paz' };
+    listar.and.callFake((_nombre: string | undefined, _activo: boolean | undefined, pagina: number) =>
+      of(page(pagina === 1 ? [paciente] : [siguiente], pagina, 2)));
+    obtenerFoto.and.callFake((id: number) => of(new Blob([String(id)], { type: 'image/webp' })));
+    spyOn(URL, 'createObjectURL').and.returnValues('blob:paciente-41', 'blob:paciente-42');
+    const revocarUrl = spyOn(URL, 'revokeObjectURL');
+    const element = render();
+    expect(element.querySelector('.pacientes-identidad img')?.getAttribute('src')).toBe('blob:paciente-41');
+    fixture.componentInstance.cambiarPagina(2); fixture.detectChanges();
+    expect(revocarUrl).toHaveBeenCalledWith('blob:paciente-41');
+    expect(element.querySelector('.pacientes-identidad img')?.getAttribute('src')).toBe('blob:paciente-42');
+    expect(element.querySelector('.pacientes-identidad')?.textContent).toContain('Rosa Paz');
+    expect(element.textContent).not.toContain('María López');
+    expect(eliminar).not.toHaveBeenCalled();
+  });
+
+  it('no repite solicitudes de fotografías ausentes al volver a una página', () => {
+    const siguiente = { ...paciente, idPaciente: 42, nombres: 'Rosa' };
+    listar.and.callFake((_nombre: string | undefined, _activo: boolean | undefined, pagina: number) =>
+      of(page(pagina === 1 ? [paciente] : [siguiente], pagina, 2)));
+    render();
+    fixture.componentInstance.cambiarPagina(2);
+    fixture.componentInstance.cambiarPagina(1);
+    expect(obtenerFoto.calls.allArgs()).toEqual([[41], [42]]);
+    expect(eliminar).not.toHaveBeenCalled();
+  });
+
+  it('alinea Limpiar con Nombre y Estado y conserva la lógica de filtros', () => {
+    const element = render();
+    const fila = element.querySelector('.pacientes-filtros')!;
+    const limpiar = Array.from(fila.querySelectorAll('button')).find(boton => boton.textContent?.includes('Limpiar'))!;
+    expect(fila.classList.contains('align-items-end')).toBeTrue();
+    expect(limpiar.closest('.col-md-3')?.classList.contains('align-items-end')).toBeTrue();
+    expect(fila.querySelector('label[for="paciente-nombre"]')).not.toBeNull();
+    expect(fila.querySelector('label[for="paciente-estado"]')).not.toBeNull();
+    fixture.componentInstance.filtroNombre = 'Rosa'; fixture.componentInstance.filtroActivo = true;
+    limpiar.click(); fixture.detectChanges();
+    expect(fixture.componentInstance.filtroNombre).toBe('');
+    expect(fixture.componentInstance.filtroActivo).toBeUndefined();
+    expect(listar).toHaveBeenCalledWith(undefined, undefined, 1, 10);
+    expect(eliminar).not.toHaveBeenCalled();
   });
 
   it('respeta los permisos dinámicos de acciones', () => {
     operaciones.clear();
     const element = render();
     expect(element.textContent).not.toContain('Nuevo Paciente');
-    expect(element.querySelector('[aria-label="Editar paciente"]')).toBeNull();
-    expect(element.querySelector('[aria-label="Eliminar paciente"]')).toBeNull();
+    expect(element.querySelector('[aria-label="Modificar paciente"]')).toBeNull();
+    expect(element.querySelector('[aria-label="Desactivar paciente"]')).toBeNull();
   });
 
   it('cancela la confirmación sin llamar a la API', () => {
