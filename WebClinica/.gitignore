@@ -6,3 +6,20 @@ dist/
 
 # Local dependencies
 node_modules/
+
+# Cache y resultados generados de pruebas
+/.angular/
+/coverage/
+/TestResults/
+
+# Informes y experimentos historicos de auditoria; conservar localmente
+/docs/security/
+/docs/WEB-PAC-04/
+/AUDITORIA-WEBCLINICA.md
+
+# Configuracion operativa compartida; el resto de .vscode sigue local
+!/.vscode/
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/launch.json
+!/.vscode/tasks.json

@@ -9,9 +9,9 @@ description: Desarrolla, audita y prueba exclusivamente el frontend Angular WebC
 
 Todos los informes, auditorías, diagnósticos técnicos, matrices, evidencias de validación, resultados de pruebas y resúmenes de implementación deben guardarse fuera de los proyectos, en:
 
-- API-Clinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\API-Clinica`
-- WebClinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\WebClinica`
-- Informes de ambos proyectos: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\Compartido`
+- API-Clinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Documentacion\API-Clinica`
+- WebClinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Documentacion\WebClinica`
+- Informes de ambos proyectos: `C:\Users\DESARROLLO\Documents\ChatGPT\Documentacion\Compartido`
 
 Crea la carpeta correspondiente si no existe. Usa nombres descriptivos con fecha e identificador de tarea, cuando exista.
 

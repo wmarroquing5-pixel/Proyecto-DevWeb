@@ -1,1 +1,0 @@
-La copia HTML anterior al cambio se reconstruyó invirtiendo la única línea añadida; no existía hash previo del HTML.

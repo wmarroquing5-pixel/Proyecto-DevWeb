@@ -56,3 +56,17 @@ AGENTS.md
 !.agents/skills/database-contract/**
 !.agents/skills/webclinica-frontend/
 !.agents/skills/webclinica-frontend/**
+
+# Respaldos e informes generados (rutas historicas del repositorio)
+/Respaldos-API-Clinica/
+/docs/auditoria/
+/API-Clinica/Docs/
+
+# Trabajo auxiliar local; conservar fuera del indice
+/.codex-temp/
+/.codex-tmp/
+/tmp/
+
+# Salidas y dependencias generadas de herramientas JavaScript
+node_modules/
+dist/
