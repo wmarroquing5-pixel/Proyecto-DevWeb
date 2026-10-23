@@ -85,7 +85,7 @@ public sealed class MedicamentoService(
             .Skip(pagination.Skip).Take(pagination.PageSize)
             .Select(m => new MedicamentoResponse(m.IdMedicamento, m.IdCategoria,
                 m.IdMarca, m.Codigo, m.Nombre, m.Descripcion, m.PrecioVenta,
-                m.ImagenURL, m.Activo))
+                m.ImagenURL, m.Activo, EF.Property<string?>(m, "Presentacion")))
             .ToListAsync(cancellationToken);
         return new(items, page, pageSize, total);
     }
@@ -95,7 +95,7 @@ public sealed class MedicamentoService(
             .Where(m => m.IdMedicamento == id)
             .Select(m => new MedicamentoResponse(m.IdMedicamento, m.IdCategoria,
                 m.IdMarca, m.Codigo, m.Nombre, m.Descripcion, m.PrecioVenta,
-                m.ImagenURL, m.Activo))
+                m.ImagenURL, m.Activo, EF.Property<string?>(m, "Presentacion")))
             .SingleOrDefaultAsync(cancellationToken)
         ?? throw new NotFoundException("Medicamento no encontrado.");
 

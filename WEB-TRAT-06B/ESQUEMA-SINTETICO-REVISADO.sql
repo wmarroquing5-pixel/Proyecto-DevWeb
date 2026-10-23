@@ -143,4 +143,4 @@ CREATE TABLE dbo.MovimientoInventario (
 );
 
 /* No INSERT, UPDATE, DELETE, migración, USE, CREATE DATABASE ni credenciales.
-   El DDL de las siete tablas nuevas vive separado y permanece bloqueado. */
+   El DDL de las seis tablas de alternativa C vive separado y permanece bloqueado. */

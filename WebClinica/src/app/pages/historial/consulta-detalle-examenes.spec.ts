@@ -68,13 +68,14 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
           puedeModificar: () => modify(), puedeEliminar: () => false,
         } },
         { provide: ApiErrorService, useValue: { messageFor: (_: unknown, fallback: string) => fallback } },
-        { provide: InventarioService, useValue: {} },
+        { provide: InventarioService, useValue: { listarMedicamentos: () => of(page([])) } },
         { provide: PacientesService, useValue: { obtener: () => of({ idPaciente: 11, nombres: 'Ana', apellidos: 'López' }) } },
         { provide: EmpleadosService, useValue: { obtener: () => of({ idEmpleado: 7, nombres: 'Luis', apellidos: 'Pérez' }) } },
         { provide: CatalogosService, useValue: { obtenerSucursal: () => of({ idSucursal: 3, nombre: 'Centro' }), obtenerClinica: () => of(null) } },
         { provide: HistorialService, useValue: {
           obtenerConsulta: () => of(consultation), listarDiagnosticos: listDiagnoses,
           listarTratamientos: () => of(page([])), listarExamenes: list,
+          listarRecetas: () => of(page([])),
           listarHistorial: () => of(page([])), crearExamen: create,
           crearDiagnostico: createDiagnosis, listarArchivosExamen: listFiles,
           crearDiagnosticoConExamen: createDiagnosisWithExam,
@@ -305,8 +306,16 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
     component.tab = 'diagnosticos'; fixture.detectChanges();
     const selector = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('#examen-diagnostico')!;
     expect(selector.options.length).toBe(3);
-    expect(selector.options[1].textContent).toContain('22/10/2026');
-    expect(selector.options[2].textContent).toContain('23/10/2026');
+    expect(selector.options[1].textContent).toContain('No. 1 —');
+    expect(selector.options[1].textContent).toContain(`Resultado: ${component.fechaCargaResultado(8)}`);
+    expect(selector.options[2].textContent).toContain('No. 2 —');
+    expect(selector.textContent).not.toContain('ID 8');
+    component.idExamenDiagnostico = 8;
+    fixture.detectChanges();
+    const summary = (fixture.nativeElement as HTMLElement).querySelector('.consulta-diag-examen')!;
+    expect(summary.textContent).toContain('No. 1');
+    expect(summary.textContent).toContain('22/10/2026');
+    expect(summary.textContent).toContain('1 archivo(s)');
     component.idExamenDiagnostico = 8;
     component.idExamenDiagnostico = null;
     expect(component.idExamenDiagnostico).toBeNull();
@@ -478,6 +487,8 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
     expect(tableRows()[0].textContent).toContain('1');
     expect(tableRows()[0].textContent).toContain('Fractura');
     expect(tableRows()[0].textContent).toContain('Rayos X brazo');
+    expect(tableRows()[0].textContent).toContain(component.fechaCargaResultado(8));
+    expect(root.querySelector('#panel-diagnosticos .card-header')?.textContent).toContain('Diagnósticos');
     expect(tableRows()[1].textContent).toContain('2');
     expect(tableRows()[1].textContent).toContain('Hipertensión');
     expect(tableRows()[1].textContent).toContain('Sin examen relacionado');

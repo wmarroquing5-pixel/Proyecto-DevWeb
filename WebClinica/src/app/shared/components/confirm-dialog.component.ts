@@ -15,12 +15,13 @@ import { AfterViewInit, Component, ElementRef, EventEmitter, Input, OnChanges, O
       </div>
       <div class="ui-dialog__actions">
         <button #cancelButton type="button" class="btn btn-secondary" [disabled]="busy" (click)="cancelar()">
-          <i class="bi bi-x-lg" aria-hidden="true"></i> Cancelar
+          <i class="bi bi-x-lg" aria-hidden="true"></i> {{ cancelLabel }}
         </button>
-        <button #confirmButton type="button" class="btn btn-danger" [disabled]="busy || confirmationRequested" (click)="confirmar()">
+        <button #confirmButton type="button" class="btn" [class.btn-danger]="intent === 'destructive'"
+                [class.btn-primary]="intent === 'primary'" [disabled]="busy || confirmationRequested" (click)="confirmar()">
           @if (busy) { <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> }
-          @else { <i class="bi bi-trash" aria-hidden="true"></i> }
-          {{ busy ? 'Eliminando…' : confirmLabel }}
+          @else { <i [class]="intent === 'primary' ? 'bi bi-check-lg' : 'bi bi-trash'" aria-hidden="true"></i> }
+          {{ busy ? busyLabel : confirmLabel }}
         </button>
       </div>
     </section>
@@ -33,6 +34,9 @@ export class ConfirmDialogComponent implements AfterViewInit, OnChanges {
   @Input({ required: true }) description = '';
   @Input() consequence = '';
   @Input() confirmLabel = 'Eliminar';
+  @Input() cancelLabel = 'Cancelar';
+  @Input() busyLabel = 'Eliminando…';
+  @Input() intent: 'destructive' | 'primary' = 'destructive';
   @Input() busy = false;
   @Output() readonly confirmed = new EventEmitter<void>();
   @Output() readonly cancelled = new EventEmitter<void>();

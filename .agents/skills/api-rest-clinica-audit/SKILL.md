@@ -5,6 +5,22 @@ description: Audita y prueba el backend REST .NET 10 del proyecto Clínica/Farma
 
 # API REST Clínica/Farmacia — Auditoría y pruebas
 
+## Ubicación de informes y documentación generada
+
+Todos los informes, auditorías, diagnósticos técnicos, matrices, evidencias de validación, resultados de pruebas y resúmenes de implementación deben guardarse fuera de los proyectos, en:
+
+- API-Clinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\API-Clinica`
+- WebClinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\WebClinica`
+- Informes de ambos proyectos: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\Compartido`
+
+Crea la carpeta correspondiente si no existe. Usa nombres descriptivos con fecha e identificador de tarea, cuando exista.
+
+No guardes estos documentos en la raíz de los repositorios ni en sus carpetas de código, pruebas o compilación.
+
+Esta regla se aplica a los documentos generados para entregar o registrar resultados. El código, las pruebas automatizadas, la configuración, los archivos operativos y las propias skills deben conservar su ubicación.
+
+Si no puedes acceder a la ruta indicada, informa el impedimento. No guardes el informe dentro del proyecto como alternativa ni afirmes que fue guardado.
+
 ## Objetivo
 
 Evaluar de forma repetible si la API del proyecto final cumple los requisitos funcionales, técnicos, de seguridad y despliegue definidos para la solución Clínica/Farmacia.

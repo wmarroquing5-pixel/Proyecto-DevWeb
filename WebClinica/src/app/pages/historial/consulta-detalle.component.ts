@@ -19,7 +19,7 @@ import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ApiErrorService } from '../../core/services/api-error.service';
 import { AuthSessionService } from '../../core/services/auth-session.service';
-import { TratamientoFormComponent } from './tratamiento-form.component';
+import { RecetaFormComponent } from './receta-form.component';
 import { PacientesService } from '../../core/services/paciente.service';
 import { EmpleadosService } from '../../core/services/empleado.service';
 import { CatalogosService } from '../../core/services/catalogos.service';
@@ -52,7 +52,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
 
 @Component({
     selector: 'app-consulta-detalle',
-    imports: [CommonModule, RouterModule, FormsModule, ReactiveFormsModule, TratamientoFormComponent, ExamResultsComponent],
+    imports: [CommonModule, RouterModule, FormsModule, ReactiveFormsModule, RecetaFormComponent, ExamResultsComponent],
     template: `
     <div class="container consulta-shell py-4">
       <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -179,7 +179,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
         <!-- DIAGNÓSTICOS -->
         @if (tab === 'diagnosticos') {
           <section class="card shadow-sm mt-3 consulta-card" id="panel-diagnosticos" role="tabpanel" aria-labelledby="tab-diagnosticos" tabindex="0">
-            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Diagnóstico</h3></div>
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Diagnósticos</h3></div>
             <div class="card-body">
               <section aria-labelledby="diag-resultados" class="mb-4">
                 <h4 class="h6" id="diag-resultados">Resultados de exámenes</h4>
@@ -231,20 +231,35 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
                       <select id="examen-diagnostico" class="form-select" [(ngModel)]="idExamenDiagnostico"
                         name="idExamenDiagnostico" [disabled]="guardandoDiagnostico || cargandoExamenes || !!errorExamenes || !permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL)">
                         <option [ngValue]="null">Sin examen relacionado</option>
-                        @for (e of examenes; track e.idExamen) {
+                        @for (e of examenes; track e.idExamen; let index = $index) {
                           <option [ngValue]="e.idExamen" [disabled]="e.idDiagnostico !== null">
-                            {{ e.nombreExamen }} · {{ e.fechaExamen | date:'dd/MM/yyyy HH:mm' }}{{ e.idDiagnostico !== null ? ' · Ya relacionado' : '' }}
+                            No. {{ index + 1 }} — {{ e.nombreExamen }} — Resultado: {{ fechaCargaResultado(e.idExamen) }}{{ e.idDiagnostico !== null ? ' · Ya relacionado' : '' }}
                           </option>
                         }
                       </select>
                     </div>
+                    @if (examenParaDiagnostico(); as examen) {
+                      <div class="col-12">
+                        <div class="consulta-eval-field">
+                          <div class="small fw-semibold mb-1">Examen seleccionado</div>
+                          <div class="consulta-diag-examen small">
+                            <span><strong>No. {{ correlativoExamen(examen.idExamen) }} — {{ examen.nombreExamen }}</strong></span>
+                            <span>Fecha del examen: {{ examen.fechaExamen | date:'dd/MM/yyyy HH:mm' }}</span>
+                            <span>Fecha de resultado: {{ fechaCargaResultado(examen.idExamen) }}</span>
+                            <span>Prioridad: {{ examen.prioridad || 'Sin prioridad' }}</span>
+                            <span>Archivos: {{ estadoArchivosExamen(examen.idExamen) }}</span>
+                            <span>{{ examen.idDiagnostico === null ? 'Sin diagnóstico relacionado' : 'Ya tiene diagnóstico relacionado' }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    }
                     <div class="col-md-9">
                       <label class="form-label" for="descripcion-diagnostico">Descripción del diagnóstico *</label>
                       <textarea id="descripcion-diagnostico" class="form-control" [(ngModel)]="nuevoDiag.descripcion" name="descripcion" required maxlength="300" rows="2"></textarea>
                     </div>
                     <div class="col-md-3">
-                      <button type="submit" class="btn btn-primary w-100" [disabled]="guardandoDiagnostico">
-                        {{ guardandoDiagnostico ? 'Registrando...' : 'Agregar' }}
+                      <button type="submit" class="btn btn-primary w-100" [disabled]="guardandoDiagnostico || !nuevoDiag.descripcion.trim()">
+                        <i class="bi bi-plus-lg" aria-hidden="true"></i> {{ guardandoDiagnostico ? 'Registrando…' : 'Agregar diagnóstico' }}
                       </button>
                     </div>
                   </form>
@@ -258,7 +273,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
                 @else {
                   <div class="table-responsive">
                     <table class="table table-striped align-middle mb-0">
-                      <thead><tr><th scope="col">No.</th><th scope="col">Diagnóstico</th><th scope="col">Examen relacionado</th><th scope="col">Fecha</th><th scope="col">Acciones</th></tr></thead>
+                      <thead><tr><th scope="col">No.</th><th scope="col">Diagnóstico</th><th scope="col">Examen relacionado</th><th scope="col">Fecha de resultado</th><th scope="col">Fecha del diagnóstico</th><th scope="col">Acciones</th></tr></thead>
                       <tbody>
                         @for (d of diagnosticos; track d.idDiagnostico; let index = $index) {
                           <tr>
@@ -272,11 +287,19 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
                                 } @empty { <span class="text-muted">Sin examen relacionado</span> }
                               }
                             </td>
+                            <td>
+                              @if (cargandoExamenes || errorExamenes) { <span class="text-muted">No disponible</span> }
+                              @else {
+                                @for (e of examenesDeDiagnostico(d.idDiagnostico); track e.idExamen; let last = $last) {
+                                  {{ fechaCargaResultado(e.idExamen) }}{{ last ? '' : ', ' }}
+                                } @empty { <span class="text-muted">No aplica</span> }
+                              }
+                            </td>
                             <td>{{ d.fechaRegistro | date:'dd/MM/yyyy' }}</td>
                             <td><button type="button" class="btn btn-outline-primary btn-sm" (click)="verDetalleDiagnostico(d)">{{ diagnosticoDetalleId === d.idDiagnostico ? 'Cerrar detalle' : 'Ver detalle' }}</button></td>
                           </tr>
                           @if (diagnosticoDetalleId === d.idDiagnostico) {
-                            <tr><td colspan="5">
+                            <tr><td colspan="6">
                               <div class="border rounded p-3">
                                 <div><strong>Diagnóstico:</strong> {{ d.descripcion }}</div>
                                 <div><strong>Registrado:</strong> {{ d.fechaRegistro | date:'dd/MM/yyyy HH:mm' }}</div>
@@ -296,7 +319,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
         <!-- TRATAMIENTOS -->
         @if (tab === 'tratamientos') {
           <section class="card shadow-sm mt-3 consulta-card" id="panel-tratamientos" role="tabpanel" aria-labelledby="tab-tratamientos" tabindex="0">
-            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Tratamiento</h3></div>
+            <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Tratamiento y receta médica</h3></div>
             <div class="card-body">
             @if (errorTratamientos) {
               <div class="alert alert-warning" role="alert">{{ errorTratamientos }}</div>
@@ -304,11 +327,11 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
             @if (avisoConsumo) {
               <div class="alert alert-success" role="status">{{ avisoConsumo }}</div>
             }
-            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
-              <app-tratamiento-form [idConsulta]="idConsulta" [idPaciente]="idPaciente"
-                [revisionStock]="revisionStock" (registrado)="onTratamientoRegistrado($event)">
-              </app-tratamiento-form>
-            }
+            <app-receta-form [idConsulta]="idConsulta" [idPaciente]="idPaciente"
+              [estadoConsulta]="consulta.estadoConsulta" [diagnosticos]="diagnosticos" [examenes]="examenes"
+              [fechaPrimeraCargaExamen]="fechaPrimeraCargaExamen"
+              [cargandoDiagnosticos]="cargandoDiagnosticos" [errorDiagnosticos]="errorDiagnosticos"
+              (registrada)="recargarTratamientos()" />
             @if (!errorTratamientos && tratamientos.length === 0) {
               <p class="text-muted">No hay tratamientos registrados.</p>
             }
@@ -490,6 +513,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
       .consulta-tab:focus-visible { outline: 3px solid #174d9b; outline-offset: 2px; }
       .consulta-eval-field dt { color: #173b64; font-size: .875rem; margin-bottom: .35rem; }
       .consulta-eval-field dd { background: #f8fbfe; border: 1px solid #e0eaf2; border-radius: .4rem; margin: 0; min-height: 2.5rem; overflow-wrap: anywhere; padding: .55rem .75rem; white-space: pre-wrap; }
+      .consulta-diag-examen { background: #f8fbfe; border: 1px solid #d8e4ef; border-radius: .4rem; padding: .65rem .75rem; display: flex; flex-wrap: wrap; gap: .35rem 1rem; color: #173b64; }
     `]
 })
 export class ConsultaDetalleComponent implements OnInit {
@@ -1072,7 +1096,7 @@ export class ConsultaDetalleComponent implements OnInit {
         }
         this.nuevoDiag.descripcion = '';
         this.idExamenDiagnostico = null;
-        this.avisoDiagnostico = `Diagnóstico #${diagnostico.idDiagnostico} confirmado.`;
+        this.avisoDiagnostico = 'Diagnóstico registrado correctamente.';
         this.cargarDiagnosticos();
         if (idExamen !== null) this.cargarExamenes();
       },
@@ -1122,6 +1146,21 @@ export class ConsultaDetalleComponent implements OnInit {
   examenesDeDiagnostico(idDiagnostico: number): ExamenResponseDto[] {
     return this.examenes.filter(examen => examen.idDiagnostico === idDiagnostico
       && examen.idConsulta === this.idConsulta && examen.idPaciente === this.idPaciente);
+  }
+
+  examenParaDiagnostico(): ExamenResponseDto | null {
+    return this.examenes.find(examen => examen.idExamen === this.idExamenDiagnostico) ?? null;
+  }
+
+  correlativoExamen(idExamen: number): number {
+    return this.examenes.findIndex(examen => examen.idExamen === idExamen) + 1;
+  }
+
+  estadoArchivosExamen(idExamen: number): string {
+    if (this.errorArchivosExamen.has(idExamen)) return 'No se pudieron consultar';
+    const cantidad = this.cantidadArchivosExamen[idExamen];
+    if (cantidad == null) return 'Consultando';
+    return cantidad === 0 ? 'Sin archivos' : `${cantidad} archivo(s)`;
   }
 
   verDetalleDiagnostico(diagnostico: DiagnosticoResponse): void {
@@ -1241,7 +1280,7 @@ export class ConsultaDetalleComponent implements OnInit {
     });
   }
 
-  private recargarTratamientos(): void {
+  recargarTratamientos(): void {
     const identidad = this.identidadActual();
     const consulta = this.idConsulta;
     const revision = ++this.revisionTratamientos;

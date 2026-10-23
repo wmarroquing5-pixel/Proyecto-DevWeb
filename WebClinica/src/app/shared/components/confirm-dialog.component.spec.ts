@@ -30,6 +30,14 @@ describe('ConfirmDialogComponent', () => {
     expect(cancelled).toHaveBeenCalledTimes(2);
   });
 
+  it('permite un texto alternativo de cancelación sin cambiar el valor predeterminado', () => {
+    const cancel = fixture.nativeElement.querySelector('button.btn-secondary') as HTMLButtonElement;
+    expect(cancel.textContent).toContain('Cancelar');
+    component.cancelLabel = 'Conservar';
+    fixture.detectChanges();
+    expect(cancel.textContent).toContain('Conservar');
+  });
+
   it('emite confirmación una sola vez hasta finalizar la operación', () => {
     const confirmed = jasmine.createSpy('confirmed');
     component.confirmed.subscribe(confirmed);

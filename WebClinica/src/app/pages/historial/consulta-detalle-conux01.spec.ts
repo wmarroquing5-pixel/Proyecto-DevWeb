@@ -44,7 +44,7 @@ describe('CON-UX-01 detalle de consulta', () => {
     createHistorial.set(true); modifyConsultas.set(false); authenticated.set(true); userId.set(4);
     service = jasmine.createSpyObj<HistorialService>('HistorialService', [
       'obtenerConsulta', 'listarDiagnosticos', 'listarTratamientos', 'listarExamenes',
-      'listarHistorial', 'crearDiagnostico', 'crearExamen', 'crearEvolucion',
+      'listarHistorial', 'listarRecetas', 'crearDiagnostico', 'crearExamen', 'crearEvolucion',
       'registrarConsumoClinico', 'actualizarConsulta', 'registrarEvaluacion',
     ]);
     service.obtenerConsulta.and.returnValue(of(consulta()));
@@ -52,6 +52,7 @@ describe('CON-UX-01 detalle de consulta', () => {
     service.listarTratamientos.and.returnValue(of(page([])));
     service.listarExamenes.and.returnValue(of(page([])));
     service.listarHistorial.and.returnValue(of(page([])));
+    service.listarRecetas.and.returnValue(of(page([])));
     patient = jasmine.createSpy('obtenerPaciente').and.returnValue(of({ idPaciente: 11, nombres: 'Ana', apellidos: 'López' }));
     doctor = jasmine.createSpy('obtenerMedico').and.returnValue(of({ idEmpleado: 7, nombres: 'Luis', apellidos: 'Pérez' }));
     TestBed.configureTestingModule({
@@ -74,7 +75,7 @@ describe('CON-UX-01 detalle de consulta', () => {
           obtenerSucursal: () => of({ idSucursal: 3, nombre: 'Clínica Central' }),
           obtenerClinica: () => of(null),
         } },
-        { provide: InventarioService, useValue: {} },
+        { provide: InventarioService, useValue: { listarMedicamentos: () => of(page([])) } },
       ],
     });
   });

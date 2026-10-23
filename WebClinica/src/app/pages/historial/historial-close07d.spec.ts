@@ -95,7 +95,7 @@ describe('ConsultaDetalleComponent CLOSE-07D', () => {
     expect(service.crearDiagnostico).toHaveBeenCalledOnceWith({ idConsulta: 17, idMedico: null, descripcion: 'Hallazgo confirmado' });
     expect(service.listarDiagnosticos).toHaveBeenCalledTimes(2);
     expect(service.listarHistorial).toHaveBeenCalledTimes(1);
-    expect(c.nuevoDiag.descripcion).toBe(''); expect(c.avisoDiagnostico).toContain('#1');
+    expect(c.nuevoDiag.descripcion).toBe(''); expect(c.avisoDiagnostico).toBe('Diagnóstico registrado correctamente.');
   });
   for (const descripcion of ['', '   ', 'x'.repeat(301)]) {
     it(`rechaza descripción inválida de longitud ${descripcion.length} sin POST`, () => {

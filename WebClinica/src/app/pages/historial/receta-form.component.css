@@ -1,0 +1,126 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+/* Estas clases conservan los valores del panel Evaluación; el estilo del
+   componente padre no alcanza el DOM encapsulado de RecetaFormComponent. */
+:host .consulta-card {
+  border: 1px solid #d8e4ef;
+  border-radius: .6rem;
+}
+
+:host .consulta-section-heading {
+  background: #edf4f9;
+  border-bottom-color: #d8e4ef;
+  color: #0e2749;
+}
+
+.receta-form .form-label {
+  color: #173b64;
+  font-size: .875rem;
+  font-weight: 700;
+  margin-bottom: .35rem;
+}
+
+.receta-form .form-control,
+.receta-form .form-select {
+  background-color: #f8fbfe;
+  border-color: #d8e4ef;
+}
+
+.receta-form textarea {
+  min-height: 5rem;
+}
+
+.receta-table-wrap {
+  border-color: #d8e4ef;
+  border-radius: .4rem;
+}
+
+.receta-table > :not(caption) > * > * {
+  padding: .45rem .65rem;
+  border-color: #d8e4ef;
+}
+
+.receta-table thead th {
+  background: #edf4f9;
+  color: #173b64;
+}
+
+.receta-table tbody td {
+  background: #fff;
+}
+
+.receta-table .receta-row-selected td:first-child {
+  box-shadow: inset 3px 0 #0d6efd;
+}
+
+.receta-table label {
+  cursor: pointer;
+  margin: 0;
+}
+
+.receta-seleccion,
+.receta-aviso {
+  background: #edf4f9;
+  border: 1px solid #d8e4ef;
+  border-radius: .4rem;
+  color: #173b64;
+  padding: .45rem .65rem;
+}
+
+.receta-aviso {
+  display: flex;
+  gap: .5rem;
+  align-items: flex-start;
+}
+
+.receta-medicamento {
+  background: #fff;
+  border: 1px solid #d8e4ef;
+  border-radius: .4rem;
+  min-width: 0;
+  padding: .75rem;
+}
+
+.receta-medicamento legend {
+  color: #173b64;
+  float: none;
+  width: auto;
+}
+
+.receta-confirmacion {
+  border-top: 1px solid #d8e4ef;
+}
+
+.indicaciones-heading {
+  align-items: center;
+  display: flex;
+  gap: .75rem;
+  justify-content: space-between;
+  margin-top: .25rem;
+  margin-bottom: .4rem;
+}
+
+.indicaciones-heading .form-label {
+  margin: 0;
+}
+
+.indicaciones-heading .btn {
+  flex-shrink: 0;
+  line-height: 1.2;
+  min-height: 2rem;
+  padding: .35rem .7rem;
+}
+
+@media (max-width: 575.98px) {
+  .indicaciones-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .indicaciones-heading button {
+    width: 100%;
+  }
+}

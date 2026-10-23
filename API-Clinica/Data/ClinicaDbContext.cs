@@ -47,6 +47,8 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
     public DbSet<Examen> Examenes => Set<Examen>();
     public DbSet<Evolucion> Evoluciones => Set<Evolucion>();
     public DbSet<Tratamiento> Tratamientos => Set<Tratamiento>();
+    public DbSet<RecetaClinica> RecetasClinicas => Set<RecetaClinica>();
+    public DbSet<RecetaLinea> RecetaLineas => Set<RecetaLinea>();
     public DbSet<Bitacora> Bitacoras => Set<Bitacora>();
     public DbSet<Clinica> Clinicas => Set<Clinica>();
     public DbSet<ContactoEmergencia> ContactosEmergencia => Set<ContactoEmergencia>();
@@ -910,6 +912,86 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .HasConstraintName("FK_Tratamiento_Consulta");
             entity.HasOne<LoteMedicamento>().WithMany().HasForeignKey(e => e.IdLote)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Tratamiento_Lote");
+        });
+
+        // Contrato cotejado con sys.columns/sys.key_constraints/sys.foreign_keys
+        // de db_Clinica. No se generan ni aplican migraciones.
+        modelBuilder.Entity<RecetaClinica>(entity =>
+        {
+            entity.ToTable("RecetaClinica", "dbo", table =>
+            {
+                table.HasCheckConstraint("CK_RecetaClinica_Anterior", "[IdRecetaAnterior] IS NULL OR [IdRecetaAnterior] <> [IdReceta]");
+                table.HasCheckConstraint("CK_RecetaClinica_Estado", "[Estado] IN (N'Vigente', N'Sustituida', N'Anulada')");
+                table.HasCheckConstraint("CK_RecetaClinica_Version", "[NumeroVersion] >= 1");
+            });
+            entity.HasKey(e => e.IdReceta).HasName("PK_RecetaClinica");
+            entity.Property(e => e.IdReceta).HasColumnType("int").UseIdentityColumn(1, 1);
+            entity.Property(e => e.IdTratamiento).HasColumnType("int");
+            entity.Property(e => e.IdDiagnostico).HasColumnType("int");
+            entity.Property(e => e.IdUsuarioPrescriptor).HasColumnType("int");
+            entity.Property(e => e.IdRecetaAnterior).HasColumnType("int");
+            entity.Property(e => e.NumeroVersion).HasColumnType("int");
+            entity.Property(e => e.Estado).HasColumnType("nvarchar(20)").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.FechaPrescripcionUtc).HasColumnType("datetime2(3)");
+            entity.Property(e => e.ClaveOperacion).HasColumnType("uniqueidentifier");
+            entity.Property(e => e.HashSolicitud).HasColumnType("binary(32)").IsRequired();
+            entity.HasAlternateKey(e => e.ClaveOperacion).HasName("UQ_RecetaClinica_Clave");
+            entity.HasAlternateKey(e => new { e.IdTratamiento, e.NumeroVersion })
+                .HasName("UQ_RecetaClinica_TratamientoVersion");
+            entity.HasIndex(e => e.IdTratamiento, "UX_RecetaClinica_Vigente")
+                .IsUnique().HasFilter("[Estado]=N'Vigente'");
+            entity.HasIndex(e => e.IdRecetaAnterior, "UX_RecetaClinica_Anterior")
+                .IsUnique().HasFilter("[IdRecetaAnterior] IS NOT NULL");
+            entity.HasIndex(e => new { e.IdDiagnostico, e.FechaPrescripcionUtc })
+                .HasDatabaseName("IX_RecetaClinica_DiagnosticoFecha");
+            entity.HasOne<Tratamiento>().WithMany().HasForeignKey(e => e.IdTratamiento)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaClinica_Tratamiento");
+            entity.HasOne<Diagnostico>().WithMany().HasForeignKey(e => e.IdDiagnostico)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaClinica_Diagnostico");
+            entity.HasOne<Usuario>().WithMany().HasForeignKey(e => e.IdUsuarioPrescriptor)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaClinica_Usuario");
+            entity.HasOne<RecetaClinica>().WithMany().HasForeignKey(e => e.IdRecetaAnterior)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaClinica_Anterior");
+        });
+
+        modelBuilder.Entity<RecetaLinea>(entity =>
+        {
+            entity.ToTable("RecetaLinea", "dbo", table =>
+            {
+                table.HasCheckConstraint("CK_RecetaLinea_Cantidades", "[Orden] > 0 AND [CantidadPrescritaUnidades] > 0 AND [Dosis] > 0 AND [DuracionDias] > 0");
+                table.HasCheckConstraint("CK_RecetaLinea_Texto", "LEN(TRIM([UnidadInventario])) > 0 AND LEN(TRIM([UnidadDosis])) > 0 AND LEN(TRIM([Via])) > 0 AND LEN(TRIM([Frecuencia])) > 0");
+                table.HasCheckConstraint("CK_RecetaLinea_Equivalencia", "([ContenidoPorUnidad] IS NULL AND [UnidadContenido] IS NULL AND [FuenteEquivalencia] IS NULL AND [VersionEquivalencia] IS NULL AND [IdUsuarioValidador] IS NULL AND [FechaValidacionUtc] IS NULL) OR ([ContenidoPorUnidad] IS NOT NULL AND [ContenidoPorUnidad] > 0 AND [UnidadContenido] IS NOT NULL AND LEN(TRIM([UnidadContenido])) > 0 AND [FuenteEquivalencia] IS NOT NULL AND LEN(TRIM([FuenteEquivalencia])) > 0 AND [VersionEquivalencia] IS NOT NULL AND LEN(TRIM([VersionEquivalencia])) > 0 AND [IdUsuarioValidador] IS NOT NULL AND [FechaValidacionUtc] IS NOT NULL)");
+            });
+            entity.HasKey(e => e.IdRecetaLinea).HasName("PK_RecetaLinea");
+            entity.Property(e => e.IdRecetaLinea).HasColumnType("int").UseIdentityColumn(1, 1);
+            entity.Property(e => e.IdReceta).HasColumnType("int");
+            entity.Property(e => e.IdMedicamento).HasColumnType("int");
+            entity.Property(e => e.Orden).HasColumnType("smallint");
+            entity.Property(e => e.CantidadPrescritaUnidades).HasColumnType("int");
+            entity.Property(e => e.UnidadInventario).HasColumnType("nvarchar(30)").HasMaxLength(30);
+            entity.Property(e => e.Dosis).HasColumnType("decimal(12,3)");
+            entity.Property(e => e.UnidadDosis).HasColumnType("nvarchar(30)").HasMaxLength(30);
+            entity.Property(e => e.Via).HasColumnType("nvarchar(40)").HasMaxLength(40);
+            entity.Property(e => e.Frecuencia).HasColumnType("nvarchar(100)").HasMaxLength(100);
+            entity.Property(e => e.DuracionDias).HasColumnType("smallint");
+            entity.Property(e => e.Indicaciones).HasColumnType("nvarchar(500)").HasMaxLength(500);
+            entity.Property(e => e.ContenidoPorUnidad).HasColumnType("decimal(18,6)");
+            entity.Property(e => e.UnidadContenido).HasColumnType("nvarchar(30)").HasMaxLength(30);
+            entity.Property(e => e.FuenteEquivalencia).HasColumnType("nvarchar(200)").HasMaxLength(200);
+            entity.Property(e => e.VersionEquivalencia).HasColumnType("nvarchar(50)").HasMaxLength(50);
+            entity.Property(e => e.IdUsuarioValidador).HasColumnType("int");
+            entity.Property(e => e.FechaValidacionUtc).HasColumnType("datetime2(3)");
+            entity.HasAlternateKey(e => new { e.IdRecetaLinea, e.IdReceta })
+                .HasName("UQ_RecetaLinea_IdReceta");
+            entity.HasAlternateKey(e => new { e.IdReceta, e.Orden })
+                .HasName("UQ_RecetaLinea_Orden");
+            entity.HasIndex(e => e.IdMedicamento).HasDatabaseName("IX_RecetaLinea_Medicamento");
+            entity.HasOne<RecetaClinica>().WithMany().HasForeignKey(e => e.IdReceta)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaLinea_Receta");
+            entity.HasOne<Medicamento>().WithMany().HasForeignKey(e => e.IdMedicamento)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaLinea_Medicamento");
+            entity.HasOne<Usuario>().WithMany().HasForeignKey(e => e.IdUsuarioValidador)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaLinea_Validador");
         });
 
         modelBuilder.Entity<Clinica>(entity =>

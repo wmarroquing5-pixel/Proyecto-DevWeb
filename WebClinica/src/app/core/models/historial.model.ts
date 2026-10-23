@@ -171,6 +171,63 @@ export interface TratamientoFiltroDto {
   pageSize: number;
 }
 
+export interface RecetaLineaCrearRequest {
+  idMedicamento: number;
+  unidadInventario: string;
+  cantidadPrescritaUnidades: number;
+  destinoMedicamento: 'Clinica' | 'CompraExterna';
+}
+
+export interface CrearRecetaClinicaRequest {
+  idConsulta: number;
+  idDiagnostico: number;
+  claveOperacion: string;
+  descripcionTratamiento: string;
+  indicacionesGenerales: string | null;
+  fechaInicio: string;
+  fechaFin: string | null;
+  lineas: RecetaLineaCrearRequest[];
+}
+
+export interface RecetaLineaDetalleDto extends RecetaLineaCrearRequest {
+  idRecetaLinea: number;
+  orden: number;
+  nombreMedicamento: string;
+  duracionDias: number;
+}
+
+export interface RecetaClinicaDetalleDto {
+  idReceta: number;
+  idConsulta: number;
+  idTratamiento: number;
+  descripcionTratamiento: string;
+  indicacionesGenerales: string | null;
+  fechaInicio: string;
+  fechaFin: string | null;
+  idDiagnostico: number;
+  descripcionDiagnostico: string;
+  numeroVersion: number;
+  estado: string;
+  idUsuarioPrescriptor: number;
+  fechaPrescripcionUtc: string;
+  lineas: RecetaLineaDetalleDto[];
+}
+
+export interface RecetaClinicaResumenDto {
+  idReceta: number;
+  idConsulta: number;
+  idTratamiento: number;
+  descripcionTratamiento: string;
+  fechaInicio: string;
+  fechaFin: string | null;
+  idDiagnostico: number;
+  descripcionDiagnostico: string;
+  numeroVersion: number;
+  estado: string;
+  fechaPrescripcionUtc: string;
+  cantidadLineas: number;
+}
+
 export interface ConsumoClinicoCreateDto {
   cantidad: number;
 }

@@ -41,7 +41,7 @@ public sealed class GuardarMedicamentoRequest
 public sealed record MedicamentoResponse(
     int IdMedicamento, int IdCategoria, int IdMarca, string Codigo,
     string Nombre, string? Descripcion, decimal PrecioVenta,
-    string? ImagenURL, bool Activo);
+    string? ImagenURL, bool Activo, string? Presentacion = null);
 
 public sealed record CatalogoMedicamentoResponse(
     int IdMedicamento, string Codigo, string Nombre, decimal PrecioVenta,

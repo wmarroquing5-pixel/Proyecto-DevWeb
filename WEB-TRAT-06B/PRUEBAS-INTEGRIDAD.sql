@@ -1,6 +1,6 @@
-/* WEB-TRAT-06B-1 — PRUEBAS SINTETICAS PREPARADAS; NO EJECUTAR.
-   Requieren autorización posterior, base nueva exacta, siete stubs base y
-   siete tablas propuestas creadas. El THROW inicial impide escrituras.
+/* WEB-TRAT-C — PRUEBAS SINTETICAS PREPARADAS; NO EJECUTAR.
+   Requieren autorización posterior, base exacta, catorce tablas sintéticas y
+   seis tablas de alternativa C creadas. El THROW inicial impide escrituras.
    Todo el fixture usa IDs/nombres ficticios y se revierte al final.
    No comprueba inventario clínico ni equivalencia farmacéutica. */
 THROW 51020, N'Pruebas de integridad no autorizadas.', 1;
@@ -12,27 +12,59 @@ IF DB_NAME() <> N'ClinicaTratamiento_Aislado_06B'
    OR CONVERT(nvarchar(128), SERVERPROPERTY('InstanceName')) <> N'SQLEXPRESS'
    OR @IdentidadAprobada = N'__IDENTIDAD_PRUEBAS_AUN_NO_APROBADA__'
    OR ORIGINAL_LOGIN() <> @IdentidadAprobada
+   OR COALESCE(IS_SRVROLEMEMBER(N'sysadmin'), 1) <> 0
+   OR OBJECT_ID(N'dbo.CorreccionClinica', N'U') IS NOT NULL
+   OR (SELECT COUNT_BIG(*) FROM sys.tables WHERE schema_id = SCHEMA_ID(N'dbo')
+       AND name IN (N'Sucursal', N'Paciente', N'Empleado', N'Clinica', N'Rol',
+       N'Categoria', N'Marca', N'Usuario', N'Consulta', N'Diagnostico',
+       N'Medicamento', N'LoteMedicamento', N'Tratamiento', N'MovimientoInventario',
+       N'RecetaClinica', N'RecetaLinea', N'EntregaFarmacia', N'EntregaDetalle',
+       N'AdministracionClinica', N'SalidaClinica')) <> 20
     THROW 51021, N'Destino SQL no coincide con el entorno aislado.', 1;
 
 SET NOCOUNT ON;
 SET XACT_ABORT OFF;
+BEGIN TRY
 BEGIN TRANSACTION;
 
-INSERT dbo.Usuario DEFAULT VALUES;
+INSERT dbo.Sucursal DEFAULT VALUES;
+DECLARE @Sucursal int = CONVERT(int, SCOPE_IDENTITY());
+INSERT dbo.Paciente DEFAULT VALUES;
+DECLARE @Paciente int = CONVERT(int, SCOPE_IDENTITY());
+INSERT dbo.Empleado(IdSucursal) VALUES (@Sucursal);
+DECLARE @Medico int = CONVERT(int, SCOPE_IDENTITY());
+INSERT dbo.Rol DEFAULT VALUES;
+DECLARE @Rol int = CONVERT(int, SCOPE_IDENTITY());
+INSERT dbo.Categoria DEFAULT VALUES;
+DECLARE @Categoria int = CONVERT(int, SCOPE_IDENTITY());
+INSERT dbo.Marca DEFAULT VALUES;
+DECLARE @Marca int = CONVERT(int, SCOPE_IDENTITY());
+
+INSERT dbo.Usuario(IdRol, IdEmpleado, Username, PasswordHash)
+VALUES (@Rol, @Medico, CONCAT(N'prueba-06b-', CONVERT(nvarchar(36), NEWID())), N'HASH-SINTETICO-NO-VALIDO');
 DECLARE @Usuario int = CONVERT(int, SCOPE_IDENTITY());
-INSERT dbo.Consulta(IdPaciente, IdMedico, IdSucursal) VALUES (900001, 900002, 900003);
+INSERT dbo.Consulta(IdPaciente, IdMedico, IdSucursal, FechaConsulta)
+VALUES (@Paciente, @Medico, @Sucursal, SYSUTCDATETIME());
 DECLARE @Consulta int = CONVERT(int, SCOPE_IDENTITY());
 INSERT dbo.Diagnostico(IdConsulta, Descripcion) VALUES (@Consulta, N'Diagnóstico sintético de prueba');
 DECLARE @Diagnostico int = CONVERT(int, SCOPE_IDENTITY());
-INSERT dbo.Tratamiento(IdConsulta) VALUES (@Consulta);
+INSERT dbo.Tratamiento(IdConsulta, Descripcion, FechaInicio)
+VALUES (@Consulta, N'Tratamiento sintético A', CONVERT(date, SYSUTCDATETIME()));
 DECLARE @Tratamiento1 int = CONVERT(int, SCOPE_IDENTITY());
-INSERT dbo.Tratamiento(IdConsulta) VALUES (@Consulta);
+INSERT dbo.Tratamiento(IdConsulta, Descripcion, FechaInicio)
+VALUES (@Consulta, N'Tratamiento sintético B', CONVERT(date, SYSUTCDATETIME()));
 DECLARE @Tratamiento2 int = CONVERT(int, SCOPE_IDENTITY());
-INSERT dbo.Medicamento(Presentacion) VALUES (N'Presentación sintética no validada');
+INSERT dbo.Medicamento(IdCategoria, IdMarca, Codigo, Nombre, PrecioVenta, Presentacion)
+VALUES (@Categoria, @Marca, CONCAT(N'MED-', CONVERT(nvarchar(36), NEWID())),
+    N'Medicamento sintético', 1.00, N'Presentación sintética no validada');
 DECLARE @Medicamento int = CONVERT(int, SCOPE_IDENTITY());
-INSERT dbo.LoteMedicamento(IdMedicamento, CantidadDisponible) VALUES (@Medicamento, 10);
+INSERT dbo.LoteMedicamento(IdMedicamento, NumeroLote, FechaIngreso, FechaVencimiento, CantidadDisponible)
+VALUES (@Medicamento, CONCAT(N'LOTE-', CONVERT(nvarchar(36), NEWID())),
+    CONVERT(date, SYSUTCDATETIME()), DATEADD(year, 1, CONVERT(date, SYSUTCDATETIME())), 10);
 DECLARE @Lote int = CONVERT(int, SCOPE_IDENTITY());
-INSERT dbo.LoteMedicamento(IdMedicamento, CantidadDisponible) VALUES (@Medicamento, 10);
+INSERT dbo.LoteMedicamento(IdMedicamento, NumeroLote, FechaIngreso, FechaVencimiento, CantidadDisponible)
+VALUES (@Medicamento, CONCAT(N'LOTE-', CONVERT(nvarchar(36), NEWID())),
+    CONVERT(date, SYSUTCDATETIME()), DATEADD(year, 1, CONVERT(date, SYSUTCDATETIME())), 10);
 DECLARE @Lote2 int = CONVERT(int, SCOPE_IDENTITY());
 
 DECLARE @ClaveEntrega uniqueidentifier = NEWID();
@@ -64,7 +96,7 @@ INSERT dbo.EntregaDetalle(IdEntrega, IdReceta, IdRecetaLinea, IdLote, CantidadEn
 VALUES (@Entrega, @Receta1, @Linea1, @Lote, 2);
 DECLARE @Detalle int = CONVERT(int, SCOPE_IDENTITY());
 INSERT dbo.MovimientoInventario(IdLote, IdUsuario, IdSucursal, TipoMovimiento, Cantidad)
-VALUES (@Lote, @Usuario, 900003, N'Uso Interno', 2);
+VALUES (@Lote, @Usuario, @Sucursal, N'Uso Interno', 2);
 DECLARE @Movimiento1 int = CONVERT(int, SCOPE_IDENTITY());
 INSERT dbo.SalidaClinica(IdMovimiento, IdEntregaDetalle)
 VALUES (@Movimiento1, @Detalle);
@@ -76,7 +108,7 @@ VALUES (@Linea1, @Usuario, N'InventarioDirecto', @Lote, 1, 1,
     N'unidad sintética', N'vía de prueba', SYSUTCDATETIME(), NEWID(), CONVERT(binary(32), 0x04));
 DECLARE @Administracion int = CONVERT(int, SCOPE_IDENTITY());
 INSERT dbo.MovimientoInventario(IdLote, IdUsuario, IdSucursal, TipoMovimiento, Cantidad)
-VALUES (@Lote, @Usuario, 900003, N'Uso Interno', 1);
+VALUES (@Lote, @Usuario, @Sucursal, N'Uso Interno', 1);
 DECLARE @Movimiento2 int = CONVERT(int, SCOPE_IDENTITY());
 INSERT dbo.SalidaClinica(IdMovimiento, IdAdministracion, OrigenAdministracion)
 VALUES (@Movimiento2, @Administracion, N'InventarioDirecto');
@@ -157,7 +189,7 @@ END CATCH;
 
 /* I07: NULL en OrigenAdministracion antes aceptable por UNKNOWN. Esperado 547. */
 INSERT dbo.MovimientoInventario(IdLote, IdUsuario, IdSucursal, TipoMovimiento, Cantidad)
-VALUES (@Lote, @Usuario, 900003, N'Uso Interno', 1);
+VALUES (@Lote, @Usuario, @Sucursal, N'Uso Interno', 1);
 DECLARE @Movimiento3 int = CONVERT(int, SCOPE_IDENTITY());
 INSERT dbo.AdministracionClinica(IdRecetaLinea, IdUsuarioResponsable, Origen,
     IdLote, CantidadUnidades, DosisAplicada, UnidadDosis, Via,
@@ -239,3 +271,8 @@ END CATCH;
 
 ROLLBACK TRANSACTION;
 PRINT N'Fixture sintético revertido; no se conservaron filas de prueba.';
+END TRY
+BEGIN CATCH
+    IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;

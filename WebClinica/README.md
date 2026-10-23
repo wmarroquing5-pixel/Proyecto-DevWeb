@@ -25,3 +25,7 @@ Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To u
 ## Further help
 
 To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+
+## Documentación e informes
+
+Los informes, auditorías y evidencias históricas están centralizados en [Docs](../../Docs/). Consultar el [inventario de traslados](../../Docs/Compartido/2026-10-23_DOCS-ORG_Inventario-traslado.md) para localizar cada documento. La regla permanente está en [AGENTS.md](AGENTS.md).

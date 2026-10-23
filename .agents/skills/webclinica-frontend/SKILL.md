@@ -5,6 +5,22 @@ description: Desarrolla, audita y prueba exclusivamente el frontend Angular WebC
 
 # WebClinica frontend — Fase 1
 
+## Ubicación de informes y documentación generada
+
+Todos los informes, auditorías, diagnósticos técnicos, matrices, evidencias de validación, resultados de pruebas y resúmenes de implementación deben guardarse fuera de los proyectos, en:
+
+- API-Clinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\API-Clinica`
+- WebClinica: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\WebClinica`
+- Informes de ambos proyectos: `C:\Users\DESARROLLO\Documents\ChatGPT\Docs\Compartido`
+
+Crea la carpeta correspondiente si no existe. Usa nombres descriptivos con fecha e identificador de tarea, cuando exista.
+
+No guardes estos documentos en la raíz de los repositorios ni en sus carpetas de código, pruebas o compilación.
+
+Esta regla se aplica a los documentos generados para entregar o registrar resultados. El código, las pruebas automatizadas, la configuración, los archivos operativos y las propias skills deben conservar su ubicación.
+
+Si no puedes acceder a la ruta indicada, informa el impedimento. No guardes el informe dentro del proyecto como alternativa ni afirmes que fue guardado.
+
 ## Alcance y fuentes
 - Exclusivamente `WebClinica` (Angular SPA) y los requisitos frontend documentados para la Fase 1. No desarrollar aplicación móvil/PWA de Fase 2 por esta Skill.
 - Basado en `WEB-AUDIT-01` con corte 2026-10-18, commit `bba962bb3b1d34ce733d20ffe2a591ad7327b0be`. Es una fotografía: confirmar contra código y Git actuales.

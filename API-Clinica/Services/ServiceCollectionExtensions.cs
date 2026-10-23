@@ -36,6 +36,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExamResultStorage, CloudflareR2ExamResultStorage>();
         services.AddScoped<IExamResultService, ExamResultService>();
         services.AddScoped<ITratamientoService, TratamientoService>();
+        services.AddSingleton<IRecetaClinicaPreparador, RecetaClinicaPreparador>();
+        services.AddScoped<IRecetaClinicaService, RecetaClinicaService>();
         services.AddScoped<IConsumoClinicoService, ConsumoClinicoService>();
         services.AddScoped<HistorialMedicoLecturaService>();
         services.AddScoped<IHistorialMedicoService, HistorialMedicoService>();

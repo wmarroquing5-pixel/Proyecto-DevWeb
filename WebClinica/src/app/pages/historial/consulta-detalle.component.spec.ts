@@ -14,7 +14,7 @@ import { AuthSessionService } from '../../core/services/auth-session.service';
 import { HistorialService } from '../../core/services/historial.service';
 import { InventarioService } from '../../core/services/inventario.service';
 import { By } from '@angular/platform-browser';
-import { TratamientoFormComponent } from './tratamiento-form.component';
+import { RecetaFormComponent } from './receta-form.component';
 import { PermisosService } from '../../core/services/permisos.service';
 import { ConsultaDetalleComponent } from './consulta-detalle.component';
 import { PacientesService } from '../../core/services/paciente.service';
@@ -82,7 +82,7 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
     TestBed.configureTestingModule({
       imports: [ConsultaDetalleComponent],
       providers: [
-        { provide: InventarioService, useValue: {} },
+        { provide: InventarioService, useValue: { listarMedicamentos: () => of(page([])) } },
         { provide: PacientesService, useValue: { obtener: () => of({ idPaciente: 11, nombres: 'Ana', apellidos: 'López' }) } },
         { provide: EmpleadosService, useValue: { obtener: () => of({ idEmpleado: 7, nombres: 'Luis', apellidos: 'Pérez' }) } },
         { provide: CatalogosService, useValue: { obtenerSucursal: () => of({ idSucursal: 3, nombre: 'Centro' }), obtenerClinica: () => of(null) } },
@@ -104,6 +104,7 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
           obtenerConsulta: () => of(consulta),
           listarDiagnosticos: () => of(page([])),
           listarTratamientos: leerTratamientos,
+          listarRecetas: () => of(page([])),
           obtenerTratamiento: leerTratamiento,
           listarExamenes: () => of(page([])),
           listarHistorial: () => of(page([])),
@@ -232,10 +233,10 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
 
   it('recibe la prescripción confirmada y relee la asociación sin consumir', () => {
     const component = render();
-    const form = fixture.debugElement.query(By.directive(TratamientoFormComponent)).componentInstance as TratamientoFormComponent;
+    const form = fixture.debugElement.query(By.directive(RecetaFormComponent)).componentInstance as RecetaFormComponent;
     leerTratamientos.and.returnValue(of(page([tratamiento])));
-    form.registrado.emit(tratamiento);
-    expect(leerTratamiento).toHaveBeenCalledOnceWith(9);
+    form.registrada.emit({ idConsulta: 17 } as never);
+    expect(leerTratamientos).toHaveBeenCalled();
     expect(component.tratamientos[0].idLote).toBe(7);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Lote #7');
     expect(registrarConsumo).not.toHaveBeenCalled();

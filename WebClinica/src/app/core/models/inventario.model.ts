@@ -26,6 +26,7 @@ export interface MedicamentoResponse {
   precioVenta: number;
   imagenURL: string | null;
   activo: boolean;
+  presentacion?: string | null;
 }
 
 // Request para crear/actualizar medicamento

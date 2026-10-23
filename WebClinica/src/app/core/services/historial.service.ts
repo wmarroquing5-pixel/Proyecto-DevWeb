@@ -8,6 +8,7 @@ import {
   DiagnosticoResponse, CrearDiagnosticoRequest, CrearDiagnosticoConExamenRequest, ActualizarDiagnosticoRequest, DiagnosticoFiltroDto,
   HistorialMedicoResponseDto, HistorialMedicoCreateDto, HistorialMedicoFiltroDto,
   TratamientoResponseDto, TratamientoCreateDto, TratamientoUpdateDto, TratamientoFiltroDto,
+  CrearRecetaClinicaRequest, RecetaClinicaDetalleDto, RecetaClinicaResumenDto,
   ConsumoClinicoCreateDto, ConsumoClinicoResponseDto,
   ExamenResponseDto, ExamenCreateDto, ExamenUpdateDto, ExamenFiltroDto, ExamResultFileDto,
   ContactoEmergenciaResponseDto, ContactoEmergenciaCreateDto, ContactoEmergenciaUpdateDto,
@@ -18,6 +19,21 @@ import {
 export class HistorialService {
   private http = inject(HttpClient);
   private apiUrl = `${environment.apiUrl}`;
+
+  crearReceta(request: CrearRecetaClinicaRequest): Observable<RecetaClinicaDetalleDto> {
+    return this.http.post<RecetaClinicaDetalleDto>(
+      `${this.apiUrl}/consultas/${request.idConsulta}/recetas`, request);
+  }
+
+  listarRecetas(idConsulta: number, page = 1, pageSize = 20): Observable<PagedResponse<RecetaClinicaResumenDto>> {
+    const params = new HttpParams().set('page', page.toString()).set('pageSize', pageSize.toString());
+    return this.http.get<PagedResponse<RecetaClinicaResumenDto>>(
+      `${this.apiUrl}/consultas/${idConsulta}/recetas`, { params });
+  }
+
+  obtenerReceta(idReceta: number): Observable<RecetaClinicaDetalleDto> {
+    return this.http.get<RecetaClinicaDetalleDto>(`${this.apiUrl}/recetas/${idReceta}`);
+  }
 
   // ==================== CONSULTAS ====================
 
