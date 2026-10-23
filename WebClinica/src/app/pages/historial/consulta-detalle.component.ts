@@ -1,14 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, effect } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
+import { CommonModule, formatDate } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { FormsModule } from '@angular/forms';
-import { EMPTY, Observable, Subscription, catchError, defer, expand, finalize, forkJoin, of, reduce, tap } from 'rxjs';
+import { AbstractControl, FormControl, FormGroup, FormsModule, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
+import { EMPTY, Observable, Subscription, catchError, defer, expand, finalize, forkJoin, from, map, mergeMap, of, reduce, tap } from 'rxjs';
 import { HistorialService } from '../../core/services/historial.service';
 import {
   ConsultaDetalleDto,
-  DiagnosticoResponse, CrearDiagnosticoRequest,
+  RegistrarEvaluacionConsultaRequest,
+  DiagnosticoResponse, CrearDiagnosticoRequest, CrearDiagnosticoConExamenRequest,
   HistorialMedicoResponseDto, HistorialMedicoCreateDto,
   TratamientoResponseDto,
   ConsumoClinicoResponseDto,
@@ -25,12 +26,33 @@ import { CatalogosService } from '../../core/services/catalogos.service';
 import { PacienteResponse } from '../../core/models/paciente.model';
 import { EmpleadoDetalleResponse } from '../../core/models/empleado.model';
 import { Clinica, Sucursal } from '../../core/models/catalogos.model';
+import { ExamResultsComponent, ExamResultsMode } from './exam-results.component';
+import { correlativoLista } from '../../shared/utils/correlativo';
 
 type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamientos' | 'evoluciones' | 'hospitalizacion';
 
+const numeroFinito: ValidatorFn = (control: AbstractControl): ValidationErrors | null =>
+  control.value == null || (typeof control.value === 'number' && Number.isFinite(control.value))
+    ? null : { numeroInvalido: true };
+
+const enteroEnRango = (min: number, max: number): ValidatorFn => (control: AbstractControl): ValidationErrors | null =>
+  control.value == null || (typeof control.value === 'number' && Number.isInteger(control.value)
+    && control.value >= min && control.value <= max) ? null : { enteroInvalido: true };
+
+const temperaturaValida: ValidatorFn = (control: AbstractControl): ValidationErrors | null =>
+  control.value == null || (typeof control.value === 'number' && Number.isFinite(control.value)
+    && control.value >= -999.9 && control.value <= 999.9
+    && Math.round(control.value * 10) === control.value * 10) ? null : { temperaturaInvalida: true };
+
+const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErrors | null => {
+  const values = control.value as Record<string, string | number | null>;
+  return Object.values(values).some(value => typeof value === 'string' ? value.trim().length > 0 : value != null)
+    ? null : { sinContenido: true };
+};
+
 @Component({
     selector: 'app-consulta-detalle',
-    imports: [CommonModule, RouterModule, FormsModule, TratamientoFormComponent],
+    imports: [CommonModule, RouterModule, FormsModule, ReactiveFormsModule, TratamientoFormComponent, ExamResultsComponent],
     template: `
     <div class="container consulta-shell py-4">
       <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -58,9 +80,6 @@ type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamient
               <div class="col-12 col-sm-6 col-lg-3"><span class="text-muted small">Fecha de consulta</span><div>{{ consulta.fechaConsulta | date:'dd/MM/yyyy HH:mm' }}</div></div>
               <div class="col-12 col-sm-6 col-lg-3"><span class="text-muted small">Médico responsable</span><div>{{ nombreMedico }}</div></div>
               <div class="col-12 col-sm-6"><span class="text-muted small">Sede de atención</span><div>{{ lugarAtencion }}</div></div>
-              @if (consulta.motivoConsulta) {
-                <div class="col-12 col-sm-6"><span class="text-muted small">Motivo de consulta</span><div>{{ consulta.motivoConsulta }}</div></div>
-              }
             </div>
             @if (cargandoEncabezado) { <p class="text-muted small mt-3 mb-0" role="status">Cargando nombres relacionados…</p> }
             @if (errorEncabezado) { <p class="alert alert-warning mt-3 mb-0" role="alert">{{ errorEncabezado }}</p> }
@@ -83,19 +102,76 @@ type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamient
           <section class="card shadow-sm mt-3 consulta-card" id="panel-evaluacion" role="tabpanel" aria-labelledby="tab-evaluacion" tabindex="0">
             <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Evaluación</h3></div>
             <div class="card-body">
-              @if (!tieneEvaluacion) { <p class="text-muted mb-0">No hay datos de evaluación registrados.</p> }
-              @else {
-                <dl class="row g-2 mb-0">
-                  @if (consulta.motivoConsulta) { <dt class="col-sm-4">Motivo de consulta</dt><dd class="col-sm-8">{{ consulta.motivoConsulta }}</dd> }
-                  @if (consulta.sintomas) { <dt class="col-sm-4">Síntomas</dt><dd class="col-sm-8">{{ consulta.sintomas }}</dd> }
-                  @if (consulta.observaciones) { <dt class="col-sm-4">Observaciones</dt><dd class="col-sm-8">{{ consulta.observaciones }}</dd> }
-                  @if (consulta.pesoLb !== null) { <dt class="col-sm-4">Peso</dt><dd class="col-sm-8">{{ consulta.pesoLb }} lb</dd> }
-                  @if (consulta.alturaCm !== null) { <dt class="col-sm-4">Altura</dt><dd class="col-sm-8">{{ consulta.alturaCm }} cm</dd> }
-                  @if (consulta.presionSistolica !== null || consulta.presionDiastolica !== null) {
-                    <dt class="col-sm-4">Presión arterial</dt><dd class="col-sm-8">{{ consulta.presionSistolica ?? '—' }}/{{ consulta.presionDiastolica ?? '—' }}</dd>
-                  }
-                </dl>
+              <p class="text-muted small mb-3">Estado: {{ consulta.estadoConsulta?.trim() || 'Sin estado registrado' }}</p>
+              @if (puedeAgregarEvaluacion && !mostrarFormularioEvaluacion) {
+                <button type="button" class="btn btn-primary mb-3" (click)="abrirFormularioEvaluacion()">Agregar evaluación</button>
               }
+              @if (errorEvaluacion) {
+                <div class="alert alert-danger mb-3" role="alert">{{ errorEvaluacion }}
+                  @if (conflictoEvaluacion) {
+                    <button type="button" class="btn btn-outline-danger btn-sm ms-2" (click)="recargarEvaluacion()" [disabled]="guardandoEvaluacion">Recargar consulta</button>
+                  }
+                </div>
+              }
+              @if (avisoEvaluacion) { <p class="alert alert-success mb-3" role="status">{{ avisoEvaluacion }}</p> }
+              @if (mostrarFormularioEvaluacion && puedeAgregarEvaluacion) {
+                <form class="card consulta-card mb-3" [formGroup]="formularioEvaluacion" (ngSubmit)="guardarEvaluacion()" novalidate>
+                  <div class="card-body">
+                    <h4 class="h6">Registrar evaluación clínica</h4>
+                    <p class="small mb-3"><strong>Motivo de consulta:</strong> {{ consulta.motivoConsulta?.trim() || 'Sin registrar' }}</p>
+                    <div class="row g-3">
+                      <div class="col-12 col-md-6"><label class="form-label" for="eval-sintomas">Síntomas</label><textarea id="eval-sintomas" class="form-control" formControlName="sintomas" maxlength="300" rows="3"></textarea></div>
+                      <div class="col-12 col-md-6"><label class="form-label" for="eval-observaciones">Observaciones</label><textarea id="eval-observaciones" class="form-control" formControlName="observaciones" maxlength="300" rows="3"></textarea></div>
+                      <div class="col-12 col-sm-6 col-lg-4"><label class="form-label" for="eval-peso">Peso (lb)</label><input id="eval-peso" class="form-control" type="number" step="any" formControlName="pesoLb"></div>
+                      <div class="col-12 col-sm-6 col-lg-4"><label class="form-label" for="eval-altura">Altura (cm)</label><input id="eval-altura" class="form-control" type="number" step="1" formControlName="alturaCm"></div>
+                      <div class="col-12 col-sm-6 col-lg-4"><label class="form-label" for="eval-sistolica">Presión sistólica (mmHg)</label><input id="eval-sistolica" class="form-control" type="number" step="any" formControlName="presionSistolica"></div>
+                      <div class="col-12 col-sm-6 col-lg-4"><label class="form-label" for="eval-diastolica">Presión diastólica (mmHg)</label><input id="eval-diastolica" class="form-control" type="number" step="any" formControlName="presionDiastolica"></div>
+                      <div class="col-12 col-sm-6 col-lg-4"><label class="form-label" for="eval-temperatura">Temperatura (°C)</label><input id="eval-temperatura" class="form-control" type="number" step="0.1" formControlName="temperaturaC"></div>
+                      <div class="col-12 col-sm-6 col-lg-4"><label class="form-label" for="eval-frecuencia">Frecuencia cardíaca (lpm)</label><input id="eval-frecuencia" class="form-control" type="number" min="0" max="32767" step="1" formControlName="frecuenciaCardiaca"></div>
+                    </div>
+                    @if (formularioEvaluacion.touched && formularioEvaluacion.hasError('sinContenido')) {
+                      <p class="text-danger small mt-3 mb-0" role="alert">Registre al menos un dato clínico.</p>
+                    }
+                    @if (formularioEvaluacion.touched && formularioEvaluacion.invalid && !formularioEvaluacion.hasError('sinContenido')) {
+                      <p class="text-danger small mt-3 mb-0" role="alert">Revise los valores: textos de hasta 300 caracteres, temperatura con un decimal y signos dentro de sus tipos permitidos.</p>
+                    }
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                      <button type="submit" class="btn btn-primary" [disabled]="guardandoEvaluacion || conflictoEvaluacion">{{ guardandoEvaluacion ? 'Guardando…' : 'Guardar evaluación' }}</button>
+                      <button type="button" class="btn btn-outline-secondary" (click)="cancelarFormularioEvaluacion()" [disabled]="guardandoEvaluacion">Cancelar</button>
+                    </div>
+                  </div>
+                </form>
+              }
+              @if (!tieneEvaluacion) { <p class="text-muted">No hay datos de evaluación registrados.</p> }
+              <div class="row g-3">
+                <div class="col-12">
+                  <section class="card consulta-card h-100" aria-labelledby="evaluacion-informacion">
+                    <div class="card-header consulta-section-heading"><h4 class="h6 mb-0" id="evaluacion-informacion">Información de la evaluación</h4></div>
+                    <div class="card-body">
+                      <dl class="row g-3 mb-0">
+                        <div class="col-12 consulta-eval-field"><dt>Motivo de consulta</dt><dd>{{ consulta.motivoConsulta?.trim() || 'Sin registrar' }}</dd></div>
+                        <div class="col-12 consulta-eval-field"><dt>Síntomas</dt><dd>{{ consulta.sintomas?.trim() || 'Sin registrar' }}</dd></div>
+                        <div class="col-12 consulta-eval-field"><dt>Observaciones</dt><dd>{{ consulta.observaciones?.trim() || 'Sin registrar' }}</dd></div>
+                      </dl>
+                    </div>
+                  </section>
+                </div>
+                <div class="col-12">
+                  <section class="card consulta-card h-100" aria-labelledby="evaluacion-signos">
+                    <div class="card-header consulta-section-heading"><h4 class="h6 mb-0" id="evaluacion-signos">Signos vitales</h4></div>
+                    <div class="card-body">
+                      <dl class="row g-3 mb-0">
+                        <div class="col-12 col-md-6 col-xl-4 consulta-eval-field"><dt>Peso (lb)</dt><dd>{{ consulta.pesoLb != null ? consulta.pesoLb + ' lb' : 'Sin registrar' }}</dd></div>
+                        <div class="col-12 col-md-6 col-xl-4 consulta-eval-field"><dt>Altura (cm)</dt><dd>{{ consulta.alturaCm != null ? consulta.alturaCm + ' cm' : 'Sin registrar' }}</dd></div>
+                        <div class="col-12 col-md-6 col-xl-4 consulta-eval-field"><dt>Presión sistólica (mmHg)</dt><dd>{{ consulta.presionSistolica != null ? consulta.presionSistolica + ' mmHg' : 'Sin registrar' }}</dd></div>
+                        <div class="col-12 col-md-6 col-xl-4 consulta-eval-field"><dt>Presión diastólica (mmHg)</dt><dd>{{ consulta.presionDiastolica != null ? consulta.presionDiastolica + ' mmHg' : 'Sin registrar' }}</dd></div>
+                        <div class="col-12 col-md-6 col-xl-4 consulta-eval-field"><dt>Temperatura (°C)</dt><dd>{{ consulta.temperaturaC != null ? consulta.temperaturaC + ' °C' : 'Sin registrar' }}</dd></div>
+                        <div class="col-12 col-md-6 col-xl-4 consulta-eval-field"><dt>Frecuencia cardíaca (lpm)</dt><dd>{{ consulta.frecuenciaCardiaca != null ? consulta.frecuenciaCardiaca + ' lpm' : 'Sin registrar' }}</dd></div>
+                      </dl>
+                    </div>
+                  </section>
+                </div>
+              </div>
             </div>
           </section>
         }
@@ -105,31 +181,114 @@ type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamient
           <section class="card shadow-sm mt-3 consulta-card" id="panel-diagnosticos" role="tabpanel" aria-labelledby="tab-diagnosticos" tabindex="0">
             <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Diagnóstico</h3></div>
             <div class="card-body">
-            @if (errorDiagnostico) { <div class="alert alert-danger" role="alert">{{ errorDiagnostico }}</div> }
-            @if (avisoDiagnostico) { <div class="alert alert-success" role="status">{{ avisoDiagnostico }}</div> }
-            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
-              <form (ngSubmit)="agregarDiagnostico()" class="row g-2 mb-3">
-                <div class="col-md-9">
-                  <textarea class="form-control" [(ngModel)]="nuevoDiag.descripcion" name="descripcion" placeholder="Descripción del diagnóstico" required maxlength="300"></textarea>
-                </div>
-                <div class="col-md-3">
-                  <button type="submit" class="btn btn-primary w-100" [disabled]="guardandoDiagnostico">
-                    {{ guardandoDiagnostico ? 'Registrando...' : 'Agregar' }}
-                  </button>
-                </div>
-              </form>
-            }
-            @if (cargandoDiagnosticos) { <div class="text-muted" role="status">Cargando diagnósticos…</div> }
-            @else if (errorDiagnosticos) { <div class="alert alert-warning" role="alert">{{ errorDiagnosticos }}</div> }
-            @else if (diagnosticos.length === 0) { <div class="text-muted">No hay diagnósticos registrados.</div> }
-            @else {
-              @for (d of diagnosticos; track d.idDiagnostico) {
-                <div class="border-bottom py-2">
-                  <strong>{{ d.descripcion }}</strong>
-                  <small class="text-muted ms-2">{{ d.fechaRegistro | date:'dd/MM/yyyy HH:mm' }}</small>
-                </div>
-              }
-            }
+              <section aria-labelledby="diag-resultados" class="mb-4">
+                <h4 class="h6" id="diag-resultados">Resultados de exámenes</h4>
+                @if (cargandoExamenes) { <p class="text-muted" role="status">Cargando exámenes…</p> }
+                @else if (errorExamenes) { <div class="alert alert-warning" role="alert">{{ errorExamenes }}</div> }
+                @else if (examenes.length === 0) { <p class="text-muted">No hay exámenes asociados a esta consulta.</p> }
+                @else {
+                  <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                      <thead><tr><th scope="col">Examen</th><th scope="col">Fecha</th><th scope="col">Prioridad</th><th scope="col">Fecha de resultado</th><th scope="col">Documentos</th><th scope="col">Acciones</th></tr></thead>
+                      <tbody>
+                        @for (e of examenes; track e.idExamen) {
+                          <tr>
+                            <td>{{ e.nombreExamen }}</td>
+                            <td>{{ e.fechaExamen | date:'dd/MM/yyyy HH:mm' }}</td>
+                            <td>{{ e.prioridad || 'Sin prioridad' }}</td>
+                            <td>{{ fechaCargaResultado(e.idExamen) }}</td>
+                            <td>@if (cantidadArchivosExamen[e.idExamen] != null) {
+                              <span class="badge text-bg-secondary">{{ cantidadArchivosExamen[e.idExamen] }} archivo(s)</span>
+                            } @else { <span class="text-muted">Por consultar</span> }</td>
+                            <td><button type="button" class="btn btn-outline-primary btn-sm" (click)="verResultadosDiagnostico(e)">Ver resultados</button></td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+                @if (examenDiagnosticoSeleccionado) {
+                  <div class="border rounded p-3 mt-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <h5 class="h6 mb-0">Documentos de {{ examenDiagnosticoSeleccionado.nombreExamen }}</h5>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cerrarResultadosDiagnostico()">Cerrar resultados</button>
+                    </div>
+                    <app-exam-results [exam]="examenDiagnosticoSeleccionado" [consultationId]="idConsulta" [patientId]="idPaciente" mode="archivos" (filesChanged)="actualizarCantidadArchivos($event)" />
+                  </div>
+                }
+              </section>
+              <section aria-labelledby="diag-registro" class="mb-4">
+                <h4 class="h6" id="diag-registro">Registro de diagnóstico</h4>
+                @if (errorDiagnostico) { <div class="alert alert-danger" role="alert">{{ errorDiagnostico }}</div> }
+                @if (avisoDiagnostico) { <div class="alert alert-success" role="status">{{ avisoDiagnostico }}</div> }
+                @if (consulta.estadoConsulta === 'Cerrada') {
+                  <p class="text-muted small">La consulta está cerrada; no se pueden registrar nuevos diagnósticos desde esta vista.</p>
+                }
+                @if (puedeRegistrarDiagnostico) {
+                  <form (ngSubmit)="agregarDiagnostico()" class="row g-2 align-items-end">
+                    <div class="col-12">
+                      <label class="form-label" for="examen-diagnostico">Examen relacionado (opcional)</label>
+                      <select id="examen-diagnostico" class="form-select" [(ngModel)]="idExamenDiagnostico"
+                        name="idExamenDiagnostico" [disabled]="guardandoDiagnostico || cargandoExamenes || !!errorExamenes || !permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL)">
+                        <option [ngValue]="null">Sin examen relacionado</option>
+                        @for (e of examenes; track e.idExamen) {
+                          <option [ngValue]="e.idExamen" [disabled]="e.idDiagnostico !== null">
+                            {{ e.nombreExamen }} · {{ e.fechaExamen | date:'dd/MM/yyyy HH:mm' }}{{ e.idDiagnostico !== null ? ' · Ya relacionado' : '' }}
+                          </option>
+                        }
+                      </select>
+                    </div>
+                    <div class="col-md-9">
+                      <label class="form-label" for="descripcion-diagnostico">Descripción del diagnóstico *</label>
+                      <textarea id="descripcion-diagnostico" class="form-control" [(ngModel)]="nuevoDiag.descripcion" name="descripcion" required maxlength="300" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-3">
+                      <button type="submit" class="btn btn-primary w-100" [disabled]="guardandoDiagnostico">
+                        {{ guardandoDiagnostico ? 'Registrando...' : 'Agregar' }}
+                      </button>
+                    </div>
+                  </form>
+                }
+              </section>
+              <section aria-labelledby="diag-registrados">
+                <h4 class="h6" id="diag-registrados">Diagnósticos registrados</h4>
+                @if (cargandoDiagnosticos) { <div class="text-muted" role="status">Cargando diagnósticos…</div> }
+                @else if (errorDiagnosticos) { <div class="alert alert-warning" role="alert">{{ errorDiagnosticos }}</div> }
+                @else if (diagnosticos.length === 0) { <div class="text-muted">No hay diagnósticos registrados.</div> }
+                @else {
+                  <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                      <thead><tr><th scope="col">No.</th><th scope="col">Diagnóstico</th><th scope="col">Examen relacionado</th><th scope="col">Fecha</th><th scope="col">Acciones</th></tr></thead>
+                      <tbody>
+                        @for (d of diagnosticos; track d.idDiagnostico; let index = $index) {
+                          <tr>
+                            <td>{{ correlativoLista(index) }}</td>
+                            <td>{{ d.descripcion }}</td>
+                            <td>
+                              @if (cargandoExamenes || errorExamenes) { <span class="text-muted">No disponible</span> }
+                              @else {
+                                @for (e of examenesDeDiagnostico(d.idDiagnostico); track e.idExamen; let last = $last) {
+                                  {{ e.nombreExamen }}{{ last ? '' : ', ' }}
+                                } @empty { <span class="text-muted">Sin examen relacionado</span> }
+                              }
+                            </td>
+                            <td>{{ d.fechaRegistro | date:'dd/MM/yyyy' }}</td>
+                            <td><button type="button" class="btn btn-outline-primary btn-sm" (click)="verDetalleDiagnostico(d)">{{ diagnosticoDetalleId === d.idDiagnostico ? 'Cerrar detalle' : 'Ver detalle' }}</button></td>
+                          </tr>
+                          @if (diagnosticoDetalleId === d.idDiagnostico) {
+                            <tr><td colspan="5">
+                              <div class="border rounded p-3">
+                                <div><strong>Diagnóstico:</strong> {{ d.descripcion }}</div>
+                                <div><strong>Registrado:</strong> {{ d.fechaRegistro | date:'dd/MM/yyyy HH:mm' }}</div>
+                              </div>
+                            </td></tr>
+                          }
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              </section>
             </div>
           </section>
         }
@@ -202,23 +361,68 @@ type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamient
           <section class="card shadow-sm mt-3 consulta-card" id="panel-examenes" role="tabpanel" aria-labelledby="tab-examenes" tabindex="0">
             <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Exámenes</h3></div>
             <div class="card-body">
-            @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
-              <form (ngSubmit)="agregarExamen()" class="row g-2 mb-3">
-                <div class="col-md-6"><input type="text" class="form-control" [(ngModel)]="nuevoExamen.nombreExamen" name="nombreExamen" placeholder="Nombre del examen" required></div>
-                <div class="col-md-3"><input type="datetime-local" class="form-control" [(ngModel)]="nuevoExamen.fechaExamen" name="fechaExamen" required></div>
-                <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
-              </form>
-            }
-            @if (cargandoExamenes) { <p class="text-muted" role="status">Cargando exámenes…</p> }
-            @else if (errorExamenes) { <div class="alert alert-warning" role="alert">{{ errorExamenes }}</div> }
-            @else if (examenes.length === 0) { <p class="text-muted">No hay exámenes registrados.</p> }
-            @for (e of examenes; track e.idExamen) {
-              <div class="border-bottom py-2">
-                <strong>{{ e.nombreExamen }}</strong>
-                <small class="text-muted ms-2">{{ e.fechaExamen | date:'dd/MM/yyyy HH:mm' }}</small>
-                @if (e.prioridad) { <span class="badge ms-2" [class.bg-danger]="e.prioridad==='Alta'" [class.bg-warning]="e.prioridad==='Media'" [class.bg-success]="e.prioridad==='Baja'">{{ e.prioridad }}</span> }
-              </div>
-            }
+              @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
+                <form (ngSubmit)="agregarExamen()" class="row g-3 mb-3">
+                  <div class="col-12 col-md-5"><label class="form-label" for="nombre-examen">Nombre del examen *</label>
+                    <input id="nombre-examen" type="text" class="form-control" [(ngModel)]="nuevoExamen.nombreExamen" name="nombreExamen" maxlength="200" required></div>
+                  <div class="col-12 col-sm-6 col-md-3"><label class="form-label" for="fecha-examen">Fecha del examen *</label>
+                    <input id="fecha-examen" type="datetime-local" class="form-control" [(ngModel)]="nuevoExamen.fechaExamen" name="fechaExamen" required></div>
+                  <div class="col-12 col-sm-6 col-md-2"><label class="form-label" for="prioridad-examen">Prioridad</label>
+                    <select id="prioridad-examen" class="form-select" [(ngModel)]="nuevoExamen.prioridad" name="prioridad">
+                      <option [ngValue]="null">Sin prioridad</option><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option>
+                    </select></div>
+                  <div class="col-12 col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100" [disabled]="guardandoExamen">{{ guardandoExamen ? 'Agregando…' : 'Agregar' }}</button></div>
+                </form>
+              }
+              @if (errorCrearExamen) { <p class="alert alert-danger" role="alert">{{ errorCrearExamen }}</p> }
+              @if (avisoCrearExamen) { <p class="alert alert-success" role="status">{{ avisoCrearExamen }}</p> }
+              @if (cargandoExamenes) { <p class="text-muted" role="status">Cargando exámenes…</p> }
+              @else if (errorExamenes) { <div class="alert alert-warning" role="alert">{{ errorExamenes }}</div> }
+              @else if (examenes.length === 0) { <p class="text-muted">No hay exámenes registrados.</p> }
+              @else {
+                <div class="table-responsive">
+                  <table class="table table-striped align-middle mb-0">
+                    <thead><tr><th scope="col">No.</th><th scope="col">Examen</th><th scope="col">Fecha</th><th scope="col">Prioridad</th><th scope="col">Fecha de resultado</th><th scope="col">Adjuntos</th><th scope="col">Acciones</th></tr></thead>
+                    <tbody>
+                      @for (e of examenes; track e.idExamen; let index = $index) {
+                        <tr>
+                          <td>{{ index + 1 }}</td><td>{{ e.nombreExamen }}</td>
+                          <td>{{ e.fechaExamen | date:'dd/MM/yyyy HH:mm' }}</td>
+                          <td>{{ e.prioridad || 'Sin prioridad' }}</td>
+                          <td>{{ fechaCargaResultado(e.idExamen) }}</td>
+                          <td>@if (cantidadArchivosExamen[e.idExamen] != null) {
+                            <span class="badge text-bg-secondary">{{ cantidadArchivosExamen[e.idExamen] }} · {{ cantidadArchivosExamen[e.idExamen] ? 'Con resultados' : 'Pendiente' }}</span>
+                          } @else { <span class="text-muted">{{ errorArchivosExamen.has(e.idExamen) ? 'No disponible' : 'Consultando' }}</span> }</td>
+                          <td><div class="d-flex flex-wrap gap-1">
+                            <button type="button" class="btn btn-outline-primary btn-sm" (click)="seleccionarExamen(e, 'detalle')">Ver detalle</button>
+                            @if (cantidadArchivosExamen[e.idExamen] === 0 && permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL)) {
+                              <button type="button" class="btn btn-outline-primary btn-sm" (click)="seleccionarExamen(e, 'adjuntar')">Adjuntar resultados</button>
+                            }
+                            @if ((cantidadArchivosExamen[e.idExamen] ?? 0) > 0) {
+                              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="seleccionarExamen(e, 'archivos')">Ver archivos</button>
+                            }
+                          </div></td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+              @if (examenSeleccionado && modoExamen !== 'cerrado') {
+                <div class="border rounded p-3 mt-3">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                      <h4 class="h6">{{ modoExamen === 'detalle' ? 'Detalle' : modoExamen === 'archivos' ? 'Archivos' : 'Adjuntar resultados' }}: {{ examenSeleccionado.nombreExamen }}</h4>
+                      @if (modoExamen === 'detalle') {
+                        <p class="small mb-1">Fecha del examen: {{ examenSeleccionado.fechaExamen | date:'dd/MM/yyyy HH:mm' }} · Prioridad: {{ examenSeleccionado.prioridad || 'Sin prioridad' }} · Fecha de resultado: {{ fechaCargaResultado(examenSeleccionado.idExamen) }}</p>
+                        <p class="small mb-0">Cantidad de archivos adjuntos: {{ cantidadArchivosExamen[examenSeleccionado.idExamen] ?? 'Por consultar' }}</p>
+                      }
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cerrarExamen()">{{ modoExamen === 'adjuntar' ? 'Cancelar' : 'Cerrar' }}</button>
+                  </div>
+                  <app-exam-results [exam]="examenSeleccionado" [consultationId]="idConsulta" [patientId]="idPaciente" [mode]="modoExamen" (filesChanged)="actualizarCantidadArchivos($event)" />
+                </div>
+              }
             </div>
           </section>
         }
@@ -279,6 +483,8 @@ type ApartadoConsulta = 'evaluacion' | 'examenes' | 'diagnosticos' | 'tratamient
       .consulta-tab { white-space: nowrap; border: 1px solid #cbd9e7; color: #173b64; }
       .consulta-tab.active { background: #0d6efd; border-color: #0d6efd; color: #fff; }
       .consulta-tab:focus-visible { outline: 3px solid #174d9b; outline-offset: 2px; }
+      .consulta-eval-field dt { color: #173b64; font-size: .875rem; margin-bottom: .35rem; }
+      .consulta-eval-field dd { background: #f8fbfe; border: 1px solid #e0eaf2; border-radius: .4rem; margin: 0; min-height: 2.5rem; overflow-wrap: anywhere; padding: .55rem .75rem; white-space: pre-wrap; }
     `]
 })
 export class ConsultaDetalleComponent implements OnInit {
@@ -313,12 +519,44 @@ export class ConsultaDetalleComponent implements OnInit {
     { id: 'hospitalizacion', nombre: 'Hospitalización', icono: 'bi-hospital' },
   ];
   tab: ApartadoConsulta = 'evaluacion';
+  readonly formularioEvaluacion = new FormGroup({
+    sintomas: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(300)] }),
+    observaciones: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(300)] }),
+    pesoLb: new FormControl<number | null>(null, { validators: [numeroFinito] }),
+    alturaCm: new FormControl<number | null>(null, { validators: [enteroEnRango(-2_147_483_648, 2_147_483_647)] }),
+    presionSistolica: new FormControl<number | null>(null, { validators: [numeroFinito] }),
+    presionDiastolica: new FormControl<number | null>(null, { validators: [numeroFinito] }),
+    temperaturaC: new FormControl<number | null>(null, { validators: [temperaturaValida] }),
+    frecuenciaCardiaca: new FormControl<number | null>(null, { validators: [enteroEnRango(0, 32_767)] }),
+  }, { validators: [contenidoClinico] });
+  mostrarFormularioEvaluacion = false;
+  guardandoEvaluacion = false;
+  conflictoEvaluacion = false;
+  errorEvaluacion = '';
+  avisoEvaluacion = '';
+  private solicitudEvaluacion?: Subscription;
+  private lecturaEvaluacion?: Subscription;
+  private revisionEvaluacion = 0;
 
   diagnosticos: DiagnosticoResponse[] = [];
+  readonly correlativoLista = correlativoLista;
+  diagnosticoDetalleId: number | null = null;
   tratamientos: TratamientoResponseDto[] = [];
   examenes: ExamenResponseDto[] = [];
   cargandoExamenes = false;
   errorExamenes = '';
+  examenSeleccionado: ExamenResponseDto | null = null;
+  examenDiagnosticoSeleccionado: ExamenResponseDto | null = null;
+  modoExamen: ExamResultsMode = 'cerrado';
+  cantidadArchivosExamen: Partial<Record<number, number>> = {};
+  fechaPrimeraCargaExamen: Partial<Record<number, string | null>> = {};
+  errorArchivosExamen = new Set<number>();
+  private lecturaMetadatosExamenes?: Subscription;
+  guardandoExamen = false;
+  errorCrearExamen = '';
+  avisoCrearExamen = '';
+  private solicitudCrearExamen?: Subscription;
+  private revisionCrearExamen = 0;
   evoluciones: HistorialMedicoResponseDto[] = [];
   tratamientoConsumo: TratamientoResponseDto | null = null;
   cantidadConsumo = 1;
@@ -356,6 +594,7 @@ export class ConsultaDetalleComponent implements OnInit {
   private crearDiagnosticoObservado: boolean | undefined;
 
   nuevoDiag: CrearDiagnosticoRequest = { idConsulta: 0, idMedico: null, descripcion: '' };
+  idExamenDiagnostico: number | null = null;
   nuevoExamen: ExamenCreateDto = { idConsulta: null, idDiagnostico: null, idTurno: null, nombreExamen: '', fechaExamen: '', fechaResultado: null, prioridad: null };
   nuevaEvol: HistorialMedicoCreateDto = { idPaciente: 0, idConsulta: 0, idDiagnostico: null, descripcion: '' };
 
@@ -392,6 +631,12 @@ export class ConsultaDetalleComponent implements OnInit {
         this.cargarEncabezado(this.consulta);
       }
       if (!identidad || cambioIdentidad || revocoDiagnostico) this.cancelarDiagnosticoProtegido();
+      if (!identidad || cambioIdentidad || !this.permisos.puedeModificar(MODULOS_PERMISO.CONSULTAS)) {
+        this.cancelarEvaluacionProtegida();
+      }
+      if (this.modoExamen === 'adjuntar' && !this.permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL)) {
+        this.cerrarExamen();
+      }
     });
   }
 
@@ -406,6 +651,7 @@ export class ConsultaDetalleComponent implements OnInit {
   }
 
   cargarTodo() {
+    this.cancelarEvaluacionProtegida();
     this.lecturaConsulta?.unsubscribe();
     this.cancelarEncabezado();
     this.cancelarExamenes();
@@ -478,10 +724,157 @@ export class ConsultaDetalleComponent implements OnInit {
   }
 
   get tieneEvaluacion(): boolean {
-    const c = this.consulta;
-    return !!(c && (c.motivoConsulta || c.sintomas || c.observaciones
-      || c.pesoLb !== null || c.alturaCm !== null
-      || c.presionSistolica !== null || c.presionDiastolica !== null));
+    return this.consulta !== null && this.contieneDatosEvaluacion(this.consulta);
+  }
+
+  get puedeRegistrarDiagnostico(): boolean {
+    return !!this.contextoLecturaActual()
+      && this.consulta?.idConsulta === this.idConsulta
+      && this.consulta.idPaciente === this.idPaciente
+      && this.consulta.estadoConsulta !== 'Cerrada'
+      && this.permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL);
+  }
+
+  get puedeAgregarEvaluacion(): boolean {
+    return this.consulta?.idConsulta === this.idConsulta
+      && this.consulta.idPaciente === this.idPaciente
+      && this.consulta.estadoConsulta === 'Abierta'
+      && !this.tieneEvaluacion
+      && !!this.contextoLecturaActual()
+      && this.permisos.puedeModificar(MODULOS_PERMISO.CONSULTAS);
+  }
+
+  abrirFormularioEvaluacion(): void {
+    if (!this.puedeAgregarEvaluacion || this.guardandoEvaluacion) return;
+    this.formularioEvaluacion.reset();
+    this.mostrarFormularioEvaluacion = true;
+    this.errorEvaluacion = this.avisoEvaluacion = '';
+    this.conflictoEvaluacion = false;
+  }
+
+  cancelarFormularioEvaluacion(): void {
+    if (this.guardandoEvaluacion) return;
+    this.mostrarFormularioEvaluacion = false;
+    this.formularioEvaluacion.reset();
+    this.errorEvaluacion = '';
+    this.conflictoEvaluacion = false;
+  }
+
+  guardarEvaluacion(): void {
+    if (this.guardandoEvaluacion || this.conflictoEvaluacion || !this.mostrarFormularioEvaluacion || !this.puedeAgregarEvaluacion) return;
+    this.formularioEvaluacion.markAllAsTouched();
+    if (this.formularioEvaluacion.invalid) return;
+    const value = this.formularioEvaluacion.getRawValue();
+    const request: RegistrarEvaluacionConsultaRequest = {
+      sintomas: value.sintomas.trim() || null,
+      observaciones: value.observaciones.trim() || null,
+      pesoLb: value.pesoLb,
+      alturaCm: value.alturaCm,
+      presionSistolica: value.presionSistolica,
+      presionDiastolica: value.presionDiastolica,
+      temperaturaC: value.temperaturaC,
+      frecuenciaCardiaca: value.frecuenciaCardiaca,
+    };
+    const identidad = this.contextoLecturaActual();
+    if (!identidad) return;
+    const id = this.idConsulta;
+    const paciente = this.idPaciente;
+    const revision = ++this.revisionEvaluacion;
+    this.guardandoEvaluacion = true;
+    this.errorEvaluacion = this.avisoEvaluacion = '';
+    this.conflictoEvaluacion = false;
+    this.solicitudEvaluacion = this.service.registrarEvaluacion(id, request)
+      .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+        next: response => {
+          if (!this.respuestaEvaluacionVigente(revision, identidad, id, paciente)) return;
+          if (response?.idConsulta !== id || response.idPaciente !== paciente) {
+            this.guardandoEvaluacion = false;
+            this.conflictoEvaluacion = true;
+            this.errorEvaluacion = 'La API devolvió una evaluación para otra consulta. Recargue los datos.';
+            return;
+          }
+          this.recargarDetalleEvaluacion(revision, identidad, id, paciente, true);
+        },
+        error: (err: HttpErrorResponse) => {
+          if (!this.respuestaEvaluacionVigente(revision, identidad, id, paciente)) return;
+          this.guardandoEvaluacion = false;
+          this.conflictoEvaluacion = err.status === 409;
+          this.errorEvaluacion = this.conflictoEvaluacion
+            ? 'La evaluación ya fue registrada o la consulta cambió. Recargue los datos antes de continuar.'
+            : this.apiErrors.messageFor(err, 'No se pudo guardar la evaluación. Sus datos siguen en el formulario.');
+        },
+      });
+  }
+
+  recargarEvaluacion(): void {
+    if (!this.conflictoEvaluacion || this.guardandoEvaluacion) return;
+    const identidad = this.contextoLecturaActual();
+    if (!identidad) return;
+    this.guardandoEvaluacion = true;
+    this.recargarDetalleEvaluacion(++this.revisionEvaluacion, identidad, this.idConsulta, this.idPaciente, false);
+  }
+
+  private recargarDetalleEvaluacion(revision: number, identidad: string, id: number,
+    paciente: number, despuesDeGuardar: boolean): void {
+    this.lecturaEvaluacion = this.service.obtenerConsulta(id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: detail => {
+        if (!this.respuestaEvaluacionVigente(revision, identidad, id, paciente)) return;
+        this.guardandoEvaluacion = false;
+        if (detail.idConsulta !== id || detail.idPaciente !== paciente) {
+          this.conflictoEvaluacion = true;
+          this.errorEvaluacion = 'La API devolvió una consulta diferente. No se actualizaron los datos visibles.';
+          return;
+        }
+        if (despuesDeGuardar && (detail.estadoConsulta !== 'En seguimiento'
+          || !this.contieneDatosEvaluacion(detail))) {
+          this.conflictoEvaluacion = true;
+          this.errorEvaluacion = 'El guardado fue aceptado, pero la lectura aún no confirma la evaluación. Recargue la consulta.';
+          return;
+        }
+        this.consulta = detail;
+        this.conflictoEvaluacion = false;
+        this.errorEvaluacion = '';
+        if (this.tieneEvaluacion || detail.estadoConsulta !== 'Abierta') {
+          this.mostrarFormularioEvaluacion = false;
+          this.formularioEvaluacion.reset();
+        }
+        if (despuesDeGuardar) {
+          this.avisoEvaluacion = 'La evaluación se guardó. Se recargaron los datos de la consulta.';
+        }
+      },
+      error: (err: HttpErrorResponse) => {
+        if (!this.respuestaEvaluacionVigente(revision, identidad, id, paciente)) return;
+        this.guardandoEvaluacion = false;
+        this.errorEvaluacion = this.apiErrors.messageFor(err,
+          'No se pudo verificar la evaluación guardada. Recargue la consulta antes de continuar.');
+        this.conflictoEvaluacion = true;
+      },
+    });
+  }
+
+  private respuestaEvaluacionVigente(revision: number, identidad: string, id: number, paciente: number): boolean {
+    return revision === this.revisionEvaluacion && identidad === this.contextoLecturaActual()
+      && id === this.idConsulta && paciente === this.idPaciente
+      && this.permisos.puedeModificar(MODULOS_PERMISO.CONSULTAS);
+  }
+
+  private contieneDatosEvaluacion(c: ConsultaDetalleDto): boolean {
+    return !!(c.sintomas?.trim() || c.observaciones?.trim()
+      || c.pesoLb != null || c.alturaCm != null
+      || c.presionSistolica != null || c.presionDiastolica != null
+      || c.temperaturaC != null || c.frecuenciaCardiaca != null);
+  }
+
+  private cancelarEvaluacionProtegida(): void {
+    this.revisionEvaluacion++;
+    this.solicitudEvaluacion?.unsubscribe();
+    this.lecturaEvaluacion?.unsubscribe();
+    this.solicitudEvaluacion = this.lecturaEvaluacion = undefined;
+    this.guardandoEvaluacion = false;
+    this.mostrarFormularioEvaluacion = false;
+    this.formularioEvaluacion.reset();
+    this.errorEvaluacion = this.avisoEvaluacion = '';
+    this.conflictoEvaluacion = false;
   }
 
   private permisosEncabezado(): string {
@@ -544,6 +937,9 @@ export class ConsultaDetalleComponent implements OnInit {
   }
 
   private cargarExamenes(): void {
+    const seleccionadoId = this.examenSeleccionado?.idExamen;
+    const diagnosticoSeleccionadoId = this.examenDiagnosticoSeleccionado?.idExamen;
+    const modoSeleccionado = this.modoExamen;
     this.cancelarExamenes();
     const revision = this.revisionExamenes;
     const contexto = this.contextoLecturaActual();
@@ -559,10 +955,17 @@ export class ConsultaDetalleComponent implements OnInit {
       next: items => {
         if (!this.lecturaVigente(revision, this.revisionExamenes, contexto, consulta, paciente)) return;
         this.examenes = items; this.cargandoExamenes = false;
+        if (this.idExamenDiagnostico !== null && !items.some(item =>
+          item.idExamen === this.idExamenDiagnostico && item.idDiagnostico === null))
+          this.idExamenDiagnostico = null;
+        this.examenSeleccionado = items.find(item => item.idExamen === seleccionadoId) ?? null;
+        this.examenDiagnosticoSeleccionado = items.find(item => item.idExamen === diagnosticoSeleccionadoId) ?? null;
+        this.modoExamen = this.examenSeleccionado ? modoSeleccionado : 'cerrado';
+        this.cargarMetadatosExamenes(items, revision, contexto, consulta, paciente);
       },
       error: (err: HttpErrorResponse | Error) => {
         if (!this.lecturaVigente(revision, this.revisionExamenes, contexto, consulta, paciente)) return;
-        this.examenes = []; this.cargandoExamenes = false;
+        this.examenes = []; this.idExamenDiagnostico = null; this.cargandoExamenes = false;
         this.errorExamenes = err instanceof HttpErrorResponse
           ? this.apiErrors.messageFor(err, 'No fue posible leer todos los exámenes.') : err.message;
       },
@@ -572,8 +975,42 @@ export class ConsultaDetalleComponent implements OnInit {
   private cancelarExamenes(): void {
     this.revisionExamenes++;
     this.lecturaExamenes?.unsubscribe();
+    this.lecturaMetadatosExamenes?.unsubscribe();
     this.lecturaExamenes = undefined;
+    this.lecturaMetadatosExamenes = undefined;
     this.examenes = []; this.cargandoExamenes = false; this.errorExamenes = '';
+    this.examenSeleccionado = null;
+    this.examenDiagnosticoSeleccionado = null;
+    this.modoExamen = 'cerrado';
+    this.cantidadArchivosExamen = {};
+    this.fechaPrimeraCargaExamen = {};
+    this.errorArchivosExamen = new Set<number>();
+  }
+
+  private cargarMetadatosExamenes(items: ExamenResponseDto[], revision: number,
+    contexto: string, consulta: number, paciente: number): void {
+    this.lecturaMetadatosExamenes = from(items).pipe(
+      mergeMap(examen => this.service.listarArchivosExamen(examen.idExamen).pipe(
+        map(files => ({ id: examen.idExamen, files })),
+        catchError(() => of({ id: examen.idExamen, files: null })),
+      ), 4),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(({ id, files }) => {
+      if (!this.lecturaVigente(revision, this.revisionExamenes, contexto, consulta, paciente)) return;
+      if (!Array.isArray(files) || files.some(file => !/^[a-f0-9]{32}$/.test(file.archivoId))) {
+        this.errorArchivosExamen.add(id);
+        delete this.cantidadArchivosExamen[id];
+        delete this.fechaPrimeraCargaExamen[id];
+        if (this.examenSeleccionado?.idExamen === id && this.modoExamen === 'adjuntar') this.cerrarExamen();
+        return;
+      }
+      const dates = files.map(file => Date.parse(file.fechaCargaUtc)).filter(Number.isFinite);
+      this.cantidadArchivosExamen[id] = files.length;
+      this.fechaPrimeraCargaExamen[id] = dates.length ? new Date(Math.min(...dates)).toISOString() : null;
+      this.errorArchivosExamen.delete(id);
+      if (files.length > 0 && this.examenSeleccionado?.idExamen === id && this.modoExamen === 'adjuntar')
+        this.cerrarExamen();
+    });
   }
 
   agregarDiagnostico() {
@@ -582,19 +1019,30 @@ export class ConsultaDetalleComponent implements OnInit {
     const paciente = this.idPaciente;
     const descripcion = this.nuevoDiag.descripcion?.trim() ?? '';
     if (this.guardandoDiagnostico) return;
-    if (!contexto || !this.permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)
+    if (!contexto || !this.puedeRegistrarDiagnostico
       || !this.consulta || this.consulta.idConsulta !== consulta || this.consulta.idPaciente !== paciente) {
       this.errorDiagnostico = 'Verifique la consulta, la sesión y el permiso Historial/Crear antes de registrar.'; return;
     }
     if (!descripcion || descripcion.length > 300) {
       this.errorDiagnostico = 'La descripción del diagnóstico debe contener entre 1 y 300 caracteres.'; return;
     }
+    const idExamen = this.idExamenDiagnostico;
+    if (idExamen !== null && (!this.idValido(idExamen)
+      || !this.permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL)
+      || this.cargandoExamenes || !!this.errorExamenes
+      || !this.examenes.some(e => e.idExamen === idExamen && e.idConsulta === consulta
+        && e.idPaciente === paciente && e.idDiagnostico === null))) {
+      this.errorDiagnostico = 'Seleccione un examen disponible de esta consulta o deje la opción sin examen.';
+      return;
+    }
     const request: CrearDiagnosticoRequest = { idConsulta: consulta, idMedico: null, descripcion };
+    const operation = idExamen === null ? this.service.crearDiagnostico(request)
+      : this.service.crearDiagnosticoConExamen({ ...request, idExamen } satisfies CrearDiagnosticoConExamenRequest);
     const revision = ++this.revisionDiagnostico;
     this.guardandoDiagnostico = true;
     this.errorDiagnostico = '';
     this.avisoDiagnostico = '';
-    this.solicitudDiagnostico = this.service.crearDiagnostico(request).pipe(
+    this.solicitudDiagnostico = operation.pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => {
         if (revision === this.revisionDiagnostico) this.guardandoDiagnostico = false;
@@ -608,8 +1056,10 @@ export class ConsultaDetalleComponent implements OnInit {
           this.errorDiagnostico = 'Resultado incierto: la confirmación del diagnóstico es inconsistente. Verifique el historial antes de repetir.'; return;
         }
         this.nuevoDiag.descripcion = '';
+        this.idExamenDiagnostico = null;
         this.avisoDiagnostico = `Diagnóstico #${diagnostico.idDiagnostico} confirmado.`;
         this.cargarDiagnosticos();
+        if (idExamen !== null) this.cargarExamenes();
       },
       error: (err: HttpErrorResponse) => {
         if (!this.respuestaDiagnosticoVigente(revision, contexto, consulta, paciente)) return;
@@ -640,16 +1090,30 @@ export class ConsultaDetalleComponent implements OnInit {
     ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: items => {
         if (!this.lecturaVigente(revision, this.revisionDiagnosticos, contexto, consulta, paciente)) return;
-        this.diagnosticos = items; this.cargandoDiagnosticos = false;
+        this.diagnosticos = [...items].sort((a, b) => a.idDiagnostico - b.idDiagnostico);
+        if (!this.diagnosticos.some(d => d.idDiagnostico === this.diagnosticoDetalleId)) this.diagnosticoDetalleId = null;
+        this.cargandoDiagnosticos = false;
       },
       error: (err: HttpErrorResponse | Error) => {
         if (!this.lecturaVigente(revision, this.revisionDiagnosticos, contexto, consulta, paciente)) return;
-        this.diagnosticos = []; this.cargandoDiagnosticos = false;
+        this.diagnosticos = []; this.diagnosticoDetalleId = null; this.cargandoDiagnosticos = false;
         this.errorDiagnosticos = err instanceof HttpErrorResponse
           ? this.apiErrors.messageFor(err, 'No fue posible leer todos los diagnósticos.')
           : err.message;
       },
     });
+  }
+
+  examenesDeDiagnostico(idDiagnostico: number): ExamenResponseDto[] {
+    return this.examenes.filter(examen => examen.idDiagnostico === idDiagnostico
+      && examen.idConsulta === this.idConsulta && examen.idPaciente === this.idPaciente);
+  }
+
+  verDetalleDiagnostico(diagnostico: DiagnosticoResponse): void {
+    if (!this.contextoLecturaActual() || diagnostico.idConsulta !== this.idConsulta
+      || !this.diagnosticos.some(item => item.idDiagnostico === diagnostico.idDiagnostico)) return;
+    this.diagnosticoDetalleId = this.diagnosticoDetalleId === diagnostico.idDiagnostico
+      ? null : diagnostico.idDiagnostico;
   }
 
   private cargarEvoluciones(): void {
@@ -781,11 +1245,110 @@ export class ConsultaDetalleComponent implements OnInit {
     });
   }
 
-  agregarExamen() {
-    this.service.crearExamen(this.nuevoExamen).subscribe({
-      next: () => { this.nuevoExamen.nombreExamen = ''; this.nuevoExamen.fechaExamen = ''; this.cargarSecciones(); },
-      error: (e) => alert(e.error?.message || 'Error al crear examen')
+  agregarExamen(): void {
+    if (this.guardandoExamen) return;
+    const contexto = this.contextoLecturaActual();
+    const consulta = this.idConsulta;
+    const paciente = this.idPaciente;
+    const nombre = this.nuevoExamen.nombreExamen.trim();
+    const fecha = this.nuevoExamen.fechaExamen;
+    this.errorCrearExamen = this.avisoCrearExamen = '';
+    if (!contexto || !this.permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)
+      || this.consulta?.idConsulta !== consulta || this.consulta.idPaciente !== paciente) {
+      this.errorCrearExamen = 'No tiene acceso vigente para registrar este examen.';
+      return;
+    }
+    if (!nombre || nombre.length > 200 || !fecha || !Number.isFinite(Date.parse(fecha))
+      || (this.nuevoExamen.prioridad !== null && !['Baja', 'Media', 'Alta'].includes(this.nuevoExamen.prioridad))) {
+      this.errorCrearExamen = 'Indique un nombre, una fecha válida y una prioridad permitida.';
+      return;
+    }
+    const revision = ++this.revisionCrearExamen;
+    this.guardandoExamen = true;
+    this.solicitudCrearExamen = this.service.crearExamen({
+      idConsulta: consulta, idDiagnostico: null, idTurno: null,
+      nombreExamen: nombre, fechaExamen: fecha, fechaResultado: null,
+      prioridad: this.nuevoExamen.prioridad,
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: exam => {
+        if (revision !== this.revisionCrearExamen || contexto !== this.contextoLecturaActual()
+          || consulta !== this.idConsulta || paciente !== this.idPaciente) return;
+        this.guardandoExamen = false;
+        if (exam.idConsulta !== consulta || exam.idPaciente !== paciente) {
+          this.errorCrearExamen = 'La API devolvió un examen que no corresponde a esta consulta. Actualice el listado.';
+          return;
+        }
+        this.nuevoExamen.nombreExamen = '';
+        this.nuevoExamen.fechaExamen = '';
+        this.nuevoExamen.prioridad = null;
+        this.avisoCrearExamen = 'Examen registrado. Selecciónelo para adjuntar resultados.';
+        this.cargarExamenes();
+      },
+      error: (err: HttpErrorResponse) => {
+        if (revision !== this.revisionCrearExamen || contexto !== this.contextoLecturaActual()) return;
+        this.guardandoExamen = false;
+        this.errorCrearExamen = this.apiErrors.messageFor(err, 'No se pudo registrar el examen.');
+      },
     });
+  }
+
+  seleccionarExamen(exam: ExamenResponseDto, mode: Exclude<ExamResultsMode, 'cerrado'>): void {
+    if (!this.contextoLecturaActual() || exam.idConsulta !== this.idConsulta
+      || exam.idPaciente !== this.idPaciente || !this.examenes.some(item => item.idExamen === exam.idExamen)) return;
+    if (mode === 'adjuntar' && (this.cantidadArchivosExamen[exam.idExamen] !== 0
+      || !this.permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL))) return;
+    if (mode === 'archivos' && !(this.cantidadArchivosExamen[exam.idExamen]! > 0)) return;
+    this.examenSeleccionado = exam;
+    this.modoExamen = mode;
+  }
+
+  verResultadosDiagnostico(exam: ExamenResponseDto): void {
+    if (!this.contextoLecturaActual() || exam.idConsulta !== this.idConsulta
+      || exam.idPaciente !== this.idPaciente || !this.examenes.some(item => item.idExamen === exam.idExamen)) return;
+    this.examenDiagnosticoSeleccionado = exam;
+  }
+
+  cerrarResultadosDiagnostico(): void {
+    this.examenDiagnosticoSeleccionado = null;
+  }
+
+  cerrarExamen(): void {
+    this.examenSeleccionado = null;
+    this.modoExamen = 'cerrado';
+  }
+
+  actualizarCantidadArchivos(event: { examId: number; count: number | null; firstUploadedAt?: string | null }): void {
+    if (!this.examenes.some(exam => exam.idExamen === event.examId)) return;
+    if (event.count === null) {
+      delete this.cantidadArchivosExamen[event.examId];
+      delete this.fechaPrimeraCargaExamen[event.examId];
+      this.errorArchivosExamen.add(event.examId);
+      if (this.examenSeleccionado?.idExamen === event.examId && this.modoExamen === 'adjuntar') this.cerrarExamen();
+      return;
+    }
+    if (Number.isSafeInteger(event.count) && event.count >= 0) {
+      this.cantidadArchivosExamen[event.examId] = event.count;
+      this.fechaPrimeraCargaExamen[event.examId] = event.firstUploadedAt ?? null;
+      this.errorArchivosExamen.delete(event.examId);
+      if (event.count > 0 && this.examenSeleccionado?.idExamen === event.examId && this.modoExamen === 'adjuntar')
+        this.cerrarExamen();
+    }
+  }
+
+  fechaCargaResultado(examId: number): string {
+    const date = this.fechaPrimeraCargaExamen[examId];
+    if (date) return formatDate(date, 'dd/MM/yyyy HH:mm', 'en-US');
+    if (this.errorArchivosExamen.has(examId)) return 'Fecha no disponible';
+    if (this.cantidadArchivosExamen[examId] === 0) return 'Pendiente';
+    return this.cantidadArchivosExamen[examId] == null ? 'Consultando' : 'Fecha no disponible';
+  }
+
+  formatearFechaResultado(value: string | null): string {
+    if (!value) return 'No registrada';
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const parsed = new Date(dateOnly ? `${value}T00:00:00` : value);
+    return Number.isNaN(parsed.getTime()) ? 'Fecha no disponible'
+      : new Intl.DateTimeFormat('es-GT', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parsed);
   }
 
   agregarEvolucion() {
@@ -901,6 +1464,13 @@ export class ConsultaDetalleComponent implements OnInit {
   }
 
   private cancelarLecturasClinicas(): void {
+    this.idExamenDiagnostico = null;
+    this.diagnosticoDetalleId = null;
+    this.revisionCrearExamen++;
+    this.solicitudCrearExamen?.unsubscribe();
+    this.solicitudCrearExamen = undefined;
+    this.guardandoExamen = false;
+    this.errorCrearExamen = this.avisoCrearExamen = '';
     this.cancelarEncabezado();
     this.cancelarExamenes();
     this.revisionConsulta++;
@@ -923,6 +1493,7 @@ export class ConsultaDetalleComponent implements OnInit {
     this.solicitudDiagnostico = undefined;
     this.guardandoDiagnostico = false;
     this.nuevoDiag.descripcion = '';
+    this.idExamenDiagnostico = null;
     this.errorDiagnostico = '';
     this.avisoDiagnostico = '';
   }

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -24,7 +25,7 @@ public sealed class ConsultasTests
     private static readonly DateTime Fecha = new(2026, 1, 15, 10, 30, 0, DateTimeKind.Utc);
 
     [Fact]
-    public async Task CreaConsultaValidaConClinicaYCamposFisiologicos()
+    public async Task CreaConsultaConClinicaYRegistraEvaluacionPorRutaEspecifica()
     {
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
@@ -34,10 +35,7 @@ public sealed class ConsultasTests
         var response = await client.PostAsJsonAsync("/api/consultas", new
         {
             idConsulta = 999, idPaciente = 1, idMedico = 1, idSucursal = 1,
-            idClinica = 1, fechaConsulta = Fecha, motivoConsulta = "  Revisión   general ",
-            sintomas = " Dolor  leve ", observaciones = "  Control ",
-            pesoLb = 150.5, presionDiastolica = 80.0,
-            presionSistolica = 120.0, alturaCm = 170
+            idClinica = 1, fechaConsulta = Fecha, motivoConsulta = "  Revisión   general "
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var consulta = await response.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
@@ -46,7 +44,20 @@ public sealed class ConsultasTests
         Assert.Equal(1, consulta.IdClinica);
         Assert.Equal(1, consulta.IdMedico);
         Assert.Equal("Revisión general", consulta.MotivoConsulta);
-        Assert.Equal(150.5, consulta.PesoLb);
+        Assert.Equal("Abierta", consulta.EstadoConsulta);
+        Assert.Null(consulta.PesoLb);
+        var evaluacion = await client.PostAsJsonAsync(
+            $"/api/consultas/{consulta.IdConsulta}/evaluacion", new
+            {
+                sintomas = " Dolor  leve ", observaciones = "  Control ",
+                pesoLb = 150.5, presionDiastolica = 80.0,
+                presionSistolica = 120.0, alturaCm = 170
+            });
+        Assert.Equal(HttpStatusCode.Created, evaluacion.StatusCode);
+        var evaluada = await evaluacion.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.Equal("En seguimiento", evaluada?.EstadoConsulta);
+        Assert.Equal("Dolor leve", evaluada?.Sintomas);
+        Assert.Equal(150.5, evaluada?.PesoLb);
         Assert.Equal($"/api/consultas/{consulta.IdConsulta}",
             response.Headers.Location?.AbsolutePath);
         using var scope = factory.Services.CreateScope();
@@ -54,6 +65,253 @@ public sealed class ConsultasTests
             .Consultas.SingleAsync();
         Assert.Equal(1, stored.IdClinica);
         Assert.Equal(170, stored.AlturaCm);
+        Assert.Equal("En seguimiento", stored.EstadoConsulta);
+    }
+
+    [Fact]
+    public async Task EvaluacionUnicaRechazaRepeticionYNoCambiaDatosAdministrativos()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var openedResponse = await client.PostAsJsonAsync("/api/consultas", new
+        {
+            idPaciente = 1, idMedico = 1, idSucursal = 1, fechaConsulta = Fecha,
+            motivoConsulta = "Apertura"
+        });
+        var opened = await openedResponse.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(opened);
+        var url = $"/api/consultas/{opened.IdConsulta}/evaluacion";
+        var first = await client.PostAsJsonAsync(url, new
+        {
+            sintomas = "Fiebre", temperaturaC = 37.2m,
+            idPaciente = 2, idMedico = 2, idSucursal = 2,
+            motivoConsulta = "Intento de cambio", estadoConsulta = "Cerrada"
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal($"/api/consultas/{opened.IdConsulta}",
+            first.Headers.Location?.AbsolutePath);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync(url, new { sintomas = "Sobrescribir" })).StatusCode);
+        var detail = await client.GetFromJsonAsync<ConsultaDetalleDto>(
+            $"/api/consultas/{opened.IdConsulta}");
+        Assert.NotNull(detail);
+        Assert.Equal("Fiebre", detail.Sintomas);
+        Assert.Equal(37.2m, detail.TemperaturaC);
+        Assert.Equal("En seguimiento", detail.EstadoConsulta);
+        Assert.Equal("Apertura", detail.MotivoConsulta);
+        Assert.Equal(1, detail.IdPaciente);
+        Assert.Equal(1, detail.IdMedico);
+        Assert.Equal(1, detail.IdSucursal);
+        Assert.Equal(Fecha, detail.FechaConsulta);
+        var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
+            "/api/consultas");
+        Assert.Equal("En seguimiento", Assert.Single(page!.Items).EstadoConsulta);
+        using var scope = factory.Services.CreateScope();
+        Assert.Single(await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task EvaluacionSoloAceptaAbiertaSinDatosPreviosNiSolicitudVacia()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        await factory.SeedConsultasAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 1)).EstadoConsulta = "Abierta";
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 1)).Sintomas = "Previo";
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 3)).EstadoConsulta = "Cerrada";
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync("/api/consultas/1/evaluacion",
+                new { sintomas = "Nuevo" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync("/api/consultas/2/evaluacion",
+                new { sintomas = "Nuevo" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync("/api/consultas/3/evaluacion",
+                new { sintomas = "Nuevo" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PostAsJsonAsync("/api/consultas/999/evaluacion",
+                new { sintomas = "Nuevo" })).StatusCode);
+        var opened = await client.PostAsJsonAsync("/api/consultas", Nueva());
+        var detail = await opened.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(detail);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync($"/api/consultas/{detail.IdConsulta}/evaluacion",
+                new { sintomas = "   ", pesoLb = (double?)null })).StatusCode);
+        using var verify = factory.Services.CreateScope();
+        var rows = await verify.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().OrderBy(c => c.IdConsulta).ToListAsync();
+        Assert.Equal("Previo", rows[0].Sintomas);
+        Assert.Equal("Abierta", rows[0].EstadoConsulta);
+        Assert.Null(rows[1].EstadoConsulta);
+        Assert.Equal("Cerrada", rows[2].EstadoConsulta);
+        Assert.Equal("Abierta", rows[3].EstadoConsulta);
+    }
+
+    [Fact]
+    public async Task EvaluacionExigeJwtPermisoYMedicoPropietario()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.SeedConsultasAsync();
+        using var client = factory.CreateClient();
+        var url = "/api/consultas/1/evaluacion";
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync(url, new { sintomas = "Prueba" })).StatusCode);
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync(url, new { sintomas = "Prueba" })).StatusCode);
+        await factory.GrantReadAsync();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync(url, new { sintomas = "Prueba" })).StatusCode);
+        await factory.GrantWriteAsync();
+        await factory.ConfigureCurrentUserAsMedicoAsync(2);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Permisos.Add(new Permiso { IdRol = 2, Modulo = "Consultas",
+                PuedeConsultar = true, PuedeModificar = true });
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 1)).EstadoConsulta = "Abierta";
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 3)).EstadoConsulta = "Abierta";
+            await db.SaveChangesAsync();
+        }
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PostAsJsonAsync(url, new { sintomas = "Ajena" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await client.PostAsJsonAsync("/api/consultas/3/evaluacion",
+                new { sintomas = "Propia" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task DosRegistrosSimultaneosSoloConfirmanUno()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var opened = await client.PostAsJsonAsync("/api/consultas", Nueva());
+        var detail = await opened.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(detail);
+        var url = $"/api/consultas/{detail.IdConsulta}/evaluacion";
+        var results = await Task.WhenAll(
+            client.PostAsJsonAsync(url, new { sintomas = "Primera" }),
+            client.PostAsJsonAsync(url, new { sintomas = "Segunda" }));
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.Created);
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.Conflict);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync();
+        Assert.Equal("En seguimiento", stored.EstadoConsulta);
+        Assert.Contains(stored.Sintomas, new[] { "Primera", "Segunda" });
+    }
+
+    [Fact]
+    public async Task AltaYPutGeneralesNoPuedenRegistrarNiSobrescribirEvaluacion()
+    {
+        using var factory = new ConsultaApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var body = CuerpoBase();
+        body["sintomas"] = "Dato por ruta incorrecta";
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/consultas", body)).StatusCode);
+        body.Remove("sintomas");
+        var opened = await client.PostAsJsonAsync("/api/consultas", body);
+        var detail = await opened.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(detail);
+        body["temperaturaC"] = 36.5m;
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PutAsJsonAsync($"/api/consultas/{detail.IdConsulta}", body)).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync();
+        Assert.Equal("Abierta", stored.EstadoConsulta);
+        Assert.Null(stored.Sintomas);
+        Assert.Null(stored.TemperaturaC);
+    }
+
+    [Fact]
+    public async Task FalloDePersistenciaNoCambiaEstadoNiGuardaEvaluacion()
+    {
+        using var factory = new ConsultaApiFactory(fallarEvaluacion: true);
+        var password = await factory.SeedAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var opened = await client.PostAsJsonAsync("/api/consultas", Nueva());
+        var detail = await opened.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(detail);
+        Assert.Equal(HttpStatusCode.InternalServerError,
+            (await client.PostAsJsonAsync(
+                $"/api/consultas/{detail.IdConsulta}/evaluacion",
+                new { sintomas = "No persistir" })).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync();
+        Assert.Equal("Abierta", stored.EstadoConsulta);
+        Assert.Null(stored.Sintomas);
+    }
+
+    [Fact]
+    public void ConsultaProtegeEstadoCamposClinicosYAtribucionComoTokens()
+    {
+        using var factory = new ConsultaApiFactory();
+        using var scope = factory.Services.CreateScope();
+        var entity = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Model.FindEntityType(typeof(Consulta));
+        Assert.NotNull(entity);
+        foreach (var property in new[] { "EstadoConsulta", "IdPaciente", "IdMedico",
+            "IdSucursal", "IdClinica", "FechaConsulta", "MotivoConsulta",
+            "Sintomas", "Observaciones", "PesoLb", "AlturaCm", "PresionSistolica",
+            "PresionDiastolica", "TemperaturaC", "FrecuenciaCardiaca" })
+            Assert.True(entity.FindProperty(property)?.IsConcurrencyToken);
+    }
+
+    [Fact]
+    public async Task DosLecturasPreviasNoPuedenConfirmarLaSegundaEvaluacion()
+    {
+        using var factory = new ConsultaApiFactory();
+        await factory.SeedAsync();
+        await factory.SeedConsultasAsync();
+        using (var setup = factory.Services.CreateScope())
+        {
+            var db = setup.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Consultas.SingleAsync(c => c.IdConsulta == 1)).EstadoConsulta = "Abierta";
+            await db.SaveChangesAsync();
+        }
+        using var firstScope = factory.Services.CreateScope();
+        using var secondScope = factory.Services.CreateScope();
+        var first = firstScope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+        var second = secondScope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+        var firstCopy = await first.Consultas.SingleAsync(c => c.IdConsulta == 1);
+        var secondCopy = await second.Consultas.SingleAsync(c => c.IdConsulta == 1);
+        firstCopy.Sintomas = "Primera";
+        firstCopy.EstadoConsulta = "En seguimiento";
+        secondCopy.Sintomas = "Segunda";
+        secondCopy.EstadoConsulta = "En seguimiento";
+        await first.SaveChangesAsync();
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
+            () => second.SaveChangesAsync());
+        using var verify = factory.Services.CreateScope();
+        var stored = await verify.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
+        Assert.Equal("Primera", stored.Sintomas);
+        Assert.Equal("En seguimiento", stored.EstadoConsulta);
     }
 
     [Fact]
@@ -73,6 +331,7 @@ public sealed class ConsultasTests
         Assert.Null(consulta.PesoLb);
         Assert.Null(consulta.TemperaturaC);
         Assert.Null(consulta.FrecuenciaCardiaca);
+        Assert.Equal("Abierta", consulta.EstadoConsulta);
     }
 
     [Fact]
@@ -84,12 +343,15 @@ public sealed class ConsultasTests
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
         var body = CuerpoBase();
-        body["temperaturaC"] = 36.7m;
-        body["frecuenciaCardiaca"] = (short)72;
-
         var created = await client.PostAsJsonAsync("/api/consultas", body);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var result = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        var opened = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(opened);
+        var saved = await client.PostAsJsonAsync(
+            $"/api/consultas/{opened.IdConsulta}/evaluacion",
+            new { temperaturaC = 36.7m, frecuenciaCardiaca = (short)72 });
+        Assert.Equal(HttpStatusCode.Created, saved.StatusCode);
+        var result = await saved.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
         Assert.NotNull(result);
         Assert.Equal(36.7m, result.TemperaturaC);
         Assert.Equal((short)72, result.FrecuenciaCardiaca);
@@ -113,20 +375,25 @@ public sealed class ConsultasTests
         await factory.GrantAllAsync();
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
-        var body = CuerpoBase();
+        var created = await client.PostAsJsonAsync("/api/consultas", CuerpoBase());
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var opened = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(opened);
+        var body = new Dictionary<string, object?>();
         if (temperatura) body["temperaturaC"] = 37.0m;
         else body["frecuenciaCardiaca"] = (short)80;
 
-        var created = await client.PostAsJsonAsync("/api/consultas", body);
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var detail = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        var saved = await client.PostAsJsonAsync(
+            $"/api/consultas/{opened.IdConsulta}/evaluacion", body);
+        Assert.Equal(HttpStatusCode.Created, saved.StatusCode);
+        var detail = await saved.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
         Assert.NotNull(detail);
         Assert.Equal(temperatura ? 37.0m : null, detail.TemperaturaC);
         Assert.Equal(temperatura ? null : (short)80, detail.FrecuenciaCardiaca);
     }
 
     [Fact]
-    public async Task PutDistingueOmitidoDeNullYConservaEstadoConsulta()
+    public async Task PutConservaEvaluacionYNoAdmiteSobrescribirla()
     {
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
@@ -154,23 +421,20 @@ public sealed class ConsultasTests
         Assert.Equal((short)68, unchanged?.FrecuenciaCardiaca);
         body["temperaturaC"] = 37.1m;
         var changed = await client.PutAsJsonAsync("/api/consultas/1", body);
-        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
-        var partial = await changed.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
-        Assert.Equal(37.1m, partial?.TemperaturaC);
-        Assert.Equal((short)68, partial?.FrecuenciaCardiaca);
+        Assert.Equal(HttpStatusCode.BadRequest, changed.StatusCode);
         body["temperaturaC"] = null;
         body["frecuenciaCardiaca"] = null;
         var cleared = await client.PutAsJsonAsync("/api/consultas/1", body);
         Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
         var result = await cleared.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
-        Assert.Null(result?.TemperaturaC);
-        Assert.Null(result?.FrecuenciaCardiaca);
+        Assert.Equal(36.5m, result?.TemperaturaC);
+        Assert.Equal((short)68, result?.FrecuenciaCardiaca);
         Assert.Equal("Estado existente", result?.EstadoConsulta);
         using var verifyScope = factory.Services.CreateScope();
         var stored = await verifyScope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
             .Consultas.AsNoTracking().SingleAsync(c => c.IdConsulta == 1);
-        Assert.Null(stored.TemperaturaC);
-        Assert.Null(stored.FrecuenciaCardiaca);
+        Assert.Equal(36.5m, stored.TemperaturaC);
+        Assert.Equal((short)68, stored.FrecuenciaCardiaca);
         Assert.Equal("Estado existente", stored.EstadoConsulta);
     }
 
@@ -186,16 +450,24 @@ public sealed class ConsultasTests
         await factory.GrantAllAsync();
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
-        var body = CuerpoBase();
+        var created = await client.PostAsJsonAsync("/api/consultas", CuerpoBase());
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var opened = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(opened);
+        var body = new Dictionary<string, object?>();
         using var json = JsonDocument.Parse(valor);
         body[campo] = json.RootElement.Clone();
 
-        var response = await client.PostAsJsonAsync("/api/consultas", body);
+        var response = await client.PostAsJsonAsync(
+            $"/api/consultas/{opened.IdConsulta}/evaluacion", body);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         using var scope = factory.Services.CreateScope();
-        Assert.Empty(await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
-            .Consultas.AsNoTracking().ToListAsync());
+        var stored = await scope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
+            .Consultas.AsNoTracking().SingleAsync();
+        Assert.Equal("Abierta", stored.EstadoConsulta);
+        Assert.Null(stored.TemperaturaC);
+        Assert.Null(stored.FrecuenciaCardiaca);
     }
 
     [Fact]
@@ -461,14 +733,29 @@ public sealed class ConsultasTests
 
         var created = await client.PostAsJsonAsync("/api/consultas", body);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.Null((await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>())?.EstadoConsulta);
+        var nueva = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
+        Assert.NotNull(nueva);
+        Assert.Equal("Abierta", nueva.EstadoConsulta);
+        var detalle = await client.GetFromJsonAsync<ConsultaDetalleDto>(
+            $"/api/consultas/{nueva.IdConsulta}");
+        Assert.Equal("Abierta", detalle?.EstadoConsulta);
+        var listado = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
+            "/api/consultas");
+        Assert.NotNull(listado);
+        Assert.Equal("Abierta", Assert.Single(listado.Items,
+            item => item.IdConsulta == nueva.IdConsulta).EstadoConsulta);
+        var putNuevo = await client.PutAsJsonAsync(
+            $"/api/consultas/{nueva.IdConsulta}", body);
+        Assert.Equal(HttpStatusCode.OK, putNuevo.StatusCode);
+        Assert.Equal("Abierta",
+            (await putNuevo.Content.ReadFromJsonAsync<ConsultaDetalleDto>())?.EstadoConsulta);
         using var verificationScope = factory.Services.CreateScope();
         var stored = await verificationScope.ServiceProvider.GetRequiredService<ClinicaDbContext>()
             .Consultas.AsNoTracking().OrderBy(c => c.IdConsulta).ToListAsync();
         Assert.Equal("Estado existente", stored[0].EstadoConsulta);
         Assert.Null(stored[1].EstadoConsulta);
         Assert.Null(stored[2].EstadoConsulta);
-        Assert.Null(stored[3].EstadoConsulta);
+        Assert.Equal("Abierta", stored[3].EstadoConsulta);
     }
 
     [Fact]
@@ -1011,7 +1298,8 @@ public sealed class ConsultasTests
             new AuthenticationHeaderValue("Bearer", response.AccessToken);
     }
 
-    private sealed class ConsultaApiFactory : WebApplicationFactory<Program>
+    private sealed class ConsultaApiFactory(bool fallarEvaluacion = false)
+        : WebApplicationFactory<Program>
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
         private readonly string signingKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -1035,10 +1323,27 @@ public sealed class ConsultasTests
             {
                 services.RemoveAll<DbContextOptions<ClinicaDbContext>>();
                 services.RemoveAll<ClinicaDbContext>();
-                services.AddSingleton(new DbContextOptionsBuilder<ClinicaDbContext>()
-                    .UseInMemoryDatabase(databaseName).Options);
+                var options = new DbContextOptionsBuilder<ClinicaDbContext>()
+                    .UseInMemoryDatabase(databaseName);
+                if (fallarEvaluacion)
+                    options.AddInterceptors(new FalloEvaluacionInterceptor());
+                services.AddSingleton(options.Options);
                 services.AddScoped<ClinicaDbContext>();
             });
+        }
+
+        private sealed class FalloEvaluacionInterceptor : SaveChangesInterceptor
+        {
+            public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+                DbContextEventData eventData, InterceptionResult<int> result,
+                CancellationToken cancellationToken = default)
+            {
+                if (eventData.Context?.ChangeTracker.Entries<Consulta>().Any(entry =>
+                    entry.State == EntityState.Modified &&
+                    entry.Entity.EstadoConsulta == "En seguimiento") == true)
+                    throw new InvalidOperationException("Fallo sintético antes de persistir.");
+                return base.SavingChangesAsync(eventData, result, cancellationToken);
+            }
         }
 
         public async Task<string> SeedAsync()

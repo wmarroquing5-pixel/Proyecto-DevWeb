@@ -142,14 +142,14 @@ describe('ConsultaNuevaComponent: atribución médica y autorización', () => {
     expect(component.modoMedico).toBe('inferencia');
     expect(listar).not.toHaveBeenCalled();
     expect(crear).toHaveBeenCalledOnceWith(jasmine.objectContaining({ idMedico: null }));
-    expect(navegar).toHaveBeenCalledWith(['/historial', 8, 'consulta', 15]);
+    expect(navegar).toHaveBeenCalledWith(['/consultas']);
   });
   it('no consulta empleados sin permiso y deja la inferencia exclusivamente al servidor', () => {
     user.update(u => ({ ...u!, idEmpleado: 2 })); consultarPermitido.set(false);
     iniciar(); component.guardar();
     expect(obtener).not.toHaveBeenCalled(); expect(listar).not.toHaveBeenCalled();
     expect(crear).toHaveBeenCalledOnceWith(jasmine.objectContaining({ idMedico: null }));
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No tiene permiso');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Médico responsable: el servidor asignará');
   });
   it('bloquea un IdMedico arbitrario en una sesión médica', () => {
     user.update(u => ({ ...u!, idEmpleado: 2 })); iniciar();
@@ -278,7 +278,7 @@ describe('ConsultaNuevaComponent: atribución médica y autorización', () => {
     expect(component.errorMedicos).toContain('Empleados/Consultar');
     expect(listar).not.toHaveBeenCalled(); expect(crear).not.toHaveBeenCalled();
   });
-  for (const status of [401, 403, 404, 500]) {
+  for (const status of [401, 403, 404, 409, 500]) {
     it(`informa error ${status} de catálogo sin permitir alta`, () => {
       listar.and.returnValue(throwError(() => new HttpErrorResponse({ status })));
       iniciar(); component.guardar();
@@ -311,9 +311,9 @@ describe('ConsultaNuevaComponent: atribución médica y autorización', () => {
   });
   it('captura el DTO antes de una relectura asincrónica', () => {
     const lectura = new Subject<EmpleadoDetalleResponse>(); iniciar(); seleccionar(); obtener.and.returnValue(lectura);
-    component.form.motivoConsulta = 'Original'; component.guardar();
-    component.form.motivoConsulta = 'Cambio tardío'; component.form.idMedico = 99; lectura.next(medico());
-    expect(crear).toHaveBeenCalledOnceWith(jasmine.objectContaining({ motivoConsulta: 'Original', idMedico: 2 }));
+    component.form.fechaConsulta = '2026-10-21T10:00'; component.guardar();
+    component.form.fechaConsulta = '2026-10-22T11:00'; component.form.idMedico = 99; lectura.next(medico());
+    expect(crear).toHaveBeenCalledOnceWith(jasmine.objectContaining({ fechaConsulta: '2026-10-21T10:00', idMedico: 2 }));
   });
   it('descarta catálogo de otra identidad y reinicia selección', () => {
     const catalogo = new Subject<PagedResponse<EmpleadoListadoResponse>>();
@@ -381,8 +381,6 @@ describe('Contrato HTTP de creación de consultas', () => {
   afterEach(() => http.verify());
   const dto = (idMedico: number | null): ConsultaCreateDto => ({
     idPaciente: 8, idSucursal: 3, idMedico, idClinica: null, fechaConsulta: '2026-10-21T10:00:00',
-    motivoConsulta: 'Control', sintomas: null, observaciones: null, pesoLb: null,
-    presionDiastolica: null, presionSistolica: null, alturaCm: null,
   });
   for (const id of [null, 101]) {
     it(`envía IdMedico ${id} en el DTO y conserva la atribución de respuesta simulada`, () => {
@@ -392,10 +390,22 @@ describe('Contrato HTTP de creación de consultas', () => {
       expect(req.request.method).toBe('POST'); expect(req.request.body).toEqual(request);
       expect(req.request.headers.get('Authorization')).toBe('Bearer test-token');
       expect(Object.keys(req.request.body)).not.toContain('idUsuario');
-      req.flush({ ...request, idConsulta: 15, idMedico: id ?? 2 });
+      expect(Object.keys(req.request.body)).toEqual(['idPaciente', 'idSucursal', 'idMedico', 'idClinica', 'fechaConsulta']);
+      req.flush({ ...request, idConsulta: 15, idMedico: id ?? 2, motivoConsulta: null,
+        sintomas: null, observaciones: null, pesoLb: null, alturaCm: null,
+        presionSistolica: null, presionDiastolica: null });
       expect(recibido?.idMedico).toBe(id ?? 2);
     });
   }
+  it('serializa el motivo opcional sin incorporar evaluación ni estado', () => {
+    service.crearConsulta({ ...dto(2), motivoConsulta: 'Control general' }).subscribe();
+    const req = http.expectOne(`${environment.apiUrl}/consultas`);
+    expect(req.request.body.motivoConsulta).toBe('Control general');
+    expect(Object.keys(req.request.body)).toEqual([
+      'idPaciente', 'idSucursal', 'idMedico', 'idClinica', 'fechaConsulta', 'motivoConsulta',
+    ]);
+    req.flush({ ...req.request.body, idConsulta: 15 });
+  });
   it('401 invalida exactamente el token usado, a través del interceptor actual', () => {
     service.crearConsulta(dto(null)).subscribe({ error: () => undefined });
     http.expectOne(`${environment.apiUrl}/consultas`).flush({}, { status: 401, statusText: 'Unauthorized' });

@@ -1,9 +1,12 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using API_Clinica.Data;
 using API_Clinica.DTOs;
+using API_Clinica.Exceptions;
+using API_Clinica.Interfaces;
 using API_Clinica.Models.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
@@ -14,6 +17,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using SkiaSharp;
 
 namespace API_Clinica.Tests;
 
@@ -230,6 +234,157 @@ public sealed class ExamenesTests
         Assert.False(entity.FindProperty(nameof(Examen.IdTurno))!.IsShadowProperty());
     }
 
+    [Fact]
+    public async Task ResultadosAdmitenVariosArchivosYProtegenDescargaYEliminacion()
+    {
+        using var factory = new ExamenApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.SeedExamenesAsync();
+        await factory.GrantAsync(consultar: true, modificar: true, eliminar: true);
+        using var client = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync("/api/examenes/1/archivos")).StatusCode);
+        await LoginAsync(client, password);
+
+        using var bitmap = new SKBitmap(2, 2);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+        var upload = await PostFilesAsync(client, 1,
+            ("informe.pdf", Pdf()), ("imagen.png", encoded.ToArray()));
+        Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
+        var created = await upload.Content.ReadFromJsonAsync<ExamResultFileDto[]>();
+        Assert.NotNull(created);
+        Assert.Equal(2, created.Length);
+        Assert.All(created, file => Assert.Matches("^[a-f0-9]{32}$", file.ArchivoId));
+        Assert.Equal(2, factory.Storage.Count);
+
+        var listed = await client.GetFromJsonAsync<ExamResultFileDto[]>("/api/examenes/1/archivos");
+        Assert.NotNull(listed);
+        Assert.Equal(2, listed.Length);
+        var downloaded = await client.GetAsync($"/api/examenes/1/archivos/{created[0].ArchivoId}");
+        Assert.Equal(HttpStatusCode.OK, downloaded.StatusCode);
+        Assert.True(downloaded.Headers.CacheControl?.NoStore);
+        Assert.True(downloaded.Headers.CacheControl?.Private);
+        Assert.Equal(Pdf(), await downloaded.Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync($"/api/examenes/2/archivos/{created[0].ArchivoId}")).StatusCode);
+
+        var deleted = await client.DeleteAsync($"/api/examenes/1/archivos/{created[0].ArchivoId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Single((await client.GetFromJsonAsync<ExamResultFileDto[]>(
+            "/api/examenes/1/archivos"))!);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.DeleteAsync($"/api/examenes/1/archivos/{created[0].ArchivoId}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ResultadosRechazanContenidoFalsoVacioGrandeYExamenInexistente()
+    {
+        using var factory = new ExamenApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.SeedExamenesAsync();
+        await factory.GrantAsync(consultar: true, modificar: true, eliminar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostFilesAsync(client, 1, ("falso.pdf", [1, 2, 3]))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostFilesAsync(client, 1, ("vacio.pdf", []))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostFilesAsync(client, 1, ("falso.png", Pdf()))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostFilesAsync(client, 1, ("incompleto.pdf",
+                System.Text.Encoding.ASCII.GetBytes("%PDF-1.4\n%%EOF\n")))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostFilesAsync(client, 1, ("rota.png",
+                [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostFilesAsync(client, 1, Enumerable.Repeat(("informe.pdf", Pdf()), 5)
+                .ToArray())).StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge,
+            (await PostFilesAsync(client, 1, ("grande.pdf", new byte[5 * 1024 * 1024 + 1]))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await PostFilesAsync(client, 999, ("informe.pdf", Pdf()))).StatusCode);
+        Assert.Equal(0, factory.Storage.Count);
+    }
+
+    [Fact]
+    public async Task ResultadosRequierenPermisosYNoPermitenLecturaDeOtroMedico()
+    {
+        using var factory = new ExamenApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 2);
+        await factory.SeedExamenesAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/examenes/1/archivos")).StatusCode);
+        await factory.GrantAsync(consultar: true);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/examenes/1/archivos")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await PostFilesAsync(client, 1, ("informe.pdf", Pdf()))).StatusCode);
+        await factory.GrantAsync(modificar: true);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await PostFilesAsync(client, 1, ("informe.pdf", Pdf()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.DeleteAsync("/api/examenes/1/archivos/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).StatusCode);
+        Assert.Equal(0, factory.Storage.Count);
+    }
+
+    [Fact]
+    public async Task CargasConcurrentesConservanObjetosYFalloParcialEsConciliable()
+    {
+        using var factory = new ExamenApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.SeedExamenesAsync();
+        await factory.GrantAsync(consultar: true, modificar: true, eliminar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var uploads = await Task.WhenAll(Enumerable.Range(0, 5)
+            .Select(_ => PostFilesAsync(client, 1, ("informe.pdf", Pdf()))));
+        Assert.All(uploads, result => Assert.Equal(HttpStatusCode.Created, result.StatusCode));
+        Assert.Equal(5, factory.Storage.Count);
+        factory.Storage.FailOnSaveAttempt = 7;
+        var partial = await PostFilesAsync(client, 1,
+            ("uno.pdf", Pdf()), ("dos.pdf", Pdf()));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, partial.StatusCode);
+        Assert.Equal(6, factory.Storage.Count);
+        Assert.Equal(6, (await client.GetFromJsonAsync<ExamResultFileDto[]>(
+            "/api/examenes/1/archivos"))!.Length);
+    }
+
+    private static async Task<HttpResponseMessage> PostFilesAsync(HttpClient client, int examId,
+        params (string Name, byte[] Content)[] files)
+    {
+        using var form = new MultipartFormDataContent();
+        foreach (var file in files)
+            form.Add(new ByteArrayContent(file.Content), "archivos", file.Name);
+        return await client.PostAsync($"/api/examenes/{examId}/archivos", form);
+    }
+
+    private static byte[] Pdf()
+    {
+        var document = new System.Text.StringBuilder("%PDF-1.4\n");
+        var offsets = new List<int>();
+        foreach (var body in new[]
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>",
+            "<< /Length 0 >>\nstream\n\nendstream",
+        })
+        {
+            offsets.Add(document.Length);
+            document.Append($"{offsets.Count} 0 obj\n{body}\nendobj\n");
+        }
+        var xrefOffset = document.Length;
+        document.Append("xref\n0 5\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+            document.Append($"{offset:D10} 00000 n \n");
+        document.Append($"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xrefOffset}\n%%EOF\n");
+        return System.Text.Encoding.ASCII.GetBytes(document.ToString());
+    }
+
     private static ExamenCreateDto Nuevo(
         int? idConsulta = null, int? idDiagnostico = null, int? idTurno = null,
         string? prioridad = null, string nombre = "  Hemograma   completo  ",
@@ -263,6 +418,7 @@ public sealed class ExamenesTests
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
         private readonly string signingKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        public FakeExamResultStorage Storage { get; } = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -285,6 +441,8 @@ public sealed class ExamenesTests
                 services.AddSingleton(new DbContextOptionsBuilder<ClinicaDbContext>()
                     .UseInMemoryDatabase(databaseName).Options);
                 services.AddScoped<ClinicaDbContext>();
+                services.RemoveAll<IExamResultStorage>();
+                services.AddSingleton<IExamResultStorage>(Storage);
             });
         }
 
@@ -334,19 +492,22 @@ public sealed class ExamenesTests
         }
 
         public async Task GrantAsync(
-            bool consultar = false, bool crear = false, bool modificar = false)
+            bool consultar = false, bool crear = false, bool modificar = false,
+            bool eliminar = false)
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             var permiso = await db.Permisos.SingleOrDefaultAsync(p => p.Modulo == "Historial");
             if (permiso is null)
                 db.Permisos.Add(new Permiso { IdRol = 1, Modulo = "Historial",
-                    PuedeConsultar = consultar, PuedeCrear = crear, PuedeModificar = modificar });
+                    PuedeConsultar = consultar, PuedeCrear = crear,
+                    PuedeModificar = modificar, PuedeEliminar = eliminar });
             else
             {
                 permiso.PuedeConsultar |= consultar;
                 permiso.PuedeCrear |= crear;
                 permiso.PuedeModificar |= modificar;
+                permiso.PuedeEliminar |= eliminar;
             }
             await db.SaveChangesAsync();
         }
@@ -408,5 +569,42 @@ public sealed class ExamenesTests
             IdEmpleado = id, IdSucursal = 1, Nombres = "Prueba", Apellidos = "Médico",
             DPI = $"EXAMEN-TEST-{id}", TipoEmpleado = tipo, Activo = activo
         };
+    }
+
+    private sealed class FakeExamResultStorage : IExamResultStorage
+    {
+        private readonly ConcurrentDictionary<string, StoredExamResult> files = new();
+        private int saveAttempts;
+        public int Count => files.Count;
+        public int FailOnSaveAttempt { get; set; }
+
+        public Task<IReadOnlyList<ExamResultFileDto>> ListAsync(int examId, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<ExamResultFileDto>>(files
+                .Where(item => item.Key.StartsWith($"{examId}/", StringComparison.Ordinal))
+                .Select(item => item.Value.Metadata).ToArray());
+
+        public Task<ExamResultFileDto> SaveAsync(int examId, string fileId, byte[] content,
+            string contentType, string originalName, int userId, DateTimeOffset uploadedAt,
+            CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref saveAttempts) == FailOnSaveAttempt)
+                throw new ExternalDependencyException("Almacenamiento de prueba no disponible.");
+            var metadata = new ExamResultFileDto(fileId, originalName, contentType,
+                content.LongLength, uploadedAt, userId);
+            if (!files.TryAdd($"{examId}/{fileId}", new(metadata, content, "etag")))
+                throw new ConflictException("Objeto duplicado.");
+            return Task.FromResult(metadata);
+        }
+
+        public Task<StoredExamResult?> GetAsync(int examId, string fileId, CancellationToken ct) =>
+            Task.FromResult(files.GetValueOrDefault($"{examId}/{fileId}"));
+
+        public Task DeleteAsync(int examId, string fileId, string expectedEntityTag,
+            CancellationToken ct)
+        {
+            if (expectedEntityTag != "etag") throw new ConflictException("Versión cambiada.");
+            files.TryRemove($"{examId}/{fileId}", out _);
+            return Task.CompletedTask;
+        }
     }
 }

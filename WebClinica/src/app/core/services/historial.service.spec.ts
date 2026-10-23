@@ -25,6 +25,70 @@ describe('HistorialService: listado global de consultas', () => {
 
   afterEach(() => http.verify());
 
+  it('separa el registro general del registro atómico con examen', () => {
+    const general = { idConsulta: 17, idMedico: null, descripcion: 'Control' };
+    service.crearDiagnostico(general).subscribe();
+    const standard = http.expectOne(`${environment.apiUrl}/diagnosticos`);
+    expect(standard.request.method).toBe('POST');
+    expect(standard.request.body).toEqual(general);
+    expect(standard.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    standard.flush({ ...general, idDiagnostico: 31, idMedico: 7 });
+
+    const linked = { ...general, idExamen: 8 };
+    service.crearDiagnosticoConExamen(linked).subscribe();
+    const association = http.expectOne(`${environment.apiUrl}/diagnosticos/con-examen`);
+    expect(association.request.method).toBe('POST');
+    expect(association.request.body).toEqual(linked);
+    expect(association.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    association.flush({ ...general, idDiagnostico: 32, idMedico: 7 });
+  });
+
+  it('adjunta varios archivos con FormData y deja el Content-Type al navegador', () => {
+    const files = [new File(['%PDF-1.4'], 'uno.pdf', { type: 'application/pdf' }),
+      new File(['PNG'], 'dos.png', { type: 'image/png' })];
+    service.adjuntarArchivosExamen(8, files).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/examenes/8/archivos`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body instanceof FormData).toBeTrue();
+    expect((request.request.body as FormData).getAll('archivos')).toEqual(files);
+    expect(request.request.headers.has('Content-Type')).toBeFalse();
+    expect(request.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    expect(request.request.reportProgress).toBeTrue();
+    request.flush([], { status: 201, statusText: 'Created' });
+  });
+
+  it('consulta, descarga y elimina solo archivos del examen indicado', () => {
+    service.listarArchivosExamen(8).subscribe();
+    const list = http.expectOne(`${environment.apiUrl}/examenes/8/archivos`);
+    expect(list.request.method).toBe('GET');
+    list.flush([]);
+    service.descargarArchivoExamen(8, 'abc').subscribe();
+    const download = http.expectOne(`${environment.apiUrl}/examenes/8/archivos/abc`);
+    expect(download.request.method).toBe('GET');
+    expect(download.request.responseType).toBe('blob');
+    download.flush(new Blob(['test'], { type: 'application/pdf' }));
+    service.eliminarArchivoExamen(8, 'abc').subscribe();
+    const deletion = http.expectOne(`${environment.apiUrl}/examenes/8/archivos/abc`);
+    expect(deletion.request.method).toBe('DELETE');
+    expect(deletion.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    deletion.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('registra la evaluación única por POST con solo los ocho campos clínicos y Bearer', () => {
+    const body = { sintomas: 'Dolor', observaciones: null, pesoLb: 150.5, alturaCm: 170,
+      presionSistolica: 120, presionDiastolica: 80, temperaturaC: 36.7, frecuenciaCardiaca: 72 };
+    let result: unknown;
+    service.registrarEvaluacion(17, body).subscribe(response => result = response);
+    const request = http.expectOne(`${environment.apiUrl}/consultas/17/evaluacion`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    expect(request.request.body).toEqual(body);
+    expect(Object.keys(request.request.body).sort()).toEqual(Object.keys(body).sort());
+    const response = { idConsulta: 17, idPaciente: 11, estadoConsulta: 'En seguimiento' };
+    request.flush(response, { status: 201, statusText: 'Created' });
+    expect(result).toEqual(response);
+  });
+
   it('usa GET /api/consultas, paginación real y Bearer del interceptor', () => {
     service.listarConsultas({
       idPaciente: null, idMedico: null, idSucursal: null, idClinica: null,

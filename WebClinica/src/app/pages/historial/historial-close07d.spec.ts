@@ -78,6 +78,7 @@ describe('ConsultaDetalleComponent CLOSE-07D', () => {
         { provide: PermisosService, useValue: {
           puedeConsultar: (modulo: string) => modulo === MODULOS_PERMISO.CONSULTAS ? readConsultas() : readHistorial(),
           puedeCrear: (modulo: string) => modulo === MODULOS_PERMISO.HISTORIAL ? createHistorial() : true,
+          puedeModificar: () => false,
         } },
         { provide: HistorialService, useValue: service },
       ],

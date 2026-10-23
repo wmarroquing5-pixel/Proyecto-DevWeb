@@ -11,6 +11,9 @@ public interface IDiagnosticoService
     Task<DiagnosticoResponse> CrearAsync(
         CrearDiagnosticoRequest request, ClaimsPrincipal principal,
         CancellationToken cancellationToken);
+    Task<DiagnosticoResponse> CrearConExamenAsync(
+        CrearDiagnosticoConExamenRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken);
     Task<DiagnosticoResponse> ActualizarAsync(
         int id, ActualizarDiagnosticoRequest request, ClaimsPrincipal principal,
         CancellationToken cancellationToken);

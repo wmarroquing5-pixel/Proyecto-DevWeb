@@ -1,0 +1,110 @@
+using API_Clinica.Common;
+using API_Clinica.Exceptions;
+using API_Clinica.Interfaces;
+using API_Clinica.Models.Entities;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using System.Threading.RateLimiting;
+
+namespace API_Clinica.Services;
+
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    {
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<ICommonParameterValidator, CommonParameterValidator>();
+        services.AddScoped<IAdministracionService, AdministracionService>();
+        services.AddScoped<ISucursalService, SucursalService>();
+        services.AddScoped<IPacienteService, PacienteService>();
+        services.AddScoped<IEmpleadoService, EmpleadoService>();
+        services.AddScoped<IClinicaService, ClinicaService>();
+        services.AddScoped<IServicioService, ServicioService>();
+        services.AddScoped<ITurnoService, TurnoService>();
+        services.AddScoped<IContactoEmergenciaService, ContactoEmergenciaService>();
+        services.AddScoped<IConsultaService, ConsultaService>();
+        services.AddScoped<IEspecialidadService, EspecialidadService>();
+        services.AddScoped<HabitacionTransactionCoordinator>();
+        services.AddSingleton<IHabitacionEstadoNotifier, HabitacionEstadoNotifier>();
+        services.AddScoped<IHabitacionService, HabitacionService>();
+        services.AddScoped<IAsignacionHabitacionService, AsignacionHabitacionService>();
+        services.AddScoped<IDiagnosticoService, DiagnosticoService>();
+        services.AddScoped<IExamenService, ExamenService>();
+        services.AddScoped<ITratamientoService, TratamientoService>();
+        services.AddScoped<IConsumoClinicoService, ConsumoClinicoService>();
+        services.AddScoped<HistorialMedicoLecturaService>();
+        services.AddScoped<IHistorialMedicoService, HistorialMedicoService>();
+        services.AddScoped<ICategoriaService, CategoriaService>();
+        services.AddScoped<IMarcaService, MarcaService>();
+        services.AddScoped<IMedicamentoService, MedicamentoService>();
+        services.AddScoped<ILoteMedicamentoService, LoteMedicamentoService>();
+        services.AddScoped<IVentaService, VentaService>();
+        services.AddScoped<IFacturaServiciosService, FacturaServiciosService>();
+        services.AddSingleton<PhotoOperationLockRegistry>();
+        services.AddScoped<PhotoOperationLock>();
+        services.AddSingleton<IPhotoStorageService, CloudflareR2PhotoStorageService>();
+        services.AddSingleton<IPhotoImageProcessor, PhotoImageProcessor>();
+        services.AddScoped<IPhotoService, PhotoService>();
+        services.AddOptions<R2Options>()
+            .BindConfiguration(R2Options.SectionName)
+            .Validate(options => options.IsValid(),
+                $"R2 debe estar vacío o contener AccountId alfanumérico, AccessKeyId, SecretAccessKey y BucketName={R2Options.ExpectedBucketName}.")
+            .ValidateOnStart();
+        services.AddHttpContextAccessor();
+        services.AddExceptionHandler<GlobalExceptionHandler>();
+        services.AddProblemDetails();
+
+        return services;
+    }
+
+    public static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<JwtOptions>()
+            .BindConfiguration(JwtOptions.SectionName)
+            .Validate(options => options.IsValid(),
+                "La configuración Jwt requiere Issuer, Audience, SigningKey de al menos 32 bytes y ExpirationMinutes entre 1 y 1440.")
+            .ValidateOnStart();
+
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.Configure<PasswordHasherOptions>(options => options.IterationCount = 210_000);
+        services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
+        services.AddScoped<IPasswordVerificationService, PasswordVerificationService>();
+        services.AddSingleton<ILegacyPasswordVerifier, UnsupportedLegacyPasswordVerifier>();
+        services.AddScoped<IAccesoActualService, AccesoActualService>();
+        services.AddSingleton<IAuthorizationPolicyProvider, PermisoPolicyProvider>();
+        services.AddScoped<IAuthorizationHandler, PermisoAuthorizationHandler>();
+
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer();
+        services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerOptions>();
+        services.AddAuthorization(options =>
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser().Build());
+        var permitLimit = configuration.GetValue("RateLimiting:Login:PermitLimit", 10);
+        var windowSeconds = configuration.GetValue("RateLimiting:Login:WindowSeconds", 60);
+        if (permitLimit < 1 || windowSeconds < 1)
+        {
+            throw new InvalidOperationException("La configuración RateLimiting:Login debe tener valores positivos.");
+        }
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("login", context =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = permitLimit,
+                        Window = TimeSpan.FromSeconds(windowSeconds),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    }));
+        });
+
+        return services;
+    }
+}

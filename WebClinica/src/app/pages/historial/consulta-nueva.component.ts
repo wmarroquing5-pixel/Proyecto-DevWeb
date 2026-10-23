@@ -24,7 +24,7 @@ import { Subscription } from 'rxjs';
       <header class="page-header consulta-nueva-page__header">
         <div>
           <h1>Nueva Consulta</h1>
-          <p class="page-header__subtitle">Registra una nueva atención médica para un paciente existente.</p>
+          <p class="page-header__subtitle">Registra una nueva consulta para un paciente existente. La evaluación clínica se completa después.</p>
         </div>
         <a routerLink="/consultas" class="btn btn-outline-secondary">Volver al listado</a>
       </header>
@@ -33,28 +33,24 @@ import { Subscription } from 'rxjs';
 
       <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-paciente-title">
         <h2 id="consulta-paciente-title" class="h5 consulta-nueva-page__heading">Paciente</h2>
-        <div class="row g-3 align-items-end">
-          <div class="col-12 col-lg-6">
-            <label for="buscar-paciente" class="form-label">Buscar paciente activo</label>
-            <div class="input-group">
-              <input id="buscar-paciente" class="form-control" type="search" name="buscarPaciente"
-                [(ngModel)]="busquedaPaciente" maxlength="100" placeholder="Nombre o apellido"
-                [disabled]="cargando || cargandoPacientes">
-              <button type="button" class="btn btn-outline-primary" (click)="cargarPacientes(1)"
-                [disabled]="cargando || cargandoPacientes">Buscar</button>
-            </div>
-          </div>
-          <div class="col-12 col-lg-6">
+        <div class="row g-3">
+          <div class="col-12">
             <label for="paciente-consulta" class="form-label">Paciente <span class="text-danger" aria-hidden="true">*</span></label>
             <select id="paciente-consulta" class="form-select" name="idPaciente" required
-              [ngModel]="idPaciente" (ngModelChange)="seleccionarPaciente($event)"
+              [ngModel]="idPaciente" (ngModelChange)="elegirPaciente($event)"
               [disabled]="cargando || cargandoPacientes || (!pacientesPagina.length && !pacienteSeleccionado)">
               <option [ngValue]="0">Seleccione...</option>
+              @if (paginaPacientes > 1) {
+                <option [ngValue]="-1">Ver pacientes anteriores</option>
+              }
               @if (pacienteSeleccionado && !seleccionPacienteEnPagina()) {
                 <option [ngValue]="pacienteSeleccionado.idPaciente">{{ pacienteSeleccionado.nombres }} {{ pacienteSeleccionado.apellidos }} · ID {{ pacienteSeleccionado.idPaciente }}</option>
               }
               @for (paciente of pacientesPagina; track paciente.idPaciente) {
                 <option [ngValue]="paciente.idPaciente">{{ paciente.nombres }} {{ paciente.apellidos }} · ID {{ paciente.idPaciente }}</option>
+              }
+              @if (paginaPacientes < totalPaginasPacientes) {
+                <option [ngValue]="-2">Ver más pacientes</option>
               }
             </select>
           </div>
@@ -64,19 +60,6 @@ import { Subscription } from 'rxjs';
         @if (!cargandoPacientes && pacientesPagina.length === 0 && !errorPacientes) {
           <p class="text-muted mt-2 mb-0">No hay pacientes activos en esta página.</p>
         }
-        <div class="consulta-nueva-page__pager mt-3" aria-label="Páginas de pacientes">
-          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarPacientes(paginaPacientes - 1)"
-            [disabled]="cargando || cargandoPacientes || paginaPacientes <= 1">Anterior</button>
-          @if (errorPacientes) {
-            <span>Catálogo no disponible</span>
-          } @else if (totalPaginasPacientes === 0) {
-            <span>0 pacientes</span>
-          } @else {
-            <span>Página {{ paginaPacientes }} de {{ totalPaginasPacientes }} · {{ totalPacientes }} pacientes</span>
-          }
-          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cargarPacientes(paginaPacientes + 1)"
-            [disabled]="cargando || cargandoPacientes || paginaPacientes >= totalPaginasPacientes">Siguiente</button>
-        </div>
         @if (pacienteSeleccionado) {
           <div class="consulta-nueva-page__patient mt-3" role="status">
             @if (fotoPacienteUrl) {
@@ -104,15 +87,9 @@ import { Subscription } from 'rxjs';
         <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-datos-title">
           <h2 id="consulta-datos-title" class="h5 consulta-nueva-page__heading">Datos de la consulta</h2>
           <div class="row g-3">
+          @if (modoMedico === 'seleccion' || modoMedico === 'cargando' || errorMedicos) {
           <div class="col-12 col-md-6">
-            @if (modoMedico === 'inferencia') {
-              <p class="alert alert-info mb-0">Médico responsable: el servidor asignará el médico vinculado a su sesión.
-                @if (!puedeConsultarEmpleados()) {
-                  No tiene permiso para consultar empleados ni seleccionar otro médico.
-                  Si su vínculo no es médico, solicite revisión de acceso al catálogo.
-                }
-              </p>
-            } @else if (modoMedico === 'seleccion') {
+            @if (modoMedico === 'seleccion') {
               <label class="form-label" for="medico">Médico responsable *</label>
               <select id="medico" class="form-select" name="idMedico" required
                 [ngModel]="form.idMedico" (ngModelChange)="seleccionarMedico($event)"
@@ -144,6 +121,7 @@ import { Subscription } from 'rxjs';
             }
             @if (errorMedicos) { <p class="alert alert-danger" role="alert">{{ errorMedicos }}</p> }
           </div>
+          }
           <div class="col-12 col-md-6">
             <label for="consulta-sucursal" class="form-label">Sucursal <span class="text-danger" aria-hidden="true">*</span></label>
             <select id="consulta-sucursal" class="form-select" [(ngModel)]="form.idSucursal" name="idSucursal" required>
@@ -169,40 +147,10 @@ import { Subscription } from 'rxjs';
             <label for="consulta-fecha" class="form-label">Fecha y hora de consulta <span class="text-danger" aria-hidden="true">*</span></label>
             <input id="consulta-fecha" type="datetime-local" class="form-control" [(ngModel)]="form.fechaConsulta" name="fechaConsulta" required>
           </div>
-          </div>
-        </section>
-
-        <section class="ui-card consulta-nueva-page__card" aria-labelledby="consulta-evaluacion-title">
-          <h2 id="consulta-evaluacion-title" class="h5 consulta-nueva-page__heading">Evaluación inicial</h2>
-          <div class="row g-3">
-          <div class="col-12 col-md-6">
-            <label for="consulta-motivo" class="form-label">Motivo de consulta</label>
-            <textarea id="consulta-motivo" class="form-control" rows="2" [(ngModel)]="form.motivoConsulta" name="motivoConsulta" maxlength="300"></textarea>
-          </div>
-          <div class="col-12 col-md-6">
-            <label for="consulta-sintomas" class="form-label">Síntomas</label>
-            <textarea id="consulta-sintomas" class="form-control" rows="2" [(ngModel)]="form.sintomas" name="sintomas" maxlength="300"></textarea>
-          </div>
           <div class="col-12">
-            <label for="consulta-observaciones" class="form-label">Observaciones</label>
-            <textarea id="consulta-observaciones" class="form-control" rows="2" [(ngModel)]="form.observaciones" name="observaciones" maxlength="300"></textarea>
-          </div>
-
-          <div class="col-12 col-sm-6 col-xl-3">
-            <label for="consulta-peso" class="form-label">Peso (lb)</label>
-            <input id="consulta-peso" type="number" step="0.1" class="form-control" [(ngModel)]="form.pesoLb" name="pesoLb">
-          </div>
-          <div class="col-12 col-sm-6 col-xl-3">
-            <label for="consulta-altura" class="form-label">Altura (cm)</label>
-            <input id="consulta-altura" type="number" class="form-control" [(ngModel)]="form.alturaCm" name="alturaCm">
-          </div>
-          <div class="col-12 col-sm-6 col-xl-3">
-            <label for="consulta-sistolica" class="form-label">Presión sistólica</label>
-            <input id="consulta-sistolica" type="number" class="form-control" [(ngModel)]="form.presionSistolica" name="presionSistolica">
-          </div>
-          <div class="col-12 col-sm-6 col-xl-3">
-            <label for="consulta-diastolica" class="form-label">Presión diastólica</label>
-            <input id="consulta-diastolica" type="number" class="form-control" [(ngModel)]="form.presionDiastolica" name="presionDiastolica">
+            <label for="consulta-motivo" class="form-label">Motivo de la consulta (opcional)</label>
+            <textarea id="consulta-motivo" class="form-control" name="motivoConsulta" rows="3" maxlength="300"
+              [(ngModel)]="motivoConsulta" placeholder="Describa brevemente el motivo de atención"></textarea>
           </div>
           </div>
         </section>
@@ -259,7 +207,6 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
   idPaciente = 0;
   pacienteSeleccionado: PacienteListadoResponse | null = null;
   pacientesPagina: PacienteListadoResponse[] = [];
-  busquedaPaciente = '';
   paginaPacientes = 1;
   totalPaginasPacientes = 0;
   totalPacientes = 0;
@@ -296,15 +243,9 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     idMedico: null,
     idSucursal: 0,
     idClinica: null,
-    fechaConsulta: '',
-    motivoConsulta: null,
-    sintomas: null,
-    observaciones: null,
-    pesoLb: null,
-    presionDiastolica: null,
-    presionSistolica: null,
-    alturaCm: null
+    fechaConsulta: ''
   };
+  motivoConsulta = '';
 
   constructor() {
     effect(() => {
@@ -334,6 +275,16 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.pacienteSeleccionado = paciente;
     this.idPaciente = paciente?.idPaciente ?? 0;
     this.form.idPaciente = this.idPaciente;
+  }
+
+  elegirPaciente(id: number): void {
+    if (id === -1) {
+      this.cargarPacientes(this.paginaPacientes - 1);
+    } else if (id === -2) {
+      this.cargarPacientes(this.paginaPacientes + 1);
+    } else {
+      this.seleccionarPaciente(id);
+    }
   }
 
   cargarFotoPaciente(): void {
@@ -386,7 +337,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.cargandoPacientes = true;
     this.errorPacientes = '';
     this.solicitudPacientes = this.pacientesService.listar(
-      this.busquedaPaciente.trim() || undefined, true, pagina, this.tamanoPaginaPacientes,
+      undefined, true, pagina, this.tamanoPaginaPacientes,
     ).subscribe({
       next: data => {
         if (!this.vigente(contexto) || revision !== this.revisionPacientes) return;
@@ -466,6 +417,14 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.configurarContexto();
   }
 
+  private fechaConsultaValida(valor: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(valor)) return false;
+    const fecha = new Date(valor);
+    if (Number.isNaN(fecha.getTime())) return false;
+    const normalizada = `${fecha.getFullYear().toString().padStart(4, '0')}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}T${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`;
+    return normalizada === valor;
+  }
+
   guardar() {
     if (this.cargando) return;
     if (!this.vigente(this.contexto) || !this.puedeCrear() || !this.puedeConsultarPacientes()) {
@@ -489,6 +448,15 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
       this.error = 'Seleccione una clínica activa de la sucursal indicada.';
       return;
     }
+    if (!this.fechaConsultaValida(this.form.fechaConsulta)) {
+      this.error = 'Indique una fecha y hora de consulta válidas.';
+      return;
+    }
+    const motivo = this.motivoConsulta.trim();
+    if (motivo.length > 300) {
+      this.error = 'El motivo de la consulta no puede superar 300 caracteres.';
+      return;
+    }
     if (this.modoMedico === 'bloqueado' || this.modoMedico === 'cargando' || this.cargandoMedicos) {
       this.error = this.errorMedicos || 'Espere a verificar el médico responsable.';
       return;
@@ -506,8 +474,14 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.cargando = true;
     this.error = '';
     const contexto = this.contexto;
-    const request = { ...this.form, idPaciente: this.idPaciente,
-      idMedico: this.modoMedico === 'inferencia' ? null : medico!.idEmpleado };
+    const request: ConsultaCreateDto = {
+      idPaciente: this.idPaciente,
+      idMedico: this.modoMedico === 'inferencia' ? null : medico!.idEmpleado,
+      idSucursal: this.form.idSucursal,
+      idClinica: this.form.idClinica,
+      fechaConsulta: this.form.fechaConsulta,
+      ...(motivo ? { motivoConsulta: motivo } : {}),
+    };
     this.solicitudes.add(this.pacientesService.obtener(request.idPaciente).subscribe({
       next: actual => {
         if (!this.vigente(contexto)) return;
@@ -566,7 +540,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
           this.cargando = false;
           return;
         }
-        this.router.navigate(['/historial', this.idPaciente, 'consulta', res.idConsulta]);
+        this.router.navigate(['/consultas']);
       },
       error: (err) => {
         if (!this.vigente(contexto)) return;
@@ -598,6 +572,7 @@ export class ConsultaNuevaComponent implements OnInit, OnDestroy {
     this.clinicas = [];
     this.errorClinicas = '';
     this.form.idClinica = null;
+    this.motivoConsulta = '';
     this.pacientesPagina = [];
     this.pacienteSeleccionado = null;
     this.idPaciente = this.form.idPaciente = 0;

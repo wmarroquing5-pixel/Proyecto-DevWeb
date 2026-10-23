@@ -30,4 +30,12 @@ public sealed class ConsultasController(IConsultaService service) : ControllerBa
     public async Task<ActionResult<ConsultaDetalleDto>> Actualizar(
         int id, ConsultaUpdateDto request, CancellationToken ct) =>
         Ok(await service.ActualizarAsync(id, request, User, ct));
+
+    [HttpPost("{id:int}/evaluacion"), PermisoRequerido("Consultas", Operacion.Modificar)]
+    public async Task<ActionResult<ConsultaDetalleDto>> RegistrarEvaluacion(
+        int id, RegistrarEvaluacionConsultaRequest request, CancellationToken ct)
+    {
+        var response = await service.RegistrarEvaluacionAsync(id, request, User, ct);
+        return CreatedAtAction(nameof(Obtener), new { id }, response);
+    }
 }

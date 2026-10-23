@@ -42,6 +42,8 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
   });
   const respuesta = (request: ConsultaCreateDto): ConsultaDetalleDto => ({
     ...request, idConsulta: 73, idMedico: request.idMedico ?? 2,
+    motivoConsulta: request.motivoConsulta ?? null, sintomas: null, observaciones: null, pesoLb: null,
+    alturaCm: null, presionSistolica: null, presionDiastolica: null,
   });
 
   beforeEach(async () => {
@@ -101,7 +103,7 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     expect(JSON.stringify(nueva?.data)).toContain('Consultas');
   });
 
-  it('organiza el formulario en tarjetas accesibles y conserva todos los campos del DTO', () => {
+  it('mantiene tres tarjetas y selector sin búsqueda ni paginación externa', () => {
     abrir(); fixture.detectChanges();
     const view = fixture.nativeElement as HTMLElement;
     expect(view.querySelector('h1')?.textContent).toContain('Nueva Consulta');
@@ -109,22 +111,24 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     for (const [id, title] of [
       ['consulta-paciente-title', 'Paciente'],
       ['consulta-datos-title', 'Datos de la consulta'],
-      ['consulta-evaluacion-title', 'Evaluación inicial'],
       ['consulta-acciones-title', 'Acciones'],
     ]) {
       const section = view.querySelector(`section[aria-labelledby="${id}"]`);
       expect(section).not.toBeNull();
       expect(section?.querySelector(`#${id}`)?.textContent).toContain(title);
     }
-    for (const name of ['idMedico', 'idSucursal', 'fechaConsulta', 'motivoConsulta', 'sintomas',
-      'observaciones', 'pesoLb', 'alturaCm', 'presionSistolica', 'presionDiastolica']) {
+    for (const name of ['idMedico', 'idSucursal', 'fechaConsulta', 'motivoConsulta']) {
       expect(view.querySelector(`[name="${name}"]`)).withContext(name).not.toBeNull();
     }
-    for (const name of ['motivoConsulta', 'sintomas', 'observaciones']) {
-      expect(view.querySelector<HTMLTextAreaElement>(`[name="${name}"]`)?.maxLength).toBe(300);
+    for (const name of ['sintomas', 'observaciones', 'pesoLb', 'alturaCm',
+      'presionSistolica', 'presionDiastolica', 'temperaturaC', 'frecuenciaCardiaca', 'estadoConsulta']) {
+      expect(view.querySelector(`[name="${name}"]`)).withContext(name).toBeNull();
     }
+    expect(view.querySelector('[name="buscarPaciente"]')).toBeNull();
+    expect(view.querySelector('.consulta-nueva-page__pager[aria-label="Páginas de pacientes"]')).toBeNull();
+    expect(view.querySelector<HTMLTextAreaElement>('[name="motivoConsulta"]')?.maxLength).toBe(300);
     expect(view.querySelector('#consulta-datos-title + .row .col-md-6')).not.toBeNull();
-    expect(view.querySelector('#consulta-evaluacion-title + .row .col-12.col-md-6')).not.toBeNull();
+    expect(view.querySelector('#consulta-evaluacion-title')).toBeNull();
     expect(view.querySelector('form#consulta-nueva-form button[type="submit"]')?.textContent).toContain('Guardar consulta');
     expect(crear).not.toHaveBeenCalled();
   });
@@ -189,13 +193,89 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
 
   it('selecciona al paciente 41 fuera de la primera página y conserva su ID real', () => {
     abrir();
-    component.cargarPacientes(2); component.cargarPacientes(3);
+    component.elegirPaciente(-2); component.elegirPaciente(-2);
     component.seleccionarPaciente(41); component.cargarPacientes(1);
     component.guardar();
     expect(component.idPaciente).toBe(41);
     expect(obtener).toHaveBeenCalledWith(41);
     expect(crear).toHaveBeenCalledOnceWith(jasmine.objectContaining({ idPaciente: 41, idMedico: 2 }));
-    expect(navegar).toHaveBeenCalledWith(['/historial', 41, 'consulta', 73]);
+    expect(navegar).toHaveBeenCalledWith(['/consultas']);
+  });
+
+  it('ofrece opciones de avance y retroceso dentro del selector sin cambiar el paciente elegido', () => {
+    abrir(); component.seleccionarPaciente(1); fixture.detectChanges();
+    const opciones = () => Array.from((fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLSelectElement>('#paciente-consulta')!.options).map(option => option.textContent?.trim());
+    expect(opciones()).toContain('Ver más pacientes');
+    expect(opciones()).not.toContain('Ver pacientes anteriores');
+    component.elegirPaciente(-2); fixture.detectChanges();
+    expect(component.paginaPacientes).toBe(2);
+    expect(component.idPaciente).toBe(1);
+    expect(opciones()).toContain('Ver pacientes anteriores');
+    component.elegirPaciente(-1); fixture.detectChanges();
+    expect(component.paginaPacientes).toBe(1);
+    expect(component.idPaciente).toBe(1);
+    expect(listar.calls.allArgs().map(args => args[2])).toEqual([1, 2, 1]);
+  });
+
+  it('permite avanzar con teclado o ratón usando la opción del selector', async () => {
+    abrir(); component.seleccionarPaciente(1); fixture.detectChanges();
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('#paciente-consulta')!;
+    select.selectedIndex = Array.from(select.options).findIndex(option => option.textContent?.trim() === 'Ver más pacientes');
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(component.paginaPacientes).toBe(2);
+    expect(component.idPaciente).toBe(1);
+    expect(select.textContent).toContain('Ana Paciente 21');
+    expect(select.selectedOptions[0]?.textContent).toContain('Ana Paciente 1');
+    expect(listar).toHaveBeenCalledWith(undefined, true, 2, 20);
+  });
+
+  it('crea sin campos clínicos ni estado y navega al listado de consultas', () => {
+    abrir(); component.seleccionarPaciente(1); component.guardar();
+    expect(Object.keys(crear.calls.mostRecent().args[0])).toEqual([
+      'idPaciente', 'idMedico', 'idSucursal', 'idClinica', 'fechaConsulta',
+    ]);
+    expect(crear.calls.mostRecent().args[0].fechaConsulta).toBeTruthy();
+    expect(navegar).toHaveBeenCalledOnceWith(['/consultas']);
+  });
+
+  it('envía motivo recortado solo si tiene contenido significativo', () => {
+    abrir(); component.seleccionarPaciente(1);
+    component.motivoConsulta = '  Control general  '; component.guardar();
+    expect(crear.calls.mostRecent().args[0].motivoConsulta).toBe('Control general');
+    fixture.destroy();
+    abrir(); component.seleccionarPaciente(1);
+    component.motivoConsulta = '   '; component.guardar();
+    expect(Object.keys(crear.calls.mostRecent().args[0])).not.toContain('motivoConsulta');
+  });
+
+  it('rechaza motivo mayor a 300 caracteres sin enviar el POST', () => {
+    abrir(); component.seleccionarPaciente(1);
+    component.motivoConsulta = 'a'.repeat(301); component.guardar();
+    expect(component.error).toContain('300');
+    expect(crear).not.toHaveBeenCalled();
+  });
+
+  it('inicia con fecha local editable, acepta futuro y conserva la elección al cambiar paciente', () => {
+    abrir(); fixture.detectChanges();
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('#consulta-fecha')!;
+    expect(input.readOnly).toBeFalse();
+    expect(input.max).toBe('');
+    expect(Math.abs(new Date(component.form.fechaConsulta).getTime() - Date.now())).toBeLessThan(60_000);
+    component.form.fechaConsulta = '2099-01-01T10:30';
+    component.seleccionarPaciente(1); component.seleccionarMedico(2);
+    component.guardar();
+    expect(crear.calls.mostRecent().args[0].fechaConsulta).toBe('2099-01-01T10:30');
+  });
+
+  it('rechaza una fecha ausente o inválida antes de enviar el POST', () => {
+    abrir(); component.seleccionarPaciente(1);
+    for (const fecha of ['', 'fecha-inválida', '2026-02-30T10:00']) {
+      component.form.fechaConsulta = fecha; component.guardar();
+      expect(component.error).toContain('fecha y hora');
+    }
+    expect(crear).not.toHaveBeenCalled();
   });
 
   it('respeta la primera y última página incompleta del total real', () => {
@@ -231,8 +311,8 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     expect(component.totalPaginasPacientes).toBe(0);
     expect(component.pacientesPagina).toEqual([]);
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('0 pacientes');
-    expect(fixture.nativeElement.textContent).not.toContain('Página 1 de 0');
+    expect(fixture.nativeElement.textContent).toContain('No hay pacientes activos');
+    expect((fixture.nativeElement as HTMLElement).querySelector('#paciente-consulta')?.textContent).not.toContain('Ver más pacientes');
     component.cargarPacientes(2);
     expect(listar).toHaveBeenCalledTimes(1);
     expect(crear).not.toHaveBeenCalled();
@@ -246,8 +326,8 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     expect(component.pacientesPagina).toEqual([]);
     expect(component.totalPaginasPacientes).toBe(0);
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Catálogo no disponible');
-    expect(fixture.nativeElement.textContent).not.toContain('Página 1 de 0');
+    expect(fixture.nativeElement.textContent).toContain('paginación incoherente');
+    expect((fixture.nativeElement as HTMLElement).querySelector('#paciente-consulta')?.textContent).not.toContain('Ver más pacientes');
     const solicitudes = listar.calls.count();
     component.cargarPacientes(3);
     expect(listar).toHaveBeenCalledTimes(solicitudes);
@@ -261,15 +341,14 @@ describe('AUDIT-PAC-CON-01 selección de paciente en Consultas', () => {
     expect(component.totalPaginasPacientes).toBe(0);
   });
 
-  it('actualiza la búsqueda y descarta una respuesta anterior pendiente', () => {
+  it('descarta una respuesta antigua al volver a la primera página', () => {
     abrir();
     const pendiente = new Subject<PagedResponse<PacienteListadoResponse>>();
     listar.and.returnValue(pendiente);
-    component.cargarPacientes(2);
-    component.busquedaPaciente = 'Ana';
+    component.elegirPaciente(-2);
     listar.and.returnValue(of(pagina(1, 1)));
     component.cargarPacientes(1);
-    expect(listar.calls.mostRecent().args).toEqual(['Ana', true, 1, 20]);
+    expect(listar.calls.mostRecent().args).toEqual([undefined, true, 1, 20]);
     pendiente.next(pagina(2));
     expect(component.paginaPacientes).toBe(1);
     expect(component.totalPacientes).toBe(1);

@@ -1,0 +1,38 @@
+{
+  "phase": "CON-UX-EVAL-01",
+  "createdAt": "2026-10-22T14:37:50.7292618-06:00",
+  "repo": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "gitStatusBefore": [
+    " M API-Clinica.Tests/ConsultasTests.cs",
+    " M API-Clinica/Services/ConsultaService.cs",
+    " M WebClinica/src/app/core/models/historial.model.ts",
+    " M WebClinica/src/app/core/services/historial.service.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+    " M WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+    "?? Respaldos-API-Clinica/API-CON-STATE-FIX-01/",
+    "?? Respaldos-API-Clinica/CON-CREATE-STATE-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-02/"
+  ],
+  "files": [
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+      "bytes": 50174,
+      "sha256": "B962B1EC5768833E84B5FF2A15B0B45A300D12FAB8714FF6050310C2A52FAFDB"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+      "bytes": 13740,
+      "sha256": "120CC24063E6F21F7C7C962F42C889F07CF5392BE6CF2F5D0DDBCD34919FC3C4"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-detalle-conux01.spec.ts",
+      "bytes": 7692,
+      "sha256": "EE76F544AAA6F543C50632BCD531C78B198D0D49EFF614AB8A4BB0EB37F5E75B"
+    }
+  ]
+}

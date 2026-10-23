@@ -1,0 +1,68 @@
+{
+  "Phase": "WEB-EXA-R2-01",
+  "CreatedUtc": "2026-10-22T22:54:02.329207Z",
+  "GitStatus": [
+    " M API-Clinica.Tests/ConsultasTests.cs",
+    " M API-Clinica/Controllers/ConsultasController.cs",
+    " M API-Clinica/DTOs/ConsultaDtos.cs",
+    " M API-Clinica/Data/ClinicaDbContext.cs",
+    " M API-Clinica/Interfaces/IConsultaService.cs",
+    " M API-Clinica/Services/ConsultaService.cs",
+    " M WebClinica/src/app/core/models/historial.model.ts",
+    " M WebClinica/src/app/core/services/historial.service.spec.ts",
+    " M WebClinica/src/app/core/services/historial.service.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle-conux01.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+    " M WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/historial-close07d.spec.ts",
+    "?? Respaldos-API-Clinica/API-CON-EVAL-UNICA-01/",
+    "?? Respaldos-API-Clinica/API-CON-STATE-FIX-01/",
+    "?? Respaldos-API-Clinica/CON-CREATE-STATE-01/",
+    "?? Respaldos-API-Clinica/CON-UX-EVAL-01/",
+    "?? Respaldos-API-Clinica/CON-UX-EVAL-02/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-02/",
+    "?? Respaldos-API-Clinica/WEB-EXA-R2-01/"
+  ],
+  "Files": [
+    {
+      "Path": "API-Clinica/Controllers/ExamenesController.cs",
+      "Bytes": 1390,
+      "Sha256": "D6CE775481C8F63516D89A7AA901200DC06B30F96BA325E0590DD54A49EB65DB"
+    },
+    {
+      "Path": "API-Clinica/Services/ServiceCollectionExtensions.cs",
+      "Bytes": 6067,
+      "Sha256": "D0F9195CB0989D2B9CF1083DB3ED3DD203323D46FCAC5AAABC86A4BB62432B71"
+    },
+    {
+      "Path": "WebClinica/src/app/core/models/historial.model.ts",
+      "Bytes": 6478,
+      "Sha256": "AE63EA2CBDF2FD0E744F56B812678E5DF1FEF8608B4B5B1E57B6F7AFA684D0BE"
+    },
+    {
+      "Path": "WebClinica/src/app/core/services/historial.service.ts",
+      "Bytes": 8136,
+      "Sha256": "D098BA8F21CD22FB391D2F1AB61CD119DDD7118CA88CF2F25651F1A3E7BC615E"
+    },
+    {
+      "Path": "WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+      "Bytes": 65271,
+      "Sha256": "B8F15424E2C6DFCC5E0307008CD625E4F789AEDBFC402F63D545372DA7C24102"
+    },
+    {
+      "Path": "WebClinica/src/app/core/services/historial.service.spec.ts",
+      "Bytes": 8800,
+      "Sha256": "564E872CB7F8B71603752C0B09D847970785238000534697A3AF1814FE23BD89"
+    },
+    {
+      "Path": "API-Clinica.Tests/ExamenesTests.cs",
+      "Bytes": 19436,
+      "Sha256": "B51B00BC4B54522600F06419F37708F93B0721F0ABB76D6BD56DA9C9DCDF2015"
+    }
+  ]
+}

@@ -126,6 +126,63 @@ public sealed class DiagnosticosTests
     }
 
     [Fact]
+    public async Task AsociacionConExamenExigeJwtYAmbosPermisosAntesDeEscribir()
+    {
+        using var factory = new DiagnosticoApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        using var client = factory.CreateClient();
+        var request = new CrearDiagnosticoConExamenRequest
+        {
+            IdConsulta = 1, IdExamen = 1, Descripcion = "Hallazgo"
+        };
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync("/api/diagnosticos/con-examen", request)).StatusCode);
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/diagnosticos/con-examen", request)).StatusCode);
+        await factory.GrantCrearAsync();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/diagnosticos/con-examen", request)).StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+    }
+
+    [Fact]
+    public async Task AsociacionRechazaIdentificadorInvalidoAntesDePersistir()
+    {
+        using var factory = new DiagnosticoApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.GrantCrearAsync();
+        await factory.GrantModificarAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var response = await client.PostAsJsonAsync("/api/diagnosticos/con-examen",
+            new CrearDiagnosticoConExamenRequest
+            {
+                IdConsulta = 1, IdExamen = 0, Descripcion = "Hallazgo"
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+    }
+
+    [Fact]
+    public async Task RegistroGeneralRechazaConsultaCerradaSinCrearDiagnostico()
+    {
+        using var factory = new DiagnosticoApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.GrantCrearAsync();
+        await factory.SetConsultationStateAsync("Cerrada");
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var response = await client.PostAsJsonAsync("/api/diagnosticos",
+            new CrearDiagnosticoRequest { IdConsulta = 1, Descripcion = "Hallazgo" });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+    }
+
+    [Fact]
     public async Task LecturasExigenJwtYPermisoActualYDerivanMedicoDeConsulta()
     {
         using var factory = new DiagnosticoApiFactory();
@@ -440,6 +497,14 @@ public sealed class DiagnosticosTests
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             (await db.Consultas.SingleAsync()).IdMedico = employeeId;
+            await db.SaveChangesAsync();
+        }
+
+        public async Task SetConsultationStateAsync(string state)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            (await db.Consultas.SingleAsync()).EstadoConsulta = state;
             await db.SaveChangesAsync();
         }
 

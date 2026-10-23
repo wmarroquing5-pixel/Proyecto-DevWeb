@@ -33,6 +33,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAsignacionHabitacionService, AsignacionHabitacionService>();
         services.AddScoped<IDiagnosticoService, DiagnosticoService>();
         services.AddScoped<IExamenService, ExamenService>();
+        services.AddSingleton<IExamResultStorage, CloudflareR2ExamResultStorage>();
+        services.AddScoped<IExamResultService, ExamResultService>();
         services.AddScoped<ITratamientoService, TratamientoService>();
         services.AddScoped<IConsumoClinicoService, ConsumoClinicoService>();
         services.AddScoped<HistorialMedicoLecturaService>();

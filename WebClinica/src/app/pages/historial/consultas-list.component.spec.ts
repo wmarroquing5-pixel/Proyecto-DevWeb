@@ -140,6 +140,7 @@ describe('ConsultasListComponent', () => {
       { ...consulta, idConsulta: 3, estadoConsulta: '   ' },
       { ...consulta, idConsulta: 4, estadoConsulta: 'En seguimiento' },
       { ...consulta, idConsulta: 5, estadoConsulta: 'Valor heredado' },
+      { ...consulta, idConsulta: 6, estadoConsulta: 'Abierta' },
     ])));
     render();
     const element = fixture.nativeElement as HTMLElement;
@@ -151,7 +152,7 @@ describe('ConsultasListComponent', () => {
       cell => cell.textContent?.trim());
     expect(states).toEqual([
       'Sin estado registrado', 'Sin estado registrado', 'Sin estado registrado',
-      'En seguimiento', 'Valor heredado',
+      'En seguimiento', 'Valor heredado', 'Abierta',
     ]);
     expect(element.querySelectorAll('.consultas-estado--vacio').length).toBe(3);
     expect(element.querySelectorAll('tbody tr td:nth-child(6) button').length).toBe(0);

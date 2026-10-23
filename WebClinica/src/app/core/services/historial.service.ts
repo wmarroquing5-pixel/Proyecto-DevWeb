@@ -1,14 +1,15 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpEvent, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
-  ConsultaListadoDto, ConsultaDetalleDto, ConsultaCreateDto, ConsultaFiltroDto,
-  DiagnosticoResponse, CrearDiagnosticoRequest, ActualizarDiagnosticoRequest, DiagnosticoFiltroDto,
+  ConsultaListadoDto, ConsultaDetalleDto, ConsultaCreateDto, ConsultaUpdateDto, ConsultaFiltroDto,
+  RegistrarEvaluacionConsultaRequest,
+  DiagnosticoResponse, CrearDiagnosticoRequest, CrearDiagnosticoConExamenRequest, ActualizarDiagnosticoRequest, DiagnosticoFiltroDto,
   HistorialMedicoResponseDto, HistorialMedicoCreateDto, HistorialMedicoFiltroDto,
   TratamientoResponseDto, TratamientoCreateDto, TratamientoUpdateDto, TratamientoFiltroDto,
   ConsumoClinicoCreateDto, ConsumoClinicoResponseDto,
-  ExamenResponseDto, ExamenCreateDto, ExamenUpdateDto, ExamenFiltroDto,
+  ExamenResponseDto, ExamenCreateDto, ExamenUpdateDto, ExamenFiltroDto, ExamResultFileDto,
   ContactoEmergenciaResponseDto, ContactoEmergenciaCreateDto, ContactoEmergenciaUpdateDto,
   PagedResponse
 } from '../models/historial.model';
@@ -37,11 +38,15 @@ export class HistorialService {
     return this.http.get<ConsultaDetalleDto>(`${this.apiUrl}/consultas/${id}`);
   }
 
+  registrarEvaluacion(id: number, request: RegistrarEvaluacionConsultaRequest): Observable<ConsultaDetalleDto> {
+    return this.http.post<ConsultaDetalleDto>(`${this.apiUrl}/consultas/${id}/evaluacion`, request);
+  }
+
   crearConsulta(request: ConsultaCreateDto): Observable<ConsultaDetalleDto> {
     return this.http.post<ConsultaDetalleDto>(`${this.apiUrl}/consultas`, request);
   }
 
-  actualizarConsulta(id: number, request: ConsultaCreateDto): Observable<ConsultaDetalleDto> {
+  actualizarConsulta(id: number, request: ConsultaUpdateDto): Observable<ConsultaDetalleDto> {
     return this.http.put<ConsultaDetalleDto>(`${this.apiUrl}/consultas/${id}`, request);
   }
 
@@ -57,6 +62,10 @@ export class HistorialService {
 
   crearDiagnostico(request: CrearDiagnosticoRequest): Observable<DiagnosticoResponse> {
     return this.http.post<DiagnosticoResponse>(`${this.apiUrl}/diagnosticos`, request);
+  }
+
+  crearDiagnosticoConExamen(request: CrearDiagnosticoConExamenRequest): Observable<DiagnosticoResponse> {
+    return this.http.post<DiagnosticoResponse>(`${this.apiUrl}/diagnosticos/con-examen`, request);
   }
 
   actualizarDiagnostico(id: number, request: ActualizarDiagnosticoRequest): Observable<DiagnosticoResponse> {
@@ -132,6 +141,26 @@ export class HistorialService {
 
   actualizarExamen(id: number, request: ExamenUpdateDto): Observable<ExamenResponseDto> {
     return this.http.put<ExamenResponseDto>(`${this.apiUrl}/examenes/${id}`, request);
+  }
+
+  listarArchivosExamen(id: number): Observable<ExamResultFileDto[]> {
+    return this.http.get<ExamResultFileDto[]>(`${this.apiUrl}/examenes/${id}/archivos`);
+  }
+
+  adjuntarArchivosExamen(id: number, files: readonly File[]): Observable<HttpEvent<ExamResultFileDto[]>> {
+    const form = new FormData();
+    for (const file of files) form.append('archivos', file, file.name);
+    return this.http.post<ExamResultFileDto[]>(`${this.apiUrl}/examenes/${id}/archivos`,
+      form, { observe: 'events', reportProgress: true });
+  }
+
+  descargarArchivoExamen(id: number, archivoId: string): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/examenes/${id}/archivos/${archivoId}`,
+      { responseType: 'blob' });
+  }
+
+  eliminarArchivoExamen(id: number, archivoId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/examenes/${id}/archivos/${archivoId}`);
   }
 
   // ==================== CONTACTO EMERGENCIA ====================

@@ -1,0 +1,56 @@
+{
+  "phase": "API-CON-EVAL-UNICA-01",
+  "createdAt": "2026-10-22T14:55:58.6346933-06:00",
+  "repo": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "gitStatusBefore": [
+    " M API-Clinica.Tests/ConsultasTests.cs",
+    " M API-Clinica/Services/ConsultaService.cs",
+    " M WebClinica/src/app/core/models/historial.model.ts",
+    " M WebClinica/src/app/core/services/historial.service.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle-conux01.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+    " M WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+    "?? Respaldos-API-Clinica/API-CON-EVAL-UNICA-01/",
+    "?? Respaldos-API-Clinica/API-CON-STATE-FIX-01/",
+    "?? Respaldos-API-Clinica/CON-CREATE-STATE-01/",
+    "?? Respaldos-API-Clinica/CON-UX-EVAL-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-02/"
+  ],
+  "files": [
+    {
+      "path": "API-Clinica/DTOs/ConsultaDtos.cs",
+      "bytes": 3040,
+      "sha256": "D17CD5D15DF65EED8112280D7CB9216CE90B70A0F0D3D7508404933937B5E4A5"
+    },
+    {
+      "path": "API-Clinica/Interfaces/IConsultaService.cs",
+      "bytes": 719,
+      "sha256": "185EF53AEF85CA2F4E284DADE009B6DE9DB91C62438073381B3103A641DC2698"
+    },
+    {
+      "path": "API-Clinica/Controllers/ConsultasController.cs",
+      "bytes": 1418,
+      "sha256": "6F3B4EADF6EA6AF2D9B35B257AD9C3702FAFD37613450B6362B0F6065A12F0A0"
+    },
+    {
+      "path": "API-Clinica/Services/ConsultaService.cs",
+      "bytes": 17992,
+      "sha256": "5A00A875E1383EF1073C2751041B430FA97A75216B9D938A95F2AEFAA751CA14"
+    },
+    {
+      "path": "API-Clinica/Data/ClinicaDbContext.cs",
+      "bytes": 47057,
+      "sha256": "134E0B274747FF0A1BC062BF01D3838F537998CF588E0F5F2BE95AF7E7A5DCED"
+    },
+    {
+      "path": "API-Clinica.Tests/ConsultasTests.cs",
+      "bytes": 56206,
+      "sha256": "CC5432DD43767C0789B15F819450F3B58B490194DD2AC3533FC334F20A60CB34"
+    }
+  ]
+}

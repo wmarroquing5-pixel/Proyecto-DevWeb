@@ -63,6 +63,22 @@ public sealed class ConsultaCreateDto : ConsultaDatosRequest;
 
 public sealed class ConsultaUpdateDto : ConsultaDatosRequest;
 
+public sealed class RegistrarEvaluacionConsultaRequest
+{
+    [StringLength(300)]
+    public string? Sintomas { get; init; }
+
+    [StringLength(300)]
+    public string? Observaciones { get; init; }
+
+    public double? PesoLb { get; init; }
+    public int? AlturaCm { get; init; }
+    public double? PresionSistolica { get; init; }
+    public double? PresionDiastolica { get; init; }
+    public decimal? TemperaturaC { get; init; }
+    public short? FrecuenciaCardiaca { get; init; }
+}
+
 public sealed class ConsultaFiltroDto
 {
     public int? IdPaciente { get; init; }

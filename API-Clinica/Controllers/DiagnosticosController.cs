@@ -28,6 +28,16 @@ public sealed class DiagnosticosController(IDiagnosticoService service) : Contro
         return StatusCode(StatusCodes.Status201Created, response);
     }
 
+    [HttpPost("con-examen"), PermisoRequerido("Historial", Operacion.Crear),
+        PermisoRequerido("Historial", Operacion.Modificar)]
+    [ProducesResponseType(typeof(DiagnosticoResponse), StatusCodes.Status201Created)]
+    public async Task<ActionResult<DiagnosticoResponse>> CrearConExamen(
+        [FromBody] CrearDiagnosticoConExamenRequest request, CancellationToken cancellationToken)
+    {
+        var response = await service.CrearConExamenAsync(request, User, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, response);
+    }
+
     [HttpPut("{id:int}"), PermisoRequerido("Historial", Operacion.Modificar)]
     public async Task<ActionResult<DiagnosticoResponse>> Actualizar(
         int id, [FromBody] ActualizarDiagnosticoRequest request,

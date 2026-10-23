@@ -15,4 +15,7 @@ public interface IConsultaService
     Task<ConsultaDetalleDto> ActualizarAsync(
         int id, ConsultaUpdateDto request, ClaimsPrincipal principal,
         CancellationToken cancellationToken);
+    Task<ConsultaDetalleDto> RegistrarEvaluacionAsync(
+        int id, RegistrarEvaluacionConsultaRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken);
 }

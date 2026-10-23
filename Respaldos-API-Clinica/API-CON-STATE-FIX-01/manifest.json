@@ -1,0 +1,67 @@
+{
+  "phase": "API-CON-STATE-FIX-01",
+  "createdAt": "2026-10-22T14:25:48.0962269-06:00",
+  "repo": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "gitStatusBefore": [
+    " M API-Clinica.Tests/ConsultasTests.cs",
+    " M API-Clinica/Services/ConsultaService.cs",
+    " M WebClinica/src/app/core/models/historial.model.ts",
+    " M WebClinica/src/app/core/services/historial.service.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+    " M WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+    "?? Respaldos-API-Clinica/CON-CREATE-STATE-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-02/"
+  ],
+  "files": [
+    {
+      "path": "API-Clinica/Services/ConsultaService.cs",
+      "bytes": 17992,
+      "sha256": "5A00A875E1383EF1073C2751041B430FA97A75216B9D938A95F2AEFAA751CA14"
+    },
+    {
+      "path": "API-Clinica.Tests/ConsultasTests.cs",
+      "bytes": 56206,
+      "sha256": "CC5432DD43767C0789B15F819450F3B58B490194DD2AC3533FC334F20A60CB34"
+    },
+    {
+      "path": "API-Clinica/Models/Entities/Consulta.cs",
+      "bytes": 826,
+      "sha256": "A41A9AA6258F804A8186D4A3DA133FAB7CF54B91A4DAB076C4B4DD0B41D9306F"
+    },
+    {
+      "path": "API-Clinica/Data/ClinicaDbContext.cs",
+      "bytes": 47057,
+      "sha256": "134E0B274747FF0A1BC062BF01D3838F537998CF588E0F5F2BE95AF7E7A5DCED"
+    },
+    {
+      "path": "API-Clinica/DTOs/ConsultaDtos.cs",
+      "bytes": 3040,
+      "sha256": "D17CD5D15DF65EED8112280D7CB9216CE90B70A0F0D3D7508404933937B5E4A5"
+    },
+    {
+      "path": "API-Clinica/Controllers/ConsultasController.cs",
+      "bytes": 1418,
+      "sha256": "6F3B4EADF6EA6AF2D9B35B257AD9C3702FAFD37613450B6362B0F6065A12F0A0"
+    },
+    {
+      "path": "API-Clinica/Program.cs",
+      "bytes": 4483,
+      "sha256": "30DD6610F4FE7EF12B7FBD35768192C15C41A447F8D5709542EC3847DD672C31"
+    },
+    {
+      "path": "API-Clinica/Properties/launchSettings.json",
+      "bytes": 644,
+      "sha256": "31708197ECDEC4B7A88088B50643C6B4784C15D886EEA05360624207ADB37685"
+    },
+    {
+      "path": "WebClinica/src/environments/environment.ts",
+      "bytes": 673,
+      "sha256": "9D40A147AB0B8A710B306CCC5F4BF909CE25232BCC21C7495E2ACBEFDA6AF323"
+    }
+  ]
+}

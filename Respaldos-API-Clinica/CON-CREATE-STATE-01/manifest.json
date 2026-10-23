@@ -1,0 +1,48 @@
+{
+  "phase": "CON-CREATE-STATE-01",
+  "createdAt": "2026-10-22T14:07:47.4002164-06:00",
+  "repo": "C:\\Users\\DESARROLLO\\Documents\\ChatGPT\\API-Clinica",
+  "gitStatusBefore": [
+    " M WebClinica/src/app/core/models/historial.model.ts",
+    " M WebClinica/src/app/core/services/historial.service.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-detalle.component.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+    " M WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-01/",
+    "?? Respaldos-API-Clinica/CON-UX-NEW-02/"
+  ],
+  "files": [
+    {
+      "path": "API-Clinica/Services/ConsultaService.cs",
+      "bytes": 17963,
+      "sha256": "AA5D91DC94C9E04B25C5FBAB26551AEE3E9DCB0D57D2F75F316CBA7DFA1C5100"
+    },
+    {
+      "path": "API-Clinica.Tests/ConsultasTests.cs",
+      "bytes": 55188,
+      "sha256": "481054FEC50EF7A1F2563F5D4870C0497443FFD55934BFC6DAB39C2F35D272B4"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-nueva.component.ts",
+      "bytes": 36466,
+      "sha256": "606AEDF5ED3078E5C25BF1E5A49AFA9332677CCE6C02274EC6B5949FA8EAADC2"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-nueva.component.spec.ts",
+      "bytes": 26334,
+      "sha256": "293CA0D8782FD59143E7B3826A0F0669320E61E49A16C710BE8AE7C9EB0E13A8"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consulta-nueva-pacientes.spec.ts",
+      "bytes": 23130,
+      "sha256": "466820FB03D4DEC83C29B5A369C85ADAE6E6E49475E23524882BD1B459956C7D"
+    },
+    {
+      "path": "WebClinica/src/app/pages/historial/consultas-list.component.spec.ts",
+      "bytes": 13382,
+      "sha256": "130340A8B201D7DDCED0AE704F7BB02DE5867F9FF36119E4D19DBCD786B79E8B"
+    }
+  ]
+}

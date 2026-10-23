@@ -24,6 +24,19 @@ export interface ConsultaDetalleDto extends ConsultaListadoDto {
   presionDiastolica: number | null;
   presionSistolica: number | null;
   alturaCm: number | null;
+  temperaturaC?: number | null;
+  frecuenciaCardiaca?: number | null;
+}
+
+export interface RegistrarEvaluacionConsultaRequest {
+  sintomas: string | null;
+  observaciones: string | null;
+  pesoLb: number | null;
+  alturaCm: number | null;
+  presionSistolica: number | null;
+  presionDiastolica: number | null;
+  temperaturaC: number | null;
+  frecuenciaCardiaca: number | null;
 }
 
 export interface ConsultaCreateDto {
@@ -32,6 +45,10 @@ export interface ConsultaCreateDto {
   idSucursal: number;
   idClinica: number | null;
   fechaConsulta: string;
+  motivoConsulta?: string | null;
+}
+
+export interface ConsultaUpdateDto extends ConsultaCreateDto {
   motivoConsulta: string | null;
   sintomas: string | null;
   observaciones: string | null;
@@ -39,6 +56,8 @@ export interface ConsultaCreateDto {
   presionDiastolica: number | null;
   presionSistolica: number | null;
   alturaCm: number | null;
+  temperaturaC?: number | null;
+  frecuenciaCardiaca?: number | null;
 }
 
 export interface ConsultaFiltroDto {
@@ -67,6 +86,10 @@ export interface CrearDiagnosticoRequest {
   idConsulta: number;
   idMedico: number | null;
   descripcion: string;
+}
+
+export interface CrearDiagnosticoConExamenRequest extends CrearDiagnosticoRequest {
+  idExamen: number;
 }
 
 export interface ActualizarDiagnosticoRequest {
@@ -175,6 +198,15 @@ export interface ExamenResponseDto {
   prioridad: string | null;
   idPaciente: number | null;
   idMedico: number | null;
+}
+
+export interface ExamResultFileDto {
+  archivoId: string;
+  nombreOriginal: string;
+  tipoContenido: 'application/pdf' | 'image/jpeg' | 'image/png' | 'image/webp';
+  tamanoBytes: number;
+  fechaCargaUtc: string;
+  idUsuarioCarga: number;
 }
 
 export interface ExamenCreateDto {

@@ -695,49 +695,59 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
             entity.Property(e => e.IdPaciente)
                 .HasColumnName("IdPaciente")
                 .HasColumnType("int")
+                .IsConcurrencyToken()
                 .IsRequired(true);
             entity.Property(e => e.IdMedico)
                 .HasColumnName("IdMedico")
                 .HasColumnType("int")
+                .IsConcurrencyToken()
                 .IsRequired(true);
             entity.Property(e => e.IdSucursal)
                 .HasColumnName("IdSucursal")
                 .HasColumnType("int")
+                .IsConcurrencyToken()
                 .IsRequired(true);
             entity.Property(e => e.FechaConsulta)
                 .HasColumnName("FechaConsulta")
                 .HasColumnType("datetime2")
+                .IsConcurrencyToken()
                 .IsRequired(true);
             entity.Property(e => e.MotivoConsulta)
                 .HasColumnName("MotivoConsulta")
                 .HasColumnType("nvarchar(300)")
+                .IsConcurrencyToken()
                 .IsRequired(false);
             entity.Property(e => e.Sintomas)
                 .HasColumnName("Sintomas")
                 .HasColumnType("nvarchar(300)")
+                .IsConcurrencyToken()
                 .IsRequired(false);
             entity.Property(e => e.Observaciones)
                 .HasColumnName("Observaciones")
                 .HasColumnType("nvarchar(300)")
+                .IsConcurrencyToken()
                 .IsRequired(false);
             entity.Property(e => e.EstadoConsulta)
                 .HasColumnName("EstadoConsulta")
                 .HasColumnType("nvarchar(30)")
                 .HasMaxLength(30)
+                .IsConcurrencyToken()
                 .IsRequired(false);
-            entity.Property(e => e.IdClinica).HasColumnType("int");
-            entity.Property(e => e.PesoLb).HasColumnType("float");
-            entity.Property(e => e.PresionSistolica).HasColumnType("float");
-            entity.Property(e => e.PresionDiastolica).HasColumnType("float");
-            entity.Property(e => e.AlturaCm).HasColumnType("int");
+            entity.Property(e => e.IdClinica).HasColumnType("int").IsConcurrencyToken();
+            entity.Property(e => e.PesoLb).HasColumnType("float").IsConcurrencyToken();
+            entity.Property(e => e.PresionSistolica).HasColumnType("float").IsConcurrencyToken();
+            entity.Property(e => e.PresionDiastolica).HasColumnType("float").IsConcurrencyToken();
+            entity.Property(e => e.AlturaCm).HasColumnType("int").IsConcurrencyToken();
             entity.Property(e => e.TemperaturaC)
                 .HasColumnName("TemperaturaC")
                 .HasColumnType("decimal(4,1)")
                 .HasPrecision(4, 1)
+                .IsConcurrencyToken()
                 .IsRequired(false);
             entity.Property(e => e.FrecuenciaCardiaca)
                 .HasColumnName("FrecuenciaCardiaca")
                 .HasColumnType("smallint")
+                .IsConcurrencyToken()
                 .IsRequired(false);
             entity.HasOne<Paciente>()
                 .WithMany()

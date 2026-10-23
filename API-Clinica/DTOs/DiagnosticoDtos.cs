@@ -14,6 +14,22 @@ public sealed class CrearDiagnosticoRequest
     public string Descripcion { get; init; } = string.Empty;
 }
 
+// El registro vinculado también modifica un examen existente.
+public sealed class CrearDiagnosticoConExamenRequest
+{
+    [Range(1, int.MaxValue)]
+    public int IdConsulta { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int IdExamen { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int? IdMedico { get; init; }
+
+    [Required, StringLength(300)]
+    public string Descripcion { get; init; } = string.Empty;
+}
+
 public sealed class DiagnosticoFiltroDto
 {
     public int? IdConsulta { get; init; }

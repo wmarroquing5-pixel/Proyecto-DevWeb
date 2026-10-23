@@ -1,9 +1,11 @@
+using System.Data;
 using System.Security.Claims;
 using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
 using API_Clinica.Models.Entities;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace API_Clinica.Services;
@@ -58,9 +60,12 @@ public sealed class DiagnosticoService(
 
         var consulta = await context.Consultas.AsNoTracking()
             .Where(c => c.IdConsulta == request.IdConsulta)
-            .Select(c => new { c.IdMedico })
+            .Select(c => new { c.IdMedico, c.EstadoConsulta })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException("Consulta no encontrada.");
+
+        if (consulta.EstadoConsulta == "Cerrada")
+            throw new ConflictException("La consulta está cerrada.");
 
         await ValidarMedicoConsultaAsync(consulta.IdMedico, cancellationToken);
 
@@ -79,6 +84,75 @@ public sealed class DiagnosticoService(
 
         return new DiagnosticoResponse(diagnostico.IdDiagnostico, diagnostico.IdConsulta,
             consulta.IdMedico, diagnostico.Descripcion, diagnostico.FechaRegistro);
+    }
+
+    public async Task<DiagnosticoResponse> CrearConExamenAsync(
+        CrearDiagnosticoConExamenRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        if (request.IdConsulta <= 0)
+            throw Invalid("IdConsulta", "La consulta debe ser válida.");
+        if (request.IdExamen <= 0)
+            throw Invalid("IdExamen", "El examen debe ser válido.");
+        var descripcion = ValidarDescripcion(request.Descripcion);
+        if (!context.Database.IsSqlServer())
+            throw new NotSupportedException("La asociación transaccional requiere SQL Server.");
+
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, cancellationToken);
+
+            var usuario = await accesoActual.ObtenerUsuarioActivoAsync(principal, cancellationToken)
+                ?? throw new ForbiddenException("Acceso denegado.");
+            var consulta = await context.Consultas
+                .FromSqlInterpolated($"SELECT * FROM [Consulta] WITH (UPDLOCK, HOLDLOCK) WHERE [IdConsulta] = {request.IdConsulta}")
+                .AsNoTracking().SingleOrDefaultAsync(cancellationToken)
+                ?? throw new NotFoundException("Consulta no encontrada.");
+            if (consulta.EstadoConsulta == "Cerrada")
+                throw new ConflictException("La consulta está cerrada.");
+            await ValidarMedicoConsultaAsync(consulta.IdMedico, cancellationToken);
+            var idMedico = await ResolverMedicoAsync(usuario, request.IdMedico, cancellationToken);
+            if (idMedico != consulta.IdMedico)
+                throw Invalid("IdMedico", "El médico debe corresponder a la consulta.");
+
+            var examen = await context.Examenes
+                .FromSqlInterpolated($"SELECT * FROM [Examen] WITH (UPDLOCK, HOLDLOCK) WHERE [IdExamen] = {request.IdExamen} AND [IdConsulta] = {request.IdConsulta}")
+                .AsNoTracking().SingleOrDefaultAsync(cancellationToken)
+                ?? throw new NotFoundException("Examen no encontrado en esta consulta.");
+            if (examen.IdDiagnostico is not null)
+                throw new ConflictException("El examen ya tiene un diagnóstico relacionado.");
+
+            var diagnostico = new Diagnostico
+            {
+                IdConsulta = request.IdConsulta,
+                IdMedico = idMedico,
+                Descripcion = descripcion,
+                FechaRegistro = DateTime.UtcNow
+            };
+            context.Diagnosticos.Add(diagnostico);
+            await context.SaveChangesAsync(cancellationToken);
+            var updated = await context.Examenes
+                .Where(e => e.IdExamen == request.IdExamen && e.IdConsulta == request.IdConsulta
+                    && e.IdDiagnostico == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    e => e.IdDiagnostico, diagnostico.IdDiagnostico), cancellationToken);
+            if (updated != 1)
+                throw new ConflictException("El examen cambió durante el registro. No se creó el diagnóstico.");
+
+            await transaction.CommitAsync(cancellationToken);
+            return new DiagnosticoResponse(diagnostico.IdDiagnostico, diagnostico.IdConsulta,
+                consulta.IdMedico, diagnostico.Descripcion, diagnostico.FechaRegistro);
+        }
+        catch (SqlException ex) when (ex.Number is 1205 or 1222 or 547)
+        {
+            throw new ConflictException("La relación clínica cambió durante el registro. Intente nuevamente.");
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number is 1205 or 1222 or 547)
+        {
+            throw new ConflictException("La relación clínica cambió durante el registro. Intente nuevamente.");
+        }
     }
 
     public async Task<DiagnosticoResponse> ActualizarAsync(

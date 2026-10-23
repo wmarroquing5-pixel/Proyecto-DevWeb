@@ -98,6 +98,7 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
           puedeConsultar: () => true,
           puedeCrear: (modulo: string) => modulo === MODULOS_PERMISO.CONSUMO_CLINICO
             ? consumoPermitido() : true,
+          puedeModificar: () => false,
         } },
         { provide: HistorialService, useValue: {
           obtenerConsulta: () => of(consulta),
@@ -124,6 +125,20 @@ describe('ConsultaDetalleComponent: consumo clínico', () => {
     fixture.detectChanges();
     return component;
   }
+
+  it('lee temperatura y frecuencia cardíaca en Evaluación sin exigir otros datos clínicos', () => {
+    const component = render();
+    component.consulta = { ...consulta, temperaturaC: 36.5, frecuenciaCardiaca: 72 };
+    component.tab = 'evaluacion';
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(component.tieneEvaluacion).toBeTrue();
+    expect(text).toContain('Temperatura');
+    expect(text).toContain('36.5 °C');
+    expect(text).toContain('Frecuencia cardíaca');
+    expect(text).toContain('72 lpm');
+    expect(text).not.toContain('No hay datos de evaluación registrados.');
+  });
 
   it('ofrece consumo solo para un tratamiento asociado a lote y con permiso Crear', () => {
     render();

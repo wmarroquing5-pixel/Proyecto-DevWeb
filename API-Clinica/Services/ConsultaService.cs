@@ -125,10 +125,11 @@ public sealed class ConsultaService(
     public async Task<ConsultaDetalleDto> CrearAsync(
         ConsultaCreateDto request, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
+        ValidarSinEvaluacion(request);
         var usuario = await ObtenerUsuarioAsync(principal, cancellationToken);
         var idMedico = await ResolverMedicoAsync(usuario, request.IdMedico, null,
             cancellationToken);
-        var consulta = new Consulta();
+        var consulta = new Consulta { EstadoConsulta = "Abierta" };
         await AplicarDatosAsync(consulta, request, idMedico, cancellationToken);
         context.Consultas.Add(consulta);
         await GuardarAsync(cancellationToken);
@@ -145,6 +146,7 @@ public sealed class ConsultaService(
             ?? throw new NotFoundException("Consulta no encontrada.");
         var idMedico = await ResolverMedicoAsync(usuario, request.IdMedico,
             consulta.IdMedico, cancellationToken);
+        ValidarSinEvaluacion(request);
 
         if ((consulta.IdPaciente != request.IdPaciente || consulta.IdMedico != idMedico ||
             consulta.IdSucursal != request.IdSucursal || consulta.IdClinica != request.IdClinica) &&
@@ -155,6 +157,69 @@ public sealed class ConsultaService(
         await AplicarDatosAsync(consulta, request, idMedico, cancellationToken);
         await GuardarAsync(cancellationToken);
         return ToDetalle(consulta);
+    }
+
+    public async Task<ConsultaDetalleDto> RegistrarEvaluacionAsync(
+        int id, RegistrarEvaluacionConsultaRequest request, ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        var usuario = await ObtenerUsuarioAsync(principal, cancellationToken);
+        var medicoAutorizado = await ObtenerMedicoParaLecturaAsync(principal, cancellationToken);
+        var query = context.Consultas.AsQueryable();
+        if (medicoAutorizado.HasValue)
+            query = query.Where(c => c.IdMedico == medicoAutorizado.Value);
+        var consulta = await query.SingleOrDefaultAsync(
+            c => c.IdConsulta == id, cancellationToken)
+            ?? throw new NotFoundException("Consulta no encontrada.");
+        await ResolverMedicoAsync(usuario, consulta.IdMedico, consulta.IdMedico,
+            cancellationToken);
+        if (!string.Equals(consulta.EstadoConsulta, "Abierta", StringComparison.Ordinal) ||
+            TieneEvaluacion(consulta))
+            throw new ConflictException("La consulta no admite otra evaluación clínica.");
+
+        var sintomas = TextoOpcional(request.Sintomas, nameof(request.Sintomas));
+        var observaciones = TextoOpcional(request.Observaciones, nameof(request.Observaciones));
+        var peso = Finito(request.PesoLb, nameof(request.PesoLb));
+        var sistolica = Finito(request.PresionSistolica, nameof(request.PresionSistolica));
+        var diastolica = Finito(request.PresionDiastolica, nameof(request.PresionDiastolica));
+        var temperatura = TemperaturaValida(request.TemperaturaC);
+        var frecuencia = FrecuenciaCardiacaValida(request.FrecuenciaCardiaca);
+        if (sintomas is null && observaciones is null && peso is null &&
+            request.AlturaCm is null && sistolica is null && diastolica is null &&
+            temperatura is null && frecuencia is null)
+            throw Invalid("Evaluacion", "Debe registrar al menos un dato clínico.");
+
+        consulta.Sintomas = sintomas;
+        consulta.Observaciones = observaciones;
+        consulta.PesoLb = peso;
+        consulta.AlturaCm = request.AlturaCm;
+        consulta.PresionSistolica = sistolica;
+        consulta.PresionDiastolica = diastolica;
+        consulta.TemperaturaC = temperatura;
+        consulta.FrecuenciaCardiaca = frecuencia;
+        consulta.EstadoConsulta = "En seguimiento";
+        // Los tokens EF agregan el estado, la atribución y los ocho valores originales
+        // al WHERE del único UPDATE. Cero filas afectadas produce conflicto, sin escritura parcial.
+        await GuardarAsync(cancellationToken);
+        return ToDetalle(consulta);
+    }
+
+    private static bool TieneEvaluacion(Consulta consulta) =>
+        !string.IsNullOrWhiteSpace(consulta.Sintomas) ||
+        !string.IsNullOrWhiteSpace(consulta.Observaciones) ||
+        consulta.PesoLb.HasValue || consulta.AlturaCm.HasValue ||
+        consulta.PresionSistolica.HasValue || consulta.PresionDiastolica.HasValue ||
+        consulta.TemperaturaC.HasValue || consulta.FrecuenciaCardiaca.HasValue;
+
+    private static void ValidarSinEvaluacion(ConsultaDatosRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.Sintomas) ||
+            !string.IsNullOrWhiteSpace(request.Observaciones) ||
+            request.PesoLb.HasValue || request.AlturaCm.HasValue ||
+            request.PresionSistolica.HasValue || request.PresionDiastolica.HasValue ||
+            request.TemperaturaC.HasValue || request.FrecuenciaCardiaca.HasValue)
+            throw Invalid("Evaluacion",
+                "Los datos clínicos se registran únicamente mediante POST /api/consultas/{id}/evaluacion.");
     }
 
     private async Task<Usuario> ObtenerUsuarioAsync(
@@ -284,19 +349,6 @@ public sealed class ConsultaService(
         consulta.FechaConsulta = request.FechaConsulta;
         consulta.MotivoConsulta = TextoOpcional(request.MotivoConsulta,
             nameof(request.MotivoConsulta));
-        consulta.Sintomas = TextoOpcional(request.Sintomas, nameof(request.Sintomas));
-        consulta.Observaciones = TextoOpcional(request.Observaciones,
-            nameof(request.Observaciones));
-        consulta.PesoLb = Finito(request.PesoLb, nameof(request.PesoLb));
-        consulta.PresionDiastolica = Finito(request.PresionDiastolica,
-            nameof(request.PresionDiastolica));
-        consulta.PresionSistolica = Finito(request.PresionSistolica,
-            nameof(request.PresionSistolica));
-        consulta.AlturaCm = request.AlturaCm;
-        if (request.TemperaturaCEnviada)
-            consulta.TemperaturaC = TemperaturaValida(request.TemperaturaC);
-        if (request.FrecuenciaCardiacaEnviada)
-            consulta.FrecuenciaCardiaca = FrecuenciaCardiacaValida(request.FrecuenciaCardiaca);
     }
 
     private async Task<bool> TieneRegistrosClinicosAsync(int id, CancellationToken ct) =>
@@ -308,6 +360,15 @@ public sealed class ConsultaService(
     private async Task GuardarAsync(CancellationToken cancellationToken)
     {
         try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("La consulta cambió durante la operación. Recargue sus datos.");
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
+            sql.Number is 1205 or 1222)
+        {
+            throw new ConflictException("La consulta está siendo modificada. Intente nuevamente.");
+        }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
             sql.Number == 547)
         {
