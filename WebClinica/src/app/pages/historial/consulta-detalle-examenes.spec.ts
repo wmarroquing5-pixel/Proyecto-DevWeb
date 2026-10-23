@@ -128,7 +128,7 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
     modify.set(true);
     const component = render();
     const root = fixture.nativeElement as HTMLElement;
-    expect(component.fechaCargaResultado(8)).toBe('Fecha no disponible');
+    expect(component.fechaCargaResultado(8)).toBe('No se pudieron consultar los resultados');
     expect(root.textContent).not.toContain('Adjuntar resultados');
     component.seleccionarExamen(exam, 'adjuntar');
     expect(component.modoExamen).toBe('cerrado');
@@ -163,7 +163,7 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
     expect(root.textContent).toContain('Adjuntar resultados');
     component.actualizarCantidadArchivos({ examId: 8, count: null });
     fixture.detectChanges();
-    expect(component.fechaCargaResultado(8)).toBe('Fecha no disponible');
+    expect(component.fechaCargaResultado(8)).toBe('No se pudieron consultar los resultados');
     expect(root.textContent).not.toContain('Adjuntar resultados');
     component.seleccionarExamen(exam, 'adjuntar');
     expect(component.modoExamen).toBe('cerrado');
@@ -418,6 +418,22 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Fecha no disponible');
   });
 
+  it('permite reintentar los metadatos tras un error sin habilitar una carga incierta', () => {
+    listFiles.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    modify.set(true);
+    const component = render();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('No se pudieron consultar los resultados');
+    expect(root.textContent).not.toContain('Adjuntar resultados');
+    listFiles.and.returnValue(of([]));
+    const retry = Array.from(root.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === 'Reintentar');
+    expect(retry).toBeTruthy();
+    retry!.click(); fixture.detectChanges();
+    expect(listFiles).toHaveBeenCalledTimes(2);
+    expect(root.textContent).toContain('Adjuntar resultados');
+  });
+
   it('Diagnóstico rechaza resultados de otra consulta y presenta errores de almacenamiento', () => {
     listFiles.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     const component = render();
@@ -429,7 +445,7 @@ describe('ConsultaDetalleComponent: Exámenes', () => {
     expect(listFiles).toHaveBeenCalledTimes(1); // Consulta previa del estado de adjuntos del examen propio.
     component.verResultadosDiagnostico(exam);
     fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No se pudieron cargar los archivos de resultado');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No se pudieron consultar los resultados');
     expect((fixture.nativeElement as HTMLElement).querySelector('app-exam-results input[type=file]')).toBeNull();
   });
 

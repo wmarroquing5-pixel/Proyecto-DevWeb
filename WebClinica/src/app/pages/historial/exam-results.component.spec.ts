@@ -125,6 +125,10 @@ describe('ExamResultsComponent', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(component.listVerified).toBeFalse();
     expect(root.querySelector('input[type=file]')).toBeNull();
+    expect(root.textContent).toContain('No se pudieron consultar los resultados');
+    expect(root.textContent).not.toContain('0 archivo(s)');
+    expect(root.textContent).not.toContain('Pendiente: no hay archivos');
+    expect(root.textContent).toContain('Reintentar');
     component.selectFiles({ target: { files: [new File(['A'], 'nuevo.pdf')], value: 'x' } } as unknown as Event);
     component.upload();
     expect(upload).not.toHaveBeenCalled();

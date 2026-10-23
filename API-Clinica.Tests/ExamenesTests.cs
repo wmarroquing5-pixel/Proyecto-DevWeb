@@ -332,7 +332,37 @@ public sealed class ExamenesTests
     }
 
     [Fact]
-    public async Task CargasConcurrentesConservanObjetosYFalloParcialEsConciliable()
+    public async Task AdministradorConPermisosVeExamenVacioYDependenciaNoDisponible()
+    {
+        using var factory = new ExamenApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: null, roleName: "ADMINISTRADOR");
+        await factory.SeedExamenesAsync();
+        await factory.GrantAsync(consultar: true, modificar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var empty = await client.GetAsync("/api/examenes/1/archivos");
+        Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
+        Assert.Empty((await empty.Content.ReadFromJsonAsync<ExamResultFileDto[]>())!);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/examenes/999/archivos")).StatusCode);
+
+        factory.Storage.FailOnList = true;
+        Assert.Equal(HttpStatusCode.ServiceUnavailable,
+            (await client.GetAsync("/api/examenes/1/archivos")).StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable,
+            (await PostFilesAsync(client, 1, ("informe.pdf", Pdf()))).StatusCode);
+        Assert.Equal(0, factory.Storage.Count);
+
+        factory.Storage.FailOnList = false;
+        Assert.Equal(HttpStatusCode.Created,
+            (await PostFilesAsync(client, 1, ("informe.pdf", Pdf()))).StatusCode);
+        Assert.Single((await client.GetFromJsonAsync<ExamResultFileDto[]>(
+            "/api/examenes/1/archivos"))!);
+    }
+
+    [Fact]
+    public async Task CargasConcurrentesAceptanSoloLaPrimeraYFalloParcialEsConciliable()
     {
         using var factory = new ExamenApiFactory();
         var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
@@ -342,15 +372,21 @@ public sealed class ExamenesTests
         await LoginAsync(client, password);
         var uploads = await Task.WhenAll(Enumerable.Range(0, 5)
             .Select(_ => PostFilesAsync(client, 1, ("informe.pdf", Pdf()))));
-        Assert.All(uploads, result => Assert.Equal(HttpStatusCode.Created, result.StatusCode));
-        Assert.Equal(5, factory.Storage.Count);
-        factory.Storage.FailOnSaveAttempt = 7;
-        var partial = await PostFilesAsync(client, 1,
+        Assert.Single(uploads, result => result.StatusCode == HttpStatusCode.Created);
+        Assert.Equal(4, uploads.Count(result => result.StatusCode == HttpStatusCode.Conflict));
+        Assert.Single((await client.GetFromJsonAsync<ExamResultFileDto[]>("/api/examenes/1/archivos"))!);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await PostFilesAsync(client, 1, ("nuevo.pdf", Pdf()))).StatusCode);
+        Assert.Equal(1, factory.Storage.Count);
+        factory.Storage.FailOnSaveAttempt = 3;
+        var partial = await PostFilesAsync(client, 2,
             ("uno.pdf", Pdf()), ("dos.pdf", Pdf()));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, partial.StatusCode);
-        Assert.Equal(6, factory.Storage.Count);
-        Assert.Equal(6, (await client.GetFromJsonAsync<ExamResultFileDto[]>(
-            "/api/examenes/1/archivos"))!.Length);
+        Assert.Equal(2, factory.Storage.Count);
+        Assert.Single((await client.GetFromJsonAsync<ExamResultFileDto[]>(
+            "/api/examenes/2/archivos"))!);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await PostFilesAsync(client, 2, ("repetido.pdf", Pdf()))).StatusCode);
     }
 
     private static async Task<HttpResponseMessage> PostFilesAsync(HttpClient client, int examId,
@@ -446,13 +482,13 @@ public sealed class ExamenesTests
             });
         }
 
-        public async Task<string> SeedAsync(int? idEmpleadoUsuario)
+        public async Task<string> SeedAsync(int? idEmpleadoUsuario, string roleName = "Prueba")
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<Usuario>>();
             var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-            db.Roles.Add(new Rol { IdRol = 1, Nombre = "Prueba", Activo = true });
+            db.Roles.Add(new Rol { IdRol = 1, Nombre = roleName, Activo = true });
             db.Sucursales.Add(new Sucursal { IdSucursal = 1, Nombre = "Prueba", Activa = true });
             db.Empleados.AddRange(
                 Empleado(1, "Medico", true), Empleado(2, "Medico", true),
@@ -577,9 +613,11 @@ public sealed class ExamenesTests
         private int saveAttempts;
         public int Count => files.Count;
         public int FailOnSaveAttempt { get; set; }
+        public bool FailOnList { get; set; }
 
         public Task<IReadOnlyList<ExamResultFileDto>> ListAsync(int examId, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<ExamResultFileDto>>(files
+            FailOnList ? throw new ExternalDependencyException("Almacenamiento de prueba no disponible.")
+            : Task.FromResult<IReadOnlyList<ExamResultFileDto>>(files
                 .Where(item => item.Key.StartsWith($"{examId}/", StringComparison.Ordinal))
                 .Select(item => item.Value.Metadata).ToArray());
 

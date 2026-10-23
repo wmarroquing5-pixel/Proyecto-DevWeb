@@ -1,17 +1,18 @@
 # WEB-TRAT-02 — Diseño de persistencia clínica y control de inventario
 
-**Estado:** propuesta técnica, sin aprobación para implementar. **WEB-TRAT-01 continúa bloqueada.** Este documento no modifica el contrato de la API ni el esquema de Azure SQL. Las consultas de la sección 9 están preparadas, **no ejecutadas**.
+**Estado:** propuesta técnica, sin aprobación para implementar. **WEB-TRAT-01 continúa bloqueada.** Este documento no modifica el contrato de la API ni el esquema de Azure SQL. Codex preparó las consultas de la sección 9 y **no las ejecutó**; el usuario comunicó comprobaciones de metadatos realizadas por separado en SSMS, consolidadas en `DB-AUDIT-AZURE-02/FINAL.md`.
 
 ## 1. Evidencia y supuestos que deben confirmarse
 
-- Fuente documental: `C:\Users\DESARROLLO\Desktop\script.sql` (SHA256 `59AEA7DFC361E81FE865478D24F2750C40F2489F028B5EB5AD40847FD1FF19CB`), comparado con `WEB-TRAT-01/AUDITORIA.md`, las entidades, `ClinicaDbContext`, DTO, controladores y servicios actuales. `DB-AUDIT-AZURE-01/FINAL.md` registra que **no existe perfil independiente de metadatos de solo lectura**; el esquema remoto actual no quedó comprobado. No reutilizar `DefaultConnection` productiva para esta comprobación.
+- Fuente documental: `C:\Users\DESARROLLO\Desktop\script.sql` (SHA256 `59AEA7DFC361E81FE865478D24F2750C40F2489F028B5EB5AD40847FD1FF19CB`), comparado con `WEB-TRAT-01/AUDITORIA.md`, las entidades, `ClinicaDbContext`, DTO, controladores y servicios actuales. Después de la auditoría inicial sin perfil, el usuario comunicó una identidad independiente `aud_empresa` y verificaciones de metadatos en SSMS sobre `db_Clinica`. `DB-AUDIT-AZURE-02/FINAL.md` distingue esa evidencia aportada de la inspección local de Codex. No reutilizar `DefaultConnection` productiva.
 - `Diagnostico` tiene `IdDiagnostico` e `IdConsulta`; `Tratamiento` tiene `IdTratamiento`, `IdConsulta`, **un solo** `IdLote` y `Cantidad` opcionales. No hay FK entre diagnóstico y tratamiento. `Tratamiento.IdMedico` se deriva de `Consulta` y está ignorado por EF.
 - `LoteMedicamento` vincula lote y medicamento y registra `CantidadDisponible`. `MovimientoInventario` tiene identidad, lote, usuario, sucursal, tipo, cantidad y fecha; no identifica tratamiento, receta, entrega ni administración. La restricción documentada de tipo admite `Entrada`, `Venta Publica`, `Uso Interno`, `Ajuste` y `Vencimiento`.
 - `POST /api/tratamientos` guarda tratamiento sin descontar. `POST /api/tratamientos/{id}/consumos` recibe `cantidad`, exige `ConsumoClinico/Crear` y médico responsable, y registra un descuento y movimiento `Uso Interno` en una transacción serializable. Cada POST válido representa **otra salida**: carece de clave de idempotencia y no admite distinguir una administración de unidades ya entregadas.
-- Las entidades C# `Venta`/`VentaDetalle` se mapean a `dbo.Factura`/`dbo.FacturaDetalle`; son operación comercial con precio y factura. Su reutilización como entrega clínica cambiaría semántica fiscal y no aportaría asociación inequívoca con receta. **No se propone reutilizarlas.** `Bitacora` narrativa no sustituye relaciones clínicas ni unicidad de operación.
+- Las entidades C# `Venta`/`VentaDetalle` se mapean a `dbo.Factura`/`dbo.FacturaDetalle`; son operación comercial con precio y factura. La salida SSMS aportada confirma sus nueve y siete columnas, respectivamente, y que no incluyen `IdTratamiento`, `IdReceta` ni clave de entrega. Su reutilización como entrega clínica cambiaría semántica fiscal y no aportaría asociación inequívoca con receta. **No se propone reutilizarlas.** `Bitacora` tampoco sustituye relaciones clínicas ni unicidad de operación.
+- La salida SSMS aportada también confirma cinco columnas de `HistorialMedico`, ocho de `Bitacora` y siete de `Permiso`, con tipos base y nulabilidad coincidentes con el script. El CSV `DB-AUDIT-AZURE-02-METADATOS.csv` aporta para las cinco tablas 10 FK, 5 índices de PK, 6 CHECK y 7 DEFAULT que coinciden con el script/EF en sus relaciones y reglas. `HistorialMedico` tiene consulta/diagnóstico y descripción, pero no evento de administración; `Bitacora` usa identificador textual sin FK al evento; `Permiso` guarda acciones CRUD por módulo.
 - Los contratos de `Medicamento` no contienen presentación/unidad de dispensación estructurada. Dosis clínica (por ejemplo, mg) y unidades de inventario (por ejemplo, tabletas) requieren política de conversión explícita; no inferir equivalencias.
 
-Las entidades anteriores reflejan el script y código, no una lectura del catálogo de Azure. Si la comprobación remota contradice estas fuentes, se revisará este diseño antes de cualquier implementación.
+Las entidades anteriores reflejan script/código y la evidencia SSMS **comunicada por el usuario**. El inventario de 27 tablas quedó completado en SSMS; las 36 columnas y los 28 metadatos de las cinco tablas adicionales están transcritos en `DB-AUDIT-AZURE-02/FINAL.md`. El usuario verificó además directamente que `dbo.Bitacora` solo tiene el índice CLUSTERED de su PK, por lo que `IX_Bitacora_Tabla_Fecha`, declarado en EF Core, está ausente del esquema real examinado. Codex no leyó el catálogo de Azure. Siguen pendientes longitudes/precisión remotas, la cobertura de índices no primarios de las otras tablas y posibles estructuras equivalentes con otros nombres.
 
 ## 2. Invariantes funcionales comunes
 
@@ -97,32 +98,34 @@ En WebClinica, una tarea posterior mostraría: selector de diagnóstico con corr
 
 ## 7. Matriz de compatibilidad
 
-| Requisito WEB-TRAT-01 | A: esquema actual | B: ampliación propuesta |
-|---|---|---|
-| Diagnóstico específico por receta | No | Sí, FK y comprobación de misma consulta |
-| Varios medicamentos en una receta | No | Sí, `RecetaLinea` |
-| Prescribir sin descontar | Sí | Sí |
-| Entregas completas/parciales con saldo | No | Sí, eventos y acumulados por línea |
-| Administración directa / entregada / externa | No | Sí, origen explícito y relación de suministro |
-| Cada salida vinculada a su origen | No | Sí, `SalidaClinica` para nuevos eventos |
-| Idempotencia persistente | No | Sí, clave única + hash + respuesta recuperable |
-| No descontar dos veces | Solo para una transacción individual; no ante reenvío | Sí, con unicidad, vínculo y transacciones probadas |
-| Concurrencia de stock | Sí para consumos independientes existentes | Sí, ampliada a saldos de receta/entrega y stock |
-| Historial auditable por receta | No | Sí, eventos y correcciones vinculados |
-| Sin modificar Azure SQL | Sí | **No; requiere autorización que hoy no existe** |
+La columna de evidencia separa inspección local de la verificación **reportada por el usuario desde SSMS**. La ausencia de tablas con nombres propuestos no descarta equivalentes con otros nombres.
+
+| Requisito WEB-TRAT-01 | A: estructuras actuales | B: ampliación propuesta | Base de la clasificación |
+|---|---|---|---|
+| Diagnóstico específico por receta | No en `Tratamiento` | Sí, FK y comprobación de misma consulta | Script/EF y ausencia de `Tratamiento.IdDiagnostico` reportada en SSMS. `HistorialMedico.IdDiagnostico` no enlaza tratamiento. |
+| Varios medicamentos en una receta | No garantizado | Sí, `RecetaLinea` | `FacturaDetalle` permite líneas comerciales, pero sus siete columnas, tres FK y cuatro CHECK recibidos de SSMS no incluyen receta. Un equivalente con otro nombre exigiría vínculos y restricciones comprobables. |
+| Prescribir sin descontar | Sí para tratamiento simple | Sí | Contrato y servicio actuales de tratamiento inspeccionados localmente. |
+| Entregas completas/parciales con saldo | No | Sí, eventos y acumulados por línea | FK/CHECK de `Factura` y `FacturaDetalle` recibidos de SSMS solo respaldan facturación de lote o servicio; no hay relación con receta/tratamiento ni saldo clínico en estas tablas. |
+| Administración directa / entregada / externa | No estructurada | Sí, origen explícito y relación de suministro | Cinco columnas y dos FK de `HistorialMedico` recibidas de SSMS: consulta/diagnóstico y narración, sin evento estructurado de administración. |
+| Cada salida vinculada a su origen | No en movimiento examinado | Sí, `SalidaClinica` para nuevos eventos | Ausencia de vínculo persistente en `MovimientoInventario` reportada en SSMS. |
+| Idempotencia persistente | No identificada | Sí, clave única + hash + respuesta recuperable | Las 36 columnas y los cinco índices exportados no aportan clave de operación; la revisión adicional de `Bitacora` confirma que tampoco tiene `IX_Bitacora_Tabla_Fecha` ni otro índice aparte de su PK. Esto no acredita los índices de todas las demás tablas. |
+| No descontar dos veces | Solo para una transacción individual; no ante reenvío | Sí, con unicidad, vínculo y transacciones probadas | Endpoint de consumo local sin clave de solicitud; movimiento remoto sin origen reportado. |
+| Concurrencia de stock | Sí para consumos independientes existentes | Sí, ampliada a saldos de receta/entrega y stock | Servicio actual; no se ejecutaron pruebas de escritura. |
+| Historial auditable por receta | No demostrado | Sí, eventos y correcciones vinculados | Columnas y FK de `HistorialMedico` y `Bitacora` verificadas vía SSMS según el usuario; se vinculan solo a consulta/diagnóstico y usuario, respectivamente. |
+| Sin modificar Azure SQL | Sí, con alcance reducido | **No; requiere decisión expresa que hoy no existe** | Regla vigente de BD inmutable. |
 
 ## 8. Puertas de decisión antes de una eventual implementación
 
-1. Disponer de identidad de auditoría con visibilidad de metadatos y sin lectura de filas clínicas ni escritura; ejecutar sección 9 y cotejar con el script. Un resultado oculto por permisos es **no verificable**, no «ausente» ([visibilidad de metadatos](https://learn.microsoft.com/en-us/sql/relational-databases/security/metadata-visibility-configuration)).
+1. Conservar la evidencia SSMS de `aud_empresa`, el inventario de 27 tablas, las 36 columnas, los 28 registros de FK/índices/CHECK/DEFAULT y la comprobación adicional de todos los índices de `dbo.Bitacora`. La ausencia de `IX_Bitacora_Tabla_Fecha` en Azure está confirmada según esa evidencia, sin autorización para crearlo. Aclarar longitudes/precisión remotas e índices no primarios de las otras tablas; documentar cualquier equivalente con otro nombre antes de concluir su ausencia. Codex no se conectó. Un objeto oculto por permisos es **no verificable**, no «ausente» ([visibilidad de metadatos](https://learn.microsoft.com/en-us/sql/relational-databases/security/metadata-visibility-configuration)).
 2. Aprobar política clínica de unidad de dispensación/conversión, receta por tratamiento, versiones, cumplimiento por fuente externa, cancelación, administración parcial, corrección y retención.
 3. Si se elige B, cambiar **expresamente** la prohibición vigente de DDL mediante decisión separada del dueño de datos; revisar impacto, respaldo, despliegue/reversión y permisos con DBA. Este documento no concede esa autorización.
 4. Implementar por cortes independientes: contrato/relaciones → receta multilínea sin stock → entrega transaccional e idempotente → administración según origen → correcciones e historial → UI; cada corte con pruebas SQL Server **aisladas**, nunca sobre Azure productiva. Conservar y ejecutar la suite anterior en cada corte.
 
-**Recomendación:** A es la única compatible hoy con la inmutabilidad de Azure, pero **no satisface** WEB-TRAT-01 y no debe maquillarse como entrega/administración. B es la propuesta para cumplir el flujo completo, condicionada a cambio expreso de la regla de esquema, comprobación remota y política clínica aprobada. Mantener WEB-TRAT-01 bloqueada. La batería mínima futura debe incluir dos entregas simultáneas sobre la misma línea, reenvío con clave igual/cuerpo igual y clave igual/cuerpo distinto, timeout tras commit, agotamiento de stock, lote vencido, dos administraciones concurrentes de una misma entrega, administración externa sin movimiento, reversión con y sin reintegro físico, permisos cruzados y conciliación de movimiento/evento.
+**Recomendación:** A es la única compatible hoy con la inmutabilidad de Azure, pero **no satisface** WEB-TRAT-01 y no debe presentarse como entrega/administración completa. La comprobación SSMS de las cinco tablas adicionales no aporta receta multilínea, evento de entrega/administración ni origen del movimiento. B, o un mecanismo persistente formalmente aprobado con garantías equivalentes, sigue siendo necesaria para el flujo completo, condicionada a decisión expresa sobre la regla de esquema, cotejo remoto restante y política clínica aprobada. Mantener WEB-TRAT-01 bloqueada. La batería mínima futura debe incluir dos entregas simultáneas sobre la misma línea, reenvío con clave igual/cuerpo igual y clave igual/cuerpo distinto, timeout tras commit, agotamiento de stock, lote vencido, dos administraciones concurrentes de una misma entrega, administración externa sin movimiento, reversión con y sin reintegro físico, permisos cruzados y conciliación de movimiento/evento.
 
-## 9. Consultas preparadas de solo lectura — NO EJECUTAR AÚN
+## 9. Consultas de solo lectura preparadas por Codex — no ejecutadas por Codex
 
-Estas consultas leen **metadatos**, no filas de pacientes ni movimientos. Ejecutarlas únicamente tras verificar una identidad específica de auditoría, el destino esperado y permisos efectivos. No ejecutar con `DefaultConnection` productiva. `sys.*` puede ocultar objetos por falta de permisos; ante visibilidad insuficiente, detener la comparación. Las vistas de catálogo y `HAS_PERMS_BY_NAME` están documentadas por Microsoft ([catálogos](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/object-catalog-views-transact-sql), [visibilidad](https://learn.microsoft.com/en-us/sql/relational-databases/security/metadata-visibility-configuration)).
+Estas consultas leen **metadatos**, no filas de pacientes ni movimientos. Usarlas únicamente con identidad específica de auditoría, destino esperado y permisos efectivos verificados; el usuario ya comunicó verificaciones parciales hechas en SSMS, sin afirmar que ejecutó este texto exacto. No ejecutar con `DefaultConnection` productiva. `sys.*` puede ocultar objetos por falta de permisos; ante visibilidad insuficiente, detener la comparación. Las vistas de catálogo y `HAS_PERMS_BY_NAME` están documentadas por Microsoft ([catálogos](https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/object-catalog-views-transact-sql), [visibilidad](https://learn.microsoft.com/en-us/sql/relational-databases/security/metadata-visibility-configuration)).
 
 **9.1 Identidad, destino y puerta de permisos.** Contrastar servidor/base con los valores aprobados fuera del informe. Si cualquier permiso de escritura/DDL es `1`, si un rol amplio está activo, si el resultado es `NULL` o si falta visibilidad, suspender. No imprimir la cadena de conexión.
 
@@ -257,4 +260,4 @@ WHERE s.name = N'dbo'
 ORDER BY t.name, kc.name;
 ```
 
-**Ejecución registrada en WEB-TRAT-02:** ninguna consulta; ningún dato clínico leído; ninguna operación productiva; ningún cambio de esquema, código, RBAC, inventario o despliegue.
+**Ejecución por Codex en WEB-TRAT-02 y esta consolidación:** ninguna consulta remota; ningún dato clínico leído; ninguna operación productiva; ningún cambio de esquema, código, RBAC, inventario o despliegue. Las comprobaciones separadas comunicadas por el usuario desde SSMS figuran en `DB-AUDIT-AZURE-02/FINAL.md`.

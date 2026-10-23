@@ -392,7 +392,9 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
                           <td>{{ fechaCargaResultado(e.idExamen) }}</td>
                           <td>@if (cantidadArchivosExamen[e.idExamen] != null) {
                             <span class="badge text-bg-secondary">{{ cantidadArchivosExamen[e.idExamen] }} · {{ cantidadArchivosExamen[e.idExamen] ? 'Con resultados' : 'Pendiente' }}</span>
-                          } @else { <span class="text-muted">{{ errorArchivosExamen.has(e.idExamen) ? 'No disponible' : 'Consultando' }}</span> }</td>
+                          } @else if (errorArchivosExamen.has(e.idExamen)) {
+                            <span class="text-danger">No se pudieron consultar los resultados</span>
+                          } @else { <span class="text-muted">Consultando</span> }</td>
                           <td><div class="d-flex flex-wrap gap-1">
                             <button type="button" class="btn btn-outline-primary btn-sm" (click)="seleccionarExamen(e, 'detalle')">Ver detalle</button>
                             @if (cantidadArchivosExamen[e.idExamen] === 0 && permisos.puedeModificar(MODULOS_PERMISO.HISTORIAL)) {
@@ -400,6 +402,9 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
                             }
                             @if ((cantidadArchivosExamen[e.idExamen] ?? 0) > 0) {
                               <button type="button" class="btn btn-outline-secondary btn-sm" (click)="seleccionarExamen(e, 'archivos')">Ver archivos</button>
+                            }
+                            @if (errorArchivosExamen.has(e.idExamen)) {
+                              <button type="button" class="btn btn-outline-secondary btn-sm" (click)="reintentarArchivosExamen(e)">Reintentar</button>
                             }
                           </div></td>
                         </tr>
@@ -1013,6 +1018,16 @@ export class ConsultaDetalleComponent implements OnInit {
     });
   }
 
+  reintentarArchivosExamen(exam: ExamenResponseDto): void {
+    const contexto = this.contextoLecturaActual();
+    if (!contexto || exam.idConsulta !== this.idConsulta
+      || !this.examenes.some(item => item.idExamen === exam.idExamen)
+      || !this.errorArchivosExamen.has(exam.idExamen)) return;
+    this.errorArchivosExamen.delete(exam.idExamen);
+    this.cargarMetadatosExamenes([exam], this.revisionExamenes,
+      contexto, this.idConsulta, this.idPaciente);
+  }
+
   agregarDiagnostico() {
     const contexto = this.contextoLecturaActual();
     const consulta = this.idConsulta;
@@ -1338,7 +1353,7 @@ export class ConsultaDetalleComponent implements OnInit {
   fechaCargaResultado(examId: number): string {
     const date = this.fechaPrimeraCargaExamen[examId];
     if (date) return formatDate(date, 'dd/MM/yyyy HH:mm', 'en-US');
-    if (this.errorArchivosExamen.has(examId)) return 'Fecha no disponible';
+    if (this.errorArchivosExamen.has(examId)) return 'No se pudieron consultar los resultados';
     if (this.cantidadArchivosExamen[examId] === 0) return 'Pendiente';
     return this.cantidadArchivosExamen[examId] == null ? 'Consultando' : 'Fecha no disponible';
   }

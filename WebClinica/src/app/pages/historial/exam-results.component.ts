@@ -22,8 +22,8 @@ export type ExamResultsMode = 'cerrado' | 'detalle' | 'archivos' | 'adjuntar';
     <section class="card mt-3 border-primary-subtle" aria-label="Resultados adjuntos del examen">
       <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div><h4 class="h6 mb-0">Resultados de {{ exam.nombreExamen }}</h4>
-          <small class="text-muted">{{ files.length }} archivo(s) · El estado indica adjuntos, no un estado clínico.</small></div>
-        @if (mode === 'archivos' || mode === 'adjuntar') {
+          <small class="text-muted">{{ listVerified ? files.length + ' archivo(s)' : 'Archivos por consultar' }} · El estado indica adjuntos, no un estado clínico.</small></div>
+        @if (listVerified && (mode === 'archivos' || mode === 'adjuntar')) {
           <button type="button" class="btn btn-outline-secondary btn-sm" (click)="reload()" [disabled]="loading || uploading">Actualizar archivos</button>
         }
       </div>
@@ -34,6 +34,9 @@ export type ExamResultsMode = 'cerrado' | 'detalle' | 'archivos' | 'adjuntar';
           @if (error) { <p class="alert alert-danger" role="alert">{{ error }}</p> }
           @if (notice) { <p class="alert alert-success" role="status">{{ notice }}</p> }
           @if (loading) { <p class="text-muted" role="status">Cargando archivos…</p> }
+          @else if (!listVerified) {
+            <button type="button" class="btn btn-outline-secondary btn-sm" (click)="reload()">Reintentar</button>
+          }
           @else if (files.length === 0) { <p class="text-muted">Pendiente: no hay archivos de resultado adjuntos.</p> }
           @else {
             <div class="table-responsive">
@@ -241,7 +244,7 @@ export class ExamResultsComponent implements OnChanges, OnDestroy {
       error: (err: HttpErrorResponse) => {
         if (!this.current(revision, identity, id)) return;
         this.loading = false;
-        this.error = this.apiErrors.messageFor(err, 'No se pudieron cargar los archivos de resultado.');
+        this.error = this.apiErrors.messageFor(err, 'No se pudieron consultar los resultados.');
         this.notifyUnverified(revision, identity, id);
       },
     });

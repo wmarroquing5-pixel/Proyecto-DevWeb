@@ -34,6 +34,15 @@ public sealed class CloudflareR2ExamResultStorage : IExamResultStorage, IDisposa
             LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    internal CloudflareR2ExamResultStorage(IOptions<R2Options> options,
+        ILogger<CloudflareR2ExamResultStorage> logger, IAmazonS3 storageClient)
+    {
+        this.options = options.Value;
+        this.logger = logger;
+        client = new Lazy<IAmazonS3>(() => storageClient,
+            LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
     public async Task<IReadOnlyList<ExamResultFileDto>> ListAsync(int examId, CancellationToken ct)
     {
         EnsureConfigured();
@@ -52,7 +61,7 @@ public sealed class CloudflareR2ExamResultStorage : IExamResultStorage, IDisposa
                     ContinuationToken = continuation,
                     MaxKeys = 1000
                 }, timeout.Token);
-                foreach (var item in page.S3Objects)
+                foreach (var item in page.S3Objects ?? [])
                 {
                     if (!item.Key.StartsWith(prefix, StringComparison.Ordinal)) continue;
                     var id = item.Key[prefix.Length..];

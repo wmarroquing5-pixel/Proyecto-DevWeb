@@ -16,6 +16,8 @@ public sealed class ExamResultService(
     ILogger<ExamResultService> logger,
     TimeProvider clock) : IExamResultService
 {
+    // Coordina las cargas de esta instancia; R2 conserva claves únicas y escrituras condicionales.
+    private static readonly SemaphoreSlim UploadGate = new(1, 1);
     internal const int MaxFilesPerRequest = 4;
     internal const int MaxFileBytes = 5 * 1024 * 1024;
     internal const int MaxRequestBytes = MaxFilesPerRequest * MaxFileBytes;
@@ -59,24 +61,35 @@ public sealed class ExamResultService(
             prepared.Add((content, DetectAndValidate(content, name), name));
         }
 
-        var saved = new List<ExamResultFileDto>(prepared.Count);
+        await UploadGate.WaitAsync(ct);
         try
         {
-            foreach (var file in prepared)
+            if ((await storage.ListAsync(examId, ct)).Count > 0)
+                throw new ConflictException("El examen ya tiene resultados adjuntos.");
+
+            var saved = new List<ExamResultFileDto>(prepared.Count);
+            try
             {
-                var id = Guid.NewGuid().ToString("N");
-                saved.Add(await storage.SaveAsync(examId, id, file.Content, file.ContentType,
-                    file.Name, userId, clock.GetUtcNow(), ct));
+                foreach (var file in prepared)
+                {
+                    var id = Guid.NewGuid().ToString("N");
+                    saved.Add(await storage.SaveAsync(examId, id, file.Content, file.ContentType,
+                        file.Name, userId, clock.GetUtcNow(), ct));
+                }
             }
+            catch (ExternalDependencyException)
+            {
+                if (saved.Count > 0)
+                    logger.LogWarning("Carga parcial de resultados de examen. Se conservaron {Count} objetos autodescriptivos para conciliación.",
+                        saved.Count);
+                throw;
+            }
+            return saved;
         }
-        catch (ExternalDependencyException)
+        finally
         {
-            if (saved.Count > 0)
-                logger.LogWarning("Carga parcial de resultados de examen. Se conservaron {Count} objetos autodescriptivos para conciliación.",
-                    saved.Count);
-            throw;
+            UploadGate.Release();
         }
-        return saved;
     }
 
     public async Task<StoredExamResult> DownloadAsync(int examId, string fileId,
