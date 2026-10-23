@@ -1,0 +1,201 @@
+/* WEB-TRAT-C — ALTERNATIVA C, SEIS TABLAS. BORRADOR NO EJECUTABLE.
+   Derivado de WEB-TRAT-06B/DDL-EJECUCION-AISLADA.sql sin alterar
+   ese antecedente ni WEB-TRAT-06A/DDL-REVISADO.sql.
+   Solo destinado a revisión y futuras pruebas sintéticas en
+   DESKTOP-QTDJOHF\SQLEXPRESS / ClinicaTratamiento_Aislado_06B.
+   No autoriza DDL, DML, migraciones, Azure SQL ni cambios de API/Angular.
+   CorreccionClinica y sus operaciones se posponen. Los estados y
+   equivalencias de dosis no quedan aprobados por existir en este borrador.
+   La primera instrucción SQL aborta el lote completo. No hay GO.
+   Nunca ejecutar un fragmento seleccionado que omita esta barrera. */
+THROW 51090, N'WEB-TRAT-C: ejecución del DDL no autorizada.', 1;
+
+/* Segunda barrera: identidad aún no aprobada y destino exclusivo local.
+   Cualquier futura ejecución exige una copia NUEVA, revisión DBA,
+   autorización específica y precheck independiente de permisos/objetos. */
+DECLARE @IdentidadAprobada sysname = N'__IDENTIDAD_DDL_C_PENDIENTE__';
+IF COALESCE(CONVERT(nvarchar(128), SERVERPROPERTY('MachineName')), N'') <> N'DESKTOP-QTDJOHF'
+   OR COALESCE(CONVERT(nvarchar(128), SERVERPROPERTY('InstanceName')), N'') <> N'SQLEXPRESS'
+   OR COALESCE(CONVERT(int, SERVERPROPERTY('EngineEdition')), -1) <> 4
+   OR DB_NAME() <> N'ClinicaTratamiento_Aislado_06B'
+   OR @IdentidadAprobada = N'__IDENTIDAD_DDL_C_PENDIENTE__'
+   OR ORIGINAL_LOGIN() <> @IdentidadAprobada
+   OR COALESCE(IS_SRVROLEMEMBER(N'sysadmin'), 1) <> 0
+   OR OBJECT_ID(N'dbo.Tratamiento', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.Diagnostico', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.Usuario', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.Medicamento', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.LoteMedicamento', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.MovimientoInventario', N'U') IS NULL
+   OR OBJECT_ID(N'dbo.RecetaClinica', N'U') IS NOT NULL
+   OR OBJECT_ID(N'dbo.RecetaLinea', N'U') IS NOT NULL
+   OR OBJECT_ID(N'dbo.EntregaFarmacia', N'U') IS NOT NULL
+   OR OBJECT_ID(N'dbo.EntregaDetalle', N'U') IS NOT NULL
+   OR OBJECT_ID(N'dbo.AdministracionClinica', N'U') IS NOT NULL
+   OR OBJECT_ID(N'dbo.SalidaClinica', N'U') IS NOT NULL
+    THROW 51091, N'Destino, identidad u objetos incompatibles; suspender.', 1;
+
+CREATE TABLE dbo.RecetaClinica (
+    IdReceta int IDENTITY(1,1) NOT NULL CONSTRAINT PK_RecetaClinica PRIMARY KEY,
+    IdTratamiento int NOT NULL,
+    IdDiagnostico int NOT NULL,
+    IdUsuarioPrescriptor int NOT NULL,
+    IdRecetaAnterior int NULL,
+    NumeroVersion int NOT NULL,
+    Estado nvarchar(20) NOT NULL,
+    FechaPrescripcionUtc datetime2(3) NOT NULL,
+    ClaveOperacion uniqueidentifier NOT NULL,
+    HashSolicitud binary(32) NOT NULL,
+    CONSTRAINT FK_RecetaClinica_Tratamiento FOREIGN KEY (IdTratamiento) REFERENCES dbo.Tratamiento(IdTratamiento),
+    CONSTRAINT FK_RecetaClinica_Diagnostico FOREIGN KEY (IdDiagnostico) REFERENCES dbo.Diagnostico(IdDiagnostico),
+    CONSTRAINT FK_RecetaClinica_Usuario FOREIGN KEY (IdUsuarioPrescriptor) REFERENCES dbo.Usuario(IdUsuario),
+    CONSTRAINT FK_RecetaClinica_Anterior FOREIGN KEY (IdRecetaAnterior) REFERENCES dbo.RecetaClinica(IdReceta),
+    CONSTRAINT CK_RecetaClinica_Version CHECK (NumeroVersion >= 1),
+    CONSTRAINT CK_RecetaClinica_Estado CHECK (Estado IN (N'Vigente', N'Sustituida', N'Anulada')),
+    CONSTRAINT CK_RecetaClinica_Anterior CHECK (IdRecetaAnterior IS NULL OR IdRecetaAnterior <> IdReceta),
+    CONSTRAINT UQ_RecetaClinica_Clave UNIQUE (ClaveOperacion),
+    CONSTRAINT UQ_RecetaClinica_TratamientoVersion UNIQUE (IdTratamiento, NumeroVersion)
+);
+CREATE UNIQUE INDEX UX_RecetaClinica_Vigente ON dbo.RecetaClinica(IdTratamiento)
+    WHERE Estado = N'Vigente';
+CREATE UNIQUE INDEX UX_RecetaClinica_Anterior ON dbo.RecetaClinica(IdRecetaAnterior)
+    WHERE IdRecetaAnterior IS NOT NULL;
+CREATE INDEX IX_RecetaClinica_DiagnosticoFecha ON dbo.RecetaClinica(IdDiagnostico, FechaPrescripcionUtc);
+
+CREATE TABLE dbo.RecetaLinea (
+    IdRecetaLinea int IDENTITY(1,1) NOT NULL CONSTRAINT PK_RecetaLinea PRIMARY KEY,
+    IdReceta int NOT NULL,
+    IdMedicamento int NOT NULL,
+    Orden smallint NOT NULL,
+    CantidadPrescritaUnidades int NOT NULL,
+    UnidadInventario nvarchar(30) NOT NULL,
+    Dosis decimal(12,3) NOT NULL,
+    UnidadDosis nvarchar(30) NOT NULL,
+    Via nvarchar(40) NOT NULL,
+    Frecuencia nvarchar(100) NOT NULL,
+    DuracionDias smallint NOT NULL,
+    Indicaciones nvarchar(500) NULL,
+    /* Instantanea propuesta, pendiente de aprobacion de farmacia/clinica.
+       NULL = equivalencia NO demostrada; la API debe bloquear el producto.
+       No derivar estos valores de Medicamento.Presentacion. */
+    ContenidoPorUnidad decimal(18,6) NULL,
+    UnidadContenido nvarchar(30) NULL,
+    FuenteEquivalencia nvarchar(200) NULL,
+    VersionEquivalencia nvarchar(50) NULL,
+    IdUsuarioValidador int NULL,
+    FechaValidacionUtc datetime2(3) NULL,
+    CONSTRAINT FK_RecetaLinea_Receta FOREIGN KEY (IdReceta) REFERENCES dbo.RecetaClinica(IdReceta),
+    CONSTRAINT FK_RecetaLinea_Medicamento FOREIGN KEY (IdMedicamento) REFERENCES dbo.Medicamento(IdMedicamento),
+    CONSTRAINT FK_RecetaLinea_Validador FOREIGN KEY (IdUsuarioValidador) REFERENCES dbo.Usuario(IdUsuario),
+    CONSTRAINT CK_RecetaLinea_Cantidades CHECK (Orden > 0 AND CantidadPrescritaUnidades > 0
+        AND Dosis > 0 AND DuracionDias > 0),
+    CONSTRAINT CK_RecetaLinea_Texto CHECK (LEN(TRIM(UnidadInventario)) > 0
+        AND LEN(TRIM(UnidadDosis)) > 0 AND LEN(TRIM(Via)) > 0
+        AND LEN(TRIM(Frecuencia)) > 0),
+    CONSTRAINT CK_RecetaLinea_Equivalencia CHECK (
+        (ContenidoPorUnidad IS NULL AND UnidadContenido IS NULL AND FuenteEquivalencia IS NULL
+         AND VersionEquivalencia IS NULL AND IdUsuarioValidador IS NULL AND FechaValidacionUtc IS NULL)
+        OR
+        (ContenidoPorUnidad IS NOT NULL AND ContenidoPorUnidad > 0
+         AND UnidadContenido IS NOT NULL AND LEN(TRIM(UnidadContenido)) > 0
+         AND FuenteEquivalencia IS NOT NULL AND LEN(TRIM(FuenteEquivalencia)) > 0
+         AND VersionEquivalencia IS NOT NULL AND LEN(TRIM(VersionEquivalencia)) > 0
+         AND IdUsuarioValidador IS NOT NULL AND FechaValidacionUtc IS NOT NULL)
+    ),
+    CONSTRAINT UQ_RecetaLinea_Orden UNIQUE (IdReceta, Orden),
+    CONSTRAINT UQ_RecetaLinea_IdReceta UNIQUE (IdRecetaLinea, IdReceta)
+);
+CREATE INDEX IX_RecetaLinea_Medicamento ON dbo.RecetaLinea(IdMedicamento);
+
+CREATE TABLE dbo.EntregaFarmacia (
+    IdEntrega int IDENTITY(1,1) NOT NULL CONSTRAINT PK_EntregaFarmacia PRIMARY KEY,
+    IdReceta int NOT NULL,
+    IdUsuarioResponsable int NOT NULL,
+    FechaConfirmacionUtc datetime2(3) NOT NULL,
+    ClaveOperacion uniqueidentifier NOT NULL,
+    HashSolicitud binary(32) NOT NULL,
+    CONSTRAINT FK_EntregaFarmacia_Receta FOREIGN KEY (IdReceta) REFERENCES dbo.RecetaClinica(IdReceta),
+    CONSTRAINT FK_EntregaFarmacia_Usuario FOREIGN KEY (IdUsuarioResponsable) REFERENCES dbo.Usuario(IdUsuario),
+    CONSTRAINT UQ_EntregaFarmacia_Clave UNIQUE (ClaveOperacion),
+    CONSTRAINT UQ_EntregaFarmacia_IdReceta UNIQUE (IdEntrega, IdReceta)
+);
+CREATE INDEX IX_EntregaFarmacia_RecetaFecha ON dbo.EntregaFarmacia(IdReceta, FechaConfirmacionUtc);
+
+CREATE TABLE dbo.EntregaDetalle (
+    IdEntregaDetalle int IDENTITY(1,1) NOT NULL CONSTRAINT PK_EntregaDetalle PRIMARY KEY,
+    IdEntrega int NOT NULL,
+    IdReceta int NOT NULL,
+    IdRecetaLinea int NOT NULL,
+    IdLote int NOT NULL,
+    CantidadEntregadaUnidades int NOT NULL,
+    CONSTRAINT FK_EntregaDetalle_EntregaReceta FOREIGN KEY (IdEntrega, IdReceta)
+        REFERENCES dbo.EntregaFarmacia(IdEntrega, IdReceta),
+    CONSTRAINT FK_EntregaDetalle_LineaReceta FOREIGN KEY (IdRecetaLinea, IdReceta)
+        REFERENCES dbo.RecetaLinea(IdRecetaLinea, IdReceta),
+    CONSTRAINT FK_EntregaDetalle_Lote FOREIGN KEY (IdLote) REFERENCES dbo.LoteMedicamento(IdLote),
+    CONSTRAINT CK_EntregaDetalle_Cantidad CHECK (CantidadEntregadaUnidades > 0),
+    CONSTRAINT UQ_EntregaDetalle_EntregaLineaLote UNIQUE (IdEntrega, IdRecetaLinea, IdLote),
+    CONSTRAINT UQ_EntregaDetalle_IdLinea UNIQUE (IdEntregaDetalle, IdRecetaLinea)
+);
+CREATE INDEX IX_EntregaDetalle_LineaLote ON dbo.EntregaDetalle(IdRecetaLinea, IdLote);
+
+CREATE TABLE dbo.AdministracionClinica (
+    IdAdministracion int IDENTITY(1,1) NOT NULL CONSTRAINT PK_AdministracionClinica PRIMARY KEY,
+    IdRecetaLinea int NOT NULL,
+    IdUsuarioResponsable int NOT NULL,
+    Origen nvarchar(20) NOT NULL,
+    IdEntregaDetalle int NULL,
+    IdLote int NULL,
+    CantidadUnidades int NOT NULL,
+    DosisAplicada decimal(12,3) NOT NULL,
+    UnidadDosis nvarchar(30) NOT NULL,
+    Via nvarchar(40) NOT NULL,
+    FechaAdministracionUtc datetime2(3) NOT NULL,
+    ClaveOperacion uniqueidentifier NOT NULL,
+    HashSolicitud binary(32) NOT NULL,
+    Observaciones nvarchar(500) NULL,
+    CONSTRAINT FK_Administracion_Linea FOREIGN KEY (IdRecetaLinea) REFERENCES dbo.RecetaLinea(IdRecetaLinea),
+    CONSTRAINT FK_Administracion_Usuario FOREIGN KEY (IdUsuarioResponsable) REFERENCES dbo.Usuario(IdUsuario),
+    CONSTRAINT FK_Administracion_EntregaDetalleLinea FOREIGN KEY (IdEntregaDetalle, IdRecetaLinea)
+        REFERENCES dbo.EntregaDetalle(IdEntregaDetalle, IdRecetaLinea),
+    CONSTRAINT FK_Administracion_Lote FOREIGN KEY (IdLote) REFERENCES dbo.LoteMedicamento(IdLote),
+    CONSTRAINT CK_Administracion_Origen CHECK (
+        (Origen = N'InventarioDirecto' AND IdLote IS NOT NULL AND IdEntregaDetalle IS NULL)
+        OR (Origen = N'EntregaPrevia' AND IdEntregaDetalle IS NOT NULL AND IdLote IS NULL)
+        OR (Origen = N'Externo' AND IdLote IS NULL AND IdEntregaDetalle IS NULL)
+    ),
+    CONSTRAINT CK_Administracion_Cantidades CHECK (CantidadUnidades > 0 AND DosisAplicada > 0),
+    CONSTRAINT CK_Administracion_Texto CHECK (LEN(TRIM(UnidadDosis)) > 0 AND LEN(TRIM(Via)) > 0),
+    CONSTRAINT UQ_Administracion_Clave UNIQUE (ClaveOperacion),
+    CONSTRAINT UQ_Administracion_IdOrigen UNIQUE (IdAdministracion, Origen)
+);
+CREATE INDEX IX_Administracion_LineaFecha ON dbo.AdministracionClinica(IdRecetaLinea, FechaAdministracionUtc);
+CREATE INDEX IX_Administracion_EntregaDetalle ON dbo.AdministracionClinica(IdEntregaDetalle)
+    WHERE IdEntregaDetalle IS NOT NULL;
+
+CREATE TABLE dbo.SalidaClinica (
+    IdSalidaClinica int IDENTITY(1,1) NOT NULL CONSTRAINT PK_SalidaClinica PRIMARY KEY,
+    IdMovimiento int NOT NULL,
+    IdEntregaDetalle int NULL,
+    IdAdministracion int NULL,
+    OrigenAdministracion nvarchar(20) NULL,
+    CONSTRAINT FK_SalidaClinica_Movimiento FOREIGN KEY (IdMovimiento) REFERENCES dbo.MovimientoInventario(IdMovimiento),
+    CONSTRAINT FK_SalidaClinica_EntregaDetalle FOREIGN KEY (IdEntregaDetalle) REFERENCES dbo.EntregaDetalle(IdEntregaDetalle),
+    CONSTRAINT FK_SalidaClinica_AdministracionDirecta FOREIGN KEY (IdAdministracion, OrigenAdministracion)
+        REFERENCES dbo.AdministracionClinica(IdAdministracion, Origen),
+    CONSTRAINT CK_SalidaClinica_Origen CHECK (
+        (IdEntregaDetalle IS NOT NULL AND IdAdministracion IS NULL AND OrigenAdministracion IS NULL)
+        OR (IdEntregaDetalle IS NULL AND IdAdministracion IS NOT NULL
+            AND OrigenAdministracion IS NOT NULL
+            AND OrigenAdministracion = N'InventarioDirecto')
+    ),
+    CONSTRAINT UQ_SalidaClinica_Movimiento UNIQUE (IdMovimiento)
+);
+CREATE UNIQUE INDEX UX_SalidaClinica_EntregaDetalle ON dbo.SalidaClinica(IdEntregaDetalle)
+    WHERE IdEntregaDetalle IS NOT NULL;
+CREATE UNIQUE INDEX UX_SalidaClinica_Administracion ON dbo.SalidaClinica(IdAdministracion)
+    WHERE IdAdministracion IS NOT NULL;
+/* FIN del borrador de seis tablas. El cuerpo preserva FK, CHECK, UNIQUE,
+   índices filtrados y claves de idempotencia de los seis objetos fuente.
+   Sin CorreccionClinica, devoluciones, reintegros ni rectificación.
+   No representa validación de sintaxis en motor ni permiso de ejecución. */
