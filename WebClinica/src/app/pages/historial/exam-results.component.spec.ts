@@ -216,6 +216,9 @@ describe('ExamResultsComponent', () => {
     expect(panel.textContent).not.toContain('Subir archivos');
     expect(panel.textContent).not.toContain('Eliminar');
     expect(panel.textContent).not.toContain('Actualizar archivos');
+    expect([...panel.querySelectorAll('th')].map(th => th.textContent?.trim()))
+      .toEqual(['Archivo', 'Fecha de carga', 'Acciones']);
+    expect(panel.textContent).not.toContain('application/pdf');
   });
 
   it('en archivos permite consultar y actualizar sin mostrar carga', () => {
@@ -224,6 +227,8 @@ describe('ExamResultsComponent', () => {
     const panel = fixture.nativeElement as HTMLElement;
     expect(panel.textContent).toContain('informe.pdf');
     expect(panel.textContent).toContain('application/pdf');
+    expect([...panel.querySelectorAll('th')].map(th => th.textContent?.trim()))
+      .toEqual(['Archivo', 'Formato', 'Tamaño', 'Fecha de carga', 'Acciones']);
     expect(panel.textContent).toContain('Fecha de carga');
     expect(panel.textContent).toContain('Actualizar archivos');
     expect(panel.querySelector('input[type=file]')).toBeNull();
@@ -285,5 +290,60 @@ describe('ExamResultsComponent', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('img.exam-preview-image')).not.toBeNull();
     expect((fixture.nativeElement as HTMLElement).querySelector('input[type=file]')).toBeNull();
     expect(deleteFile).not.toHaveBeenCalled();
+  });
+
+  it('permite leer un examen vinculado por diagnóstico solo si pertenece a la consulta y paciente autorizados', () => {
+    fixture = TestBed.createComponent(ExamResultsComponent);
+    fixture.componentRef.setInput('exam', { ...exam, idConsulta: null, idDiagnostico: 91 });
+    fixture.componentRef.setInput('consultationId', 17);
+    fixture.componentRef.setInput('patientId', 11);
+    fixture.componentRef.setInput('mode', 'detalle');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canRead).toBeFalse();
+    expect(list).not.toHaveBeenCalled();
+    fixture.componentRef.setInput('allowedDiagnosisIds', [91]);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canRead).toBeTrue();
+    expect(list).toHaveBeenCalledOnceWith(8);
+    fixture.componentRef.setInput('exam', { ...exam, idConsulta: 18, idDiagnostico: 91 });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canRead).toBeFalse();
+    fixture.componentRef.setInput('exam', { ...exam, idConsulta: null, idDiagnostico: 91, idPaciente: 12 });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.canRead).toBeFalse();
+  });
+
+  it('cancela el listado anterior y libera la vista previa al cambiar de examen', () => {
+    const anterior = new Subject<ExamResultFileDto[]>();
+    list.and.callFake(id => id === 8 ? anterior : of([{ ...stored, archivoId: 'b'.repeat(32), nombreOriginal: 'actual.pdf' }]));
+    const component = render('detalle');
+    expect(anterior.observed).toBeTrue();
+    fixture.componentRef.setInput('exam', { ...exam, idExamen: 9 });
+    fixture.detectChanges();
+    expect(anterior.observed).toBeFalse();
+    anterior.next([stored]);
+    expect(component.files.map(file => file.nombreOriginal)).toEqual(['actual.pdf']);
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:resultado-actual');
+    const revoke = spyOn(URL, 'revokeObjectURL');
+    component.view(component.files[0]); fixture.detectChanges();
+    expect(component.previewUrl).toBe('blob:resultado-actual');
+    fixture.componentRef.setInput('consultationId', 18);
+    fixture.detectChanges();
+    expect(component.canRead).toBeFalse();
+    expect(component.files).toEqual([]);
+    expect(revoke).toHaveBeenCalledWith('blob:resultado-actual');
+  });
+
+  it('en detalle distingue lista vacía de errores 401, 403 y 404 sin habilitar carga', () => {
+    render('detalle');
+    const panel = fixture.nativeElement as HTMLElement;
+    expect(panel.textContent).toContain('No hay archivos de resultados registrados.');
+    for (const status of [401, 403, 404]) {
+      list.and.returnValue(throwError(() => new HttpErrorResponse({ status })));
+      fixture.componentInstance.reload(); fixture.detectChanges();
+      expect(panel.textContent).toContain('Los archivos del examen no pudieron cargarse.');
+      expect(panel.textContent).not.toContain('No hay archivos de resultados registrados.');
+      expect(panel.querySelector('input[type=file]')).toBeNull();
+    }
   });
 });

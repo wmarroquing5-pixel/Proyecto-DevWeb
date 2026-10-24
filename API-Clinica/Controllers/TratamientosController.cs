@@ -12,11 +12,11 @@ public sealed class TratamientosController(ITratamientoService service) : Contro
     [HttpGet, PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<TratamientoResponseDto>>> Listar(
         [FromQuery] TratamientoFiltroDto filtro, CancellationToken ct) =>
-        Ok(await service.ListarAsync(filtro, ct));
+        Ok(await service.ListarAsync(filtro, User, ct));
 
     [HttpGet("{id:int}"), PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<TratamientoResponseDto>> Obtener(int id, CancellationToken ct) =>
-        Ok(await service.ObtenerAsync(id, ct));
+        Ok(await service.ObtenerAsync(id, User, ct));
 
     [HttpPost, PermisoRequerido("Historial", Operacion.Crear)]
     public async Task<ActionResult<TratamientoResponseDto>> Crear(

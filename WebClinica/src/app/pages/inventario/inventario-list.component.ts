@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -98,7 +98,17 @@ import { cargarCatalogoInventario, ContextoInventario, idInventarioValido } from
               @for (m of medicamentos; track m.idMedicamento) {
                 <tr>
                   <td><code>{{ m.codigo }}</code></td>
-                  <td>{{ m.nombre }}</td>
+                  <td>
+                    <div class="d-flex align-items-center gap-2">
+                      @if (fotoUrls[m.idMedicamento]) {
+                        <img [src]="fotoUrls[m.idMedicamento]" [alt]="'Fotografía de ' + m.nombre"
+                          class="inventario-foto img-thumbnail">
+                      } @else if (m.imagenURL) {
+                        <span class="small text-muted" role="status">{{ fotoErrores[m.idMedicamento] || 'Cargando foto…' }}</span>
+                      }
+                      <span>{{ m.nombre }}</span>
+                    </div>
+                  </td>
                   <td>{{ m.categoria }}</td>
                   <td>{{ m.marca }}</td>
                   <td class="ui-col-number">Q{{ m.precioVenta | number:'1.2-2' }}</td>
@@ -147,16 +157,19 @@ import { cargarCatalogoInventario, ContextoInventario, idInventarioValido } from
         </div>
       }
     </div>
-  `
+  `,
+  styles: [`.inventario-foto { width: 48px; height: 48px; object-fit: cover; flex: 0 0 auto; }`]
 })
 export class InventarioListComponent implements OnInit {
   private service = inject(InventarioService);
   readonly permisos = inject(PermisosService);
   readonly MODULOS_PERMISO = MODULOS_PERMISO;
   private readonly apiErrors = inject(ApiErrorService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly contexto = new ContextoInventario(['Medicamentos', 'Categorias', 'Marcas']);
   private listado?: Subscription;
   private catalogos?: Subscription;
+  private fotos?: Subscription;
   private revisionListado = 0;
   private revisionCatalogos = 0;
   desactivandoId: number | null = null;
@@ -165,6 +178,8 @@ export class InventarioListComponent implements OnInit {
   cargandoCatalogos = false;
 
   medicamentos: CatalogoMedicamentoResponse[] = [];
+  fotoUrls: Record<number, string> = {};
+  fotoErrores: Record<number, string> = {};
   categorias: { idCategoria: number; nombre: string }[] = [];
   marcas: { idMarca: number; nombre: string }[] = [];
   total = 0;
@@ -178,8 +193,10 @@ export class InventarioListComponent implements OnInit {
   filtroMarcaId: number | null = null;
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.limpiarFotos());
     this.contexto.observar(() => {
       this.listado?.unsubscribe(); this.catalogos?.unsubscribe();
+      this.limpiarFotos();
       this.medicamentos = []; this.categorias = []; this.marcas = [];
       this.desactivandoId = null;
       this.limpiarFiltros(); this.cargarCatalogos();
@@ -219,6 +236,7 @@ export class InventarioListComponent implements OnInit {
 
   cargarMedicamentos() {
     this.listado?.unsubscribe();
+    this.limpiarFotos();
     const revision = ++this.revisionListado, clave = this.contexto.clave();
     if (!this.contexto.vigente(clave) || !this.permisos.puedeConsultar('Medicamentos')) {
       this.cargando = false; this.medicamentos = []; this.error = 'No tiene permiso Medicamentos/Consultar vigente.'; return;
@@ -237,6 +255,7 @@ export class InventarioListComponent implements OnInit {
         this.medicamentos = res.items;
         this.total = res.totalCount;
         this.cargando = false;
+        this.cargarFotos(res.items, revision, clave);
       },
       error: err => {
         if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
@@ -245,6 +264,36 @@ export class InventarioListComponent implements OnInit {
       }
     });
     this.contexto.agregar(this.listado);
+  }
+
+  private cargarFotos(items: CatalogoMedicamentoResponse[], revision: number, clave: string): void {
+    this.fotos = new Subscription();
+    this.contexto.agregar(this.fotos);
+    for (const item of items) {
+      if (!item.imagenURL || !idInventarioValido(item.idMedicamento)) continue;
+      const id = item.idMedicamento;
+      this.fotos.add(this.service.obtenerFotoMedicamento(id).subscribe({
+        next: blob => {
+          if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
+          if (!blob?.size || !['image/jpeg', 'image/png', 'image/webp'].includes(blob.type)) {
+            this.fotoErrores[id] = 'Foto no disponible'; return;
+          }
+          this.fotoUrls[id] = URL.createObjectURL(blob);
+        },
+        error: err => {
+          if (!this.contexto.vigente(clave) || revision !== this.revisionListado) return;
+          this.fotoErrores[id] = err.status === 404 ? 'Sin fotografía' : 'Foto no disponible';
+        }
+      }));
+    }
+  }
+
+  private limpiarFotos(): void {
+    this.fotos?.unsubscribe();
+    this.fotos = undefined;
+    Object.values(this.fotoUrls).forEach(url => URL.revokeObjectURL(url));
+    this.fotoUrls = {};
+    this.fotoErrores = {};
   }
 
   buscar() {

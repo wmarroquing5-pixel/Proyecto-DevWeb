@@ -331,7 +331,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
               [estadoConsulta]="consulta.estadoConsulta" [diagnosticos]="diagnosticos" [examenes]="examenes"
               [fechaPrimeraCargaExamen]="fechaPrimeraCargaExamen"
               [cargandoDiagnosticos]="cargandoDiagnosticos" [errorDiagnosticos]="errorDiagnosticos"
-              (registrada)="recargarTratamientos()" />
+              (registrada)="recargarTratamientos()" (tratamientoRegistrado)="onTratamientoRegistrado($event)" />
             @if (!errorTratamientos && tratamientos.length === 0) {
               <p class="text-muted">No hay tratamientos registrados.</p>
             }
@@ -463,22 +463,19 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
             @if (cargandoEvoluciones) { <div class="text-muted" role="status">Cargando evoluciones…</div> }
             @if (errorEvoluciones) { <div class="alert alert-warning" role="alert">{{ errorEvoluciones }}</div> }
             @if (permisos.puedeCrear(MODULOS_PERMISO.HISTORIAL)) {
-              @if (diagnosticos.length === 0) {
-                <div class="alert alert-warning">Debes crear al menos un diagnóstico antes de agregar evoluciones.</div>
-              } @else {
-                <form (ngSubmit)="agregarEvolucion()" class="row g-2 mb-3">
-                  <div class="col-md-4">
-                    <select class="form-select" [(ngModel)]="nuevaEvol.idDiagnostico" name="idDiagnostico" required>
-                      <option [ngValue]="null">Seleccione diagnóstico...</option>
-                      @for (d of diagnosticos; track d.idDiagnostico) {
-                        <option [ngValue]="d.idDiagnostico">#{{ d.idDiagnostico }} - {{ d.descripcion | slice:0:50 }}</option>
-                      }
-                    </select>
-                  </div>
-                  <div class="col-md-6"><textarea class="form-control" [(ngModel)]="nuevaEvol.descripcion" name="descripcion" placeholder="Descripción de la evolución" required></textarea></div>
-                  <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
-                </form>
-              }
+              <form (ngSubmit)="agregarEvolucion()" class="row g-2 mb-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="evolucion-diagnostico">Diagnóstico relacionado (opcional)</label>
+                  <select id="evolucion-diagnostico" class="form-select" [(ngModel)]="nuevaEvol.idDiagnostico" name="idDiagnostico">
+                    <option [ngValue]="null">Sin diagnóstico relacionado</option>
+                    @for (d of diagnosticos; track d.idDiagnostico) {
+                      <option [ngValue]="d.idDiagnostico">#{{ d.idDiagnostico }} - {{ d.descripcion | slice:0:50 }}</option>
+                    }
+                  </select>
+                </div>
+                <div class="col-md-6"><label class="form-label" for="evolucion-descripcion">Descripción *</label><textarea id="evolucion-descripcion" class="form-control" [(ngModel)]="nuevaEvol.descripcion" name="descripcion" placeholder="Descripción de la evolución" required></textarea></div>
+                <div class="col-md-2 align-self-end"><button type="submit" class="btn btn-primary w-100">Agregar</button></div>
+              </form>
             }
             @if (!cargandoEvoluciones && !errorEvoluciones && evoluciones.length === 0) {
               <p class="text-muted">No hay evoluciones registradas.</p>
@@ -497,7 +494,7 @@ const contenidoClinico: ValidatorFn = (control: AbstractControl): ValidationErro
           <section class="card shadow-sm mt-3 consulta-card" id="panel-hospitalizacion" role="tabpanel" aria-labelledby="tab-hospitalizacion" tabindex="0">
             <div class="card-header consulta-section-heading"><h3 class="h5 mb-0">Hospitalización <span class="badge text-bg-secondary ms-2">Opcional</span></h3></div>
             <div class="card-body">
-              <p class="text-muted mb-0">No hay información de hospitalización vinculada a esta consulta. Las asignaciones de habitación se registran por paciente y no identifican una consulta concreta.</p>
+              <p class="text-muted mb-0">La información de hospitalización por paciente no está disponible en este apartado. Su lectura histórica requiere una autorización específica; las asignaciones de habitación no identifican una consulta concreta.</p>
             </div>
           </section>
         }

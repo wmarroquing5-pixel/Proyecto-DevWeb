@@ -28,6 +28,7 @@ describe('MenuService: actualización dinámica', () => {
     { label: 'Lotes', route: '/inventario/lotes', icon: 'fa-boxes-stacked', hidden: false, roles: null, children: null },
     { label: 'Habitaciones', route: '/habitaciones', icon: 'fa-bed', hidden: false, roles: null, children: null },
     { label: 'Ventas', route: '/ventas', icon: 'fa-cash-register', hidden: false, roles: null, children: null },
+    { label: 'Recetas de farmacia', route: '/farmacia/recetas', icon: 'bi bi-prescription2', hidden: false, roles: null, children: null },
     { label: 'Facturación', route: '/facturas', icon: 'fa-file-invoice-dollar', hidden: false, roles: null, children: null },
     { label: 'Catálogos organizativos', route: null, icon: 'bi bi-building', hidden: false, roles: null, children: [
       { label: 'Sucursales', route: '/admin/sucursales', icon: 'bi bi-building', hidden: false, roles: null, children: null },
@@ -173,7 +174,7 @@ describe('MenuService: actualización dinámica', () => {
       : [item.route]);
     expect(routes).toEqual([
       '/dashboard', '/pacientes', '/consultas', '/medicamentos',
-      '/inventario/lotes', '/habitaciones', '/ventas',
+      '/inventario/lotes', '/habitaciones', '/ventas', '/farmacia/recetas',
       '/facturas',
       '/admin/sucursales', '/admin/clinicas', '/admin/especialidades',
       '/admin/turnos', '/admin/servicios', '/admin/categorias', '/admin/marcas',
@@ -186,6 +187,7 @@ describe('MenuService: actualización dinámica', () => {
     ['/inventario/lotes', MODULOS_PERMISO.LOTES_MEDICAMENTO],
     ['/habitaciones', MODULOS_PERMISO.HABITACIONES],
     ['/ventas', MODULOS_PERMISO.VENTAS],
+    ['/farmacia/recetas', MODULOS_PERMISO.VENTAS],
     ['/facturas', MODULOS_PERMISO.FACTURAS],
     ['/admin/sucursales', MODULOS_PERMISO.SUCURSALES],
     ['/admin/clinicas', MODULOS_PERMISO.CLINICAS],

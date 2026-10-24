@@ -29,6 +29,10 @@ export interface MedicamentoResponse {
   presentacion?: string | null;
 }
 
+export interface FotoMedicamentoResponse {
+  url: string;
+}
+
 // Request para crear/actualizar medicamento
 export interface GuardarMedicamentoRequest {
   idCategoria: number;

@@ -12,11 +12,11 @@ public sealed class ExamenesController(IExamenService service, IExamResultServic
     [HttpGet, PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<ExamenResponseDto>>> Listar(
         [FromQuery] ExamenFiltroDto filtro, CancellationToken ct) =>
-        Ok(await service.ListarAsync(filtro, ct));
+        Ok(await service.ListarAsync(filtro, User, ct));
 
     [HttpGet("{id:int}"), PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<ExamenResponseDto>> Obtener(int id, CancellationToken ct) =>
-        Ok(await service.ObtenerAsync(id, ct));
+        Ok(await service.ObtenerAsync(id, User, ct));
 
     [HttpPost, PermisoRequerido("Historial", Operacion.Crear)]
     public async Task<ActionResult<ExamenResponseDto>> Crear(

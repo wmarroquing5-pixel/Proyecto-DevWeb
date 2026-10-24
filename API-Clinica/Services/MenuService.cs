@@ -16,6 +16,7 @@ public sealed class MenuService(IAccesoActualService accesoActual) : IMenuServic
             ["/inventario/lotes"] = "LotesMedicamento",
             ["/habitaciones"] = "Habitaciones",
             ["/ventas"] = "Ventas",
+            ["/farmacia/recetas"] = "Ventas",
             ["/facturas"] = "Facturas",
             ["/admin/sucursales"] = "Sucursales",
             ["/admin/clinicas"] = "Clinicas",

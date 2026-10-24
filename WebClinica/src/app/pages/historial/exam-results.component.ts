@@ -31,23 +31,22 @@ export type ExamResultsMode = 'cerrado' | 'detalle' | 'archivos' | 'adjuntar';
         @if (!canRead) {
           <p class="alert alert-warning mb-0" role="alert">No tiene acceso a los resultados de este examen.</p>
         } @else {
-          @if (error) { <p class="alert alert-danger" role="alert">{{ error }}</p> }
+          @if (error) { <p class="alert alert-danger" role="alert">{{ mode === 'detalle' && !listVerified ? 'Los archivos del examen no pudieron cargarse. ' : '' }}{{ error }}</p> }
           @if (notice) { <p class="alert alert-success" role="status">{{ notice }}</p> }
           @if (loading) { <p class="text-muted" role="status">Cargando archivos…</p> }
           @else if (!listVerified) {
             <button type="button" class="btn btn-outline-secondary btn-sm" (click)="reload()">Reintentar</button>
           }
-          @else if (files.length === 0) { <p class="text-muted">Pendiente: no hay archivos de resultado adjuntos.</p> }
+          @else if (files.length === 0) { <p class="text-muted">{{ mode === 'detalle' ? 'No hay archivos de resultados registrados.' : 'Pendiente: no hay archivos de resultado adjuntos.' }}</p> }
           @else {
             <div class="table-responsive">
               <table class="table table-sm align-middle mb-0">
-                <thead><tr><th scope="col">Archivo</th><th scope="col">Formato</th><th scope="col">Tamaño</th><th scope="col">Fecha de carga</th><th scope="col">Acciones</th></tr></thead>
+                <thead><tr><th scope="col">Archivo</th>@if (mode !== 'detalle') { <th scope="col">Formato</th><th scope="col">Tamaño</th> }<th scope="col">Fecha de carga</th><th scope="col">Acciones</th></tr></thead>
                 <tbody>
                   @for (file of files; track file.archivoId) {
                     <tr>
                       <td class="text-break">{{ file.nombreOriginal }}</td>
-                      <td>{{ file.tipoContenido }}</td>
-                      <td>{{ file.tamanoBytes / 1024 | number:'1.0-0' }} KB</td>
+                      @if (mode !== 'detalle') { <td>{{ file.tipoContenido }}</td><td>{{ file.tamanoBytes / 1024 | number:'1.0-0' }} KB</td> }
                       <td>{{ file.fechaCargaUtc | date:'dd/MM/yyyy HH:mm' }}</td>
                       <td><div class="d-flex flex-wrap gap-1">
                         <button type="button" class="btn btn-outline-primary btn-sm" (click)="view(file)">Ver</button>
@@ -120,6 +119,7 @@ export class ExamResultsComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) consultationId!: number;
   @Input({ required: true }) patientId!: number;
   @Input({ required: true }) mode!: ExamResultsMode;
+  @Input() allowedDiagnosisIds: readonly number[] = [];
   @Output() filesChanged = new EventEmitter<{ examId: number; count: number | null; firstUploadedAt: string | null }>();
 
   private readonly service = inject(HistorialService);
@@ -164,7 +164,7 @@ export class ExamResultsComponent implements OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['exam'] || changes['consultationId'] || changes['patientId']) {
+    if (changes['exam'] || changes['consultationId'] || changes['patientId'] || changes['allowedDiagnosisIds']) {
       this.clear();
       if (this.canRead) this.reload();
     } else if (changes['mode']) {
@@ -177,7 +177,10 @@ export class ExamResultsComponent implements OnChanges, OnDestroy {
   get canRead(): boolean {
     return !!this.identity() && this.permissions.puedeConsultar(MODULOS_PERMISO.HISTORIAL)
       && Number.isSafeInteger(this.exam?.idExamen) && this.exam.idExamen > 0
-      && this.exam.idConsulta === this.consultationId && this.exam.idPaciente === this.patientId;
+      && this.exam.idPaciente === this.patientId
+      && (this.exam.idConsulta === this.consultationId ||
+        (this.exam.idConsulta === null && this.exam.idDiagnostico !== null &&
+          this.allowedDiagnosisIds.includes(this.exam.idDiagnostico)));
   }
 
   get canModify(): boolean {

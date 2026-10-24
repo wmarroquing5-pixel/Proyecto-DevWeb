@@ -9,5 +9,6 @@ public interface IPacienteService
     Task<PacienteResponse> ObtenerAsync(int id, CancellationToken cancellationToken);
     Task<PacienteResponse> CrearAsync(GuardarPacienteRequest request, CancellationToken cancellationToken);
     Task<PacienteResponse> ActualizarAsync(int id, GuardarPacienteRequest request, CancellationToken cancellationToken);
+    Task CambiarEstadoAsync(int id, bool activo, CancellationToken cancellationToken);
     Task DesactivarAsync(int id, CancellationToken cancellationToken);
 }

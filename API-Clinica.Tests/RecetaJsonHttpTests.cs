@@ -44,6 +44,34 @@ public sealed class RecetaJsonHttpTests
         }
     }
 
+    [Fact]
+    public async Task PostBloqueadoDevuelveProblemDetailsYGetSigueDisponible()
+    {
+        var (app, client, service) = await StartAsync(writeEnabled: false);
+        await using (app)
+        {
+            var response = await client.PostAsJsonAsync("/api/consultas/17/recetas", Payload());
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(503, body.RootElement.GetProperty("status").GetInt32());
+            Assert.Null(service.LastRequest);
+            Assert.Equal(HttpStatusCode.OK,
+                (await client.GetAsync("/api/consultas/17/recetas")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK,
+                (await client.GetAsync("/api/recetas/21")).StatusCode);
+
+            app.Configuration["Features:RecetaWriteEnabled"] = "true";
+            Assert.Equal(HttpStatusCode.Created,
+                (await client.PostAsJsonAsync("/api/consultas/17/recetas", Payload())).StatusCode);
+            app.Configuration["Features:RecetaWriteEnabled"] = "false";
+            service.Reset();
+            Assert.Equal(HttpStatusCode.ServiceUnavailable,
+                (await client.PostAsJsonAsync("/api/consultas/17/recetas", Payload())).StatusCode);
+            Assert.Null(service.LastRequest);
+        }
+    }
+
     private static object Payload() => new
     {
         idConsulta = 17, idDiagnostico = 4,
@@ -53,13 +81,18 @@ public sealed class RecetaJsonHttpTests
         lineas = new[] { new { idMedicamento = 3, cantidadPrescritaUnidades = 10 } }
     };
 
-    private static async Task<(WebApplication App, HttpClient Client, FakeService Service)> StartAsync()
+    private static async Task<(WebApplication App, HttpClient Client, FakeService Service)> StartAsync(
+        bool writeEnabled = true)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
+        builder.Configuration["Features:RecetaWriteEnabled"] = writeEnabled ? "true" : "false";
         builder.Services.AddControllers().AddApplicationPart(typeof(RecetasClinicasController).Assembly);
-        builder.Services.AddAuthorization(options => options.AddPolicy(
-            "Permiso:Historial:Crear", policy => policy.RequireAssertion(_ => true)));
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("Permiso:Historial:Crear", policy => policy.RequireAssertion(_ => true));
+            options.AddPolicy("Permiso:Historial:Consultar", policy => policy.RequireAssertion(_ => true));
+        });
         var service = new FakeService();
         builder.Services.AddSingleton<IRecetaClinicaService>(service);
         var app = builder.Build();
@@ -72,6 +105,7 @@ public sealed class RecetaJsonHttpTests
     private sealed class FakeService : IRecetaClinicaService
     {
         public CrearRecetaClinicaRequest? LastRequest { get; private set; }
+        public void Reset() => LastRequest = null;
 
         public Task<RecetaCreacionResultado> CrearAsync(CrearRecetaClinicaRequest request,
             ClaimsPrincipal principal, CancellationToken ct)
@@ -84,10 +118,14 @@ public sealed class RecetaJsonHttpTests
         }
 
         public Task<RecetaClinicaDetalleDto> ObtenerAsync(int idReceta,
-            ClaimsPrincipal principal, CancellationToken ct) => throw new NotImplementedException();
+            ClaimsPrincipal principal, CancellationToken ct) =>
+            Task.FromResult(new RecetaClinicaDetalleDto(21, 17, 30,
+                "Tratamiento sintético", null, new DateOnly(2026, 10, 23),
+                new DateOnly(2026, 10, 27), 4, "Diagnóstico sintético", 1,
+                "Vigente", 7, DateTime.UtcNow, []));
 
         public Task<PagedResponse<RecetaClinicaResumenDto>> ListarPorConsultaAsync(int idConsulta,
             int page, int pageSize, ClaimsPrincipal principal, CancellationToken ct) =>
-            throw new NotImplementedException();
+            Task.FromResult(new PagedResponse<RecetaClinicaResumenDto>([], page, pageSize, 0));
     }
 }

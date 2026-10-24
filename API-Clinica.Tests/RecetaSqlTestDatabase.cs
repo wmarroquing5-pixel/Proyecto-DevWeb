@@ -100,8 +100,8 @@ internal sealed class RecetaSqlTestDatabase : IAsyncDisposable
         await ExecuteAsync(baseSql);
         await ExecuteAsync(File.ReadAllText(Path.Combine(root, "API-TRAT-03", "ESQUEMA-APOYO-API.sql")));
         await ExecuteAsync(clinicalSql);
-        // Solo en la base efímera ya verificada: simula el contrato propuesto
-        // sin editar ni ejecutar el DDL histórico o el script para Azure.
+        // Solo en la base efímera verificada: reproduce el contrato actual de
+        // 11 columnas sin editar ni ejecutar el DDL histórico de 18 columnas.
         await ExecuteAsync("""
             ALTER TABLE dbo.RecetaLinea DROP CONSTRAINT CK_RecetaLinea_Cantidades;
             ALTER TABLE dbo.RecetaLinea DROP CONSTRAINT CK_RecetaLinea_Texto;
@@ -118,6 +118,11 @@ internal sealed class RecetaSqlTestDatabase : IAsyncDisposable
                        AND LEN(TRIM(UnidadDosis)) > 0
                        AND LEN(TRIM(Via)) > 0
                        AND LEN(TRIM(Frecuencia)) > 0);
+            ALTER TABLE dbo.RecetaLinea DROP CONSTRAINT CK_RecetaLinea_Equivalencia;
+            ALTER TABLE dbo.RecetaLinea DROP CONSTRAINT FK_RecetaLinea_Validador;
+            ALTER TABLE dbo.RecetaLinea DROP COLUMN Indicaciones, ContenidoPorUnidad,
+                UnidadContenido, FuenteEquivalencia, VersionEquivalencia,
+                IdUsuarioValidador, FechaValidacionUtc;
             """);
         await SeedAsync();
     }
@@ -239,7 +244,9 @@ internal sealed class RecetaSqlTestDatabase : IAsyncDisposable
                     ["Jwt:Issuer"] = "API-Clinica.RecetaSqlTests",
                     ["Jwt:Audience"] = "API-Clinica.RecetaSqlTests.Client",
                     ["Jwt:SigningKey"] = jwtKey,
-                    ["Jwt:ExpirationMinutes"] = "60"
+                    ["Jwt:ExpirationMinutes"] = "60",
+                    // Solo la base efímera de esta prueba permite crear recetas.
+                    ["Features:RecetaWriteEnabled"] = "true"
                 }));
             builder.ConfigureTestServices(services =>
             {

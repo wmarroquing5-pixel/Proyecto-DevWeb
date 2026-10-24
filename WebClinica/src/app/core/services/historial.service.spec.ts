@@ -26,29 +26,26 @@ describe('HistorialService: listado global de consultas', () => {
 
   afterEach(() => http.verify());
 
-  for (const destino of ['Clinica', 'CompraExterna'] as const) {
-    it(`envía el destino ${destino} como cadena JSON sin envoltorio ni consumo`, () => {
-      const body: CrearRecetaClinicaRequest = {
-        idConsulta: 17, idDiagnostico: 4,
-        claveOperacion: '1d78bd51-5166-4b78-89cd-15ad6e42eac7',
-        descripcionTratamiento: 'Tratamiento sintético', indicacionesGenerales: null,
-        fechaInicio: '2026-10-23', fechaFin: '2026-10-27',
-        lineas: [{ idMedicamento: 3, cantidadPrescritaUnidades: 10,
-          unidadInventario: 'tableta', destinoMedicamento: destino }],
-      };
-      service.crearReceta(body).subscribe();
-      const request = http.expectOne(`${environment.apiUrl}/consultas/17/recetas`);
-      expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual(body);
-      expect(request.request.body['request']).toBeUndefined();
-      expect(request.request.body.lineas[0].destinoMedicamento).toBe(destino);
-      expect(typeof request.request.body.lineas[0].destinoMedicamento).toBe('string');
-      expect(request.request.body.lineas[0].unidadInventario).toBe('tableta');
-      expect(request.request.headers.get('Authorization')).toBe('Bearer consultas-token');
-      request.flush({ idReceta: 21, ...body, estado: 'Vigente', numeroVersion: 1 });
-      http.expectNone(req => req.url.includes('/consumos') || req.url.includes('/movimientos'));
-    });
-  }
+  it('envía el JSON simplificado exacto con cabecera, Bearer y sin consumo', () => {
+    const body: CrearRecetaClinicaRequest = {
+      idConsulta: 17, idDiagnostico: 4,
+      claveOperacion: '1d78bd51-5166-4b78-89cd-15ad6e42eac7',
+      descripcionTratamiento: 'Tratamiento sintético', indicacionesGenerales: null,
+      fechaInicio: '2026-10-23', fechaFin: '2026-10-27',
+      lineas: [{ idMedicamento: 3, cantidadPrescritaUnidades: 10 },
+        { idMedicamento: 4, cantidadPrescritaUnidades: 2 }],
+    };
+    service.crearReceta(body).subscribe();
+    const request = http.expectOne(`${environment.apiUrl}/consultas/17/recetas`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual(body);
+    expect(Object.keys(request.request.body.lineas[0]).sort()).toEqual([
+      'cantidadPrescritaUnidades', 'idMedicamento']);
+    expect(request.request.body['request']).toBeUndefined();
+    expect(request.request.headers.get('Authorization')).toBe('Bearer consultas-token');
+    request.flush({ idReceta: 21, ...body, estado: 'Vigente', numeroVersion: 1 });
+    http.expectNone(req => req.url.includes('/consumos') || req.url.includes('/movimientos'));
+  });
 
   it('separa el registro general del registro atómico con examen', () => {
     const general = { idConsulta: 17, idMedico: null, descripcion: 'Control' };

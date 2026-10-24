@@ -95,8 +95,7 @@ public sealed class RecetaClinicaService(
                 await context.SaveChangesAsync(ct);
                 foreach (var linea in preparado.Lineas)
                 {
-                    // La captura es directa: ninguna columna de equivalencia
-                    // recibe un valor en este flujo ni se toca inventario.
+                    // La captura es directa y no toca inventario.
                     context.RecetaLineas.Add(new RecetaLinea
                     {
                         IdReceta = receta.IdReceta,
@@ -108,13 +107,12 @@ public sealed class RecetaClinicaService(
                         Dosis = null,
                         UnidadDosis = null,
                         Via = null,
-                        Frecuencia = null,
-                        Indicaciones = null
+                        Frecuencia = null
                     });
                 }
                 await context.SaveChangesAsync(ct);
                 var detalle = await ObtenerCoreAsync(receta.IdReceta, ct);
-                await transaction.CommitAsync(ct);
+                await ConfirmarAsync(transaction, ct);
                 return new(detalle, false);
             }
             catch
@@ -139,14 +137,39 @@ public sealed class RecetaClinicaService(
             await ValidarReintentoAsync(existente, usuario, request.IdConsulta, hash, ct);
             return new(await ObtenerCoreAsync(existente.IdReceta, ct), true);
         }
-        catch (SqlException ex) when (ex.Number is 1205 or 1222)
+        catch (Exception ex) when (EsBloqueoTransitorio(ex))
         {
-            throw new ConflictException("La receta está siendo confirmada por otra solicitud. Intenta nuevamente con la misma clave.");
+            throw new ExternalDependencyException("La base de datos está temporalmente ocupada. Conserva la misma clave de operación antes de reintentar.");
         }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql &&
-            sql.Number is 547 or 1205 or 1222)
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException sql && sql.Number == 547)
         {
             throw new ConflictException("Una referencia de la receta cambió durante la confirmación.");
+        }
+    }
+
+    private static bool EsBloqueoTransitorio(Exception error)
+    {
+        for (Exception? actual = error; actual is not null; actual = actual.InnerException)
+            if (actual is SqlException sql && sql.Number is 1205 or 1222)
+                return true;
+        return false;
+    }
+
+    private async Task ConfirmarAsync(
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction,
+        CancellationToken ct)
+    {
+        try
+        {
+            await transaction.CommitAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // Una excepción durante COMMIT no permite afirmar si SQL confirmó o
+            // revirtió. El cliente debe conservar su clave para reconciliar.
+            logger.LogError(ex, "No se pudo determinar el resultado del COMMIT de la receta clínica.");
+            throw new ExternalDependencyException(
+                "No se pudo confirmar el resultado de la receta. Conserva la misma clave de operación y reintenta la consulta o confirmación.");
         }
     }
 

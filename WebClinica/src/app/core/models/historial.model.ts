@@ -173,9 +173,7 @@ export interface TratamientoFiltroDto {
 
 export interface RecetaLineaCrearRequest {
   idMedicamento: number;
-  unidadInventario: string;
   cantidadPrescritaUnidades: number;
-  destinoMedicamento: 'Clinica' | 'CompraExterna';
 }
 
 export interface CrearRecetaClinicaRequest {
@@ -193,7 +191,7 @@ export interface RecetaLineaDetalleDto extends RecetaLineaCrearRequest {
   idRecetaLinea: number;
   orden: number;
   nombreMedicamento: string;
-  duracionDias: number;
+  presentacion: string;
 }
 
 export interface RecetaClinicaDetalleDto {

@@ -305,6 +305,14 @@ export const routes: Routes = [
 },
 // ---------- Módulo Ventas de Farmacia ----------
 {
+  path: 'farmacia/recetas',
+  canActivate: [permisoGuard],
+  data: { permisos: [permiso(MODULOS_PERMISO.VENTAS, OPERACIONES_PERMISO.CONSULTAR)] },
+  loadComponent: () =>
+    import('./pages/farmacia/recetas-farmacia.component')
+      .then(m => m.RecetasFarmaciaComponent),
+},
+{
   path: 'ventas',
   canActivate: [permisoGuard],
   data: { permisos: [permiso(MODULOS_PERMISO.VENTAS, OPERACIONES_PERMISO.CONSULTAR)] },

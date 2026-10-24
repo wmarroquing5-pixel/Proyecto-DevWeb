@@ -182,6 +182,39 @@ public sealed class ExamenesTests
     }
 
     [Fact]
+    public async Task LecturaOcultaExamenAjenoYSinConsultaAntesDePaginar()
+    {
+        using var factory = new ExamenApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.SeedExamenesAsync();
+        await factory.GrantAsync(consultar: true);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
+            db.Examenes.AddRange(
+                new Examen { IdExamen = 4, IdConsulta = 2,
+                    NombreExamen = "Ajeno", FechaExamen = Fecha },
+                new Examen { IdExamen = 5,
+                    NombreExamen = "Sin atribución", FechaExamen = Fecha });
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var page = await client.GetFromJsonAsync<PagedResponse<ExamenResponseDto>>(
+            "/api/examenes?page=3&pageSize=1");
+        Assert.NotNull(page);
+        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(3, Assert.Single(page.Items).IdExamen);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/examenes/4")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/examenes/5")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/examenes/4/archivos")).StatusCode);
+        Assert.Equal(0, factory.Storage.Count);
+    }
+
+    [Fact]
     public async Task ActualizacionConservaAsociacionesYValidaTurnoYMedico()
     {
         using var factory = new ExamenApiFactory();
@@ -319,12 +352,12 @@ public sealed class ExamenesTests
         Assert.Equal(HttpStatusCode.Forbidden,
             (await client.GetAsync("/api/examenes/1/archivos")).StatusCode);
         await factory.GrantAsync(consultar: true);
-        Assert.Equal(HttpStatusCode.Forbidden,
+        Assert.Equal(HttpStatusCode.NotFound,
             (await client.GetAsync("/api/examenes/1/archivos")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await PostFilesAsync(client, 1, ("informe.pdf", Pdf()))).StatusCode);
         await factory.GrantAsync(modificar: true);
-        Assert.Equal(HttpStatusCode.Forbidden,
+        Assert.Equal(HttpStatusCode.NotFound,
             (await PostFilesAsync(client, 1, ("informe.pdf", Pdf()))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await client.DeleteAsync("/api/examenes/1/archivos/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).StatusCode);
@@ -332,7 +365,7 @@ public sealed class ExamenesTests
     }
 
     [Fact]
-    public async Task AdministradorConPermisosVeExamenVacioYDependenciaNoDisponible()
+    public async Task AdministradorSinAlcanceClinicoNoVeExamenYMedicoDetectaDependenciaNoDisponible()
     {
         using var factory = new ExamenApiFactory();
         var password = await factory.SeedAsync(idEmpleadoUsuario: null, roleName: "ADMINISTRADOR");
@@ -342,8 +375,14 @@ public sealed class ExamenesTests
         await LoginAsync(client, password);
 
         var empty = await client.GetAsync("/api/examenes/1/archivos");
-        Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
-        Assert.Empty((await empty.Content.ReadFromJsonAsync<ExamResultFileDto[]>())!);
+        Assert.Equal(HttpStatusCode.Forbidden, empty.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/examenes/1")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/examenes")).StatusCode);
+        await factory.SetUserEmployeeAsync(1);
+        Assert.Empty((await client.GetFromJsonAsync<ExamResultFileDto[]>(
+            "/api/examenes/1/archivos"))!);
         Assert.Equal(HttpStatusCode.NotFound,
             (await client.GetAsync("/api/examenes/999/archivos")).StatusCode);
 

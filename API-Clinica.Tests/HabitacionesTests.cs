@@ -77,6 +77,8 @@ public sealed class HabitacionesTests
         using var client = factory.CreateClient();
         const string negotiate = "/hubs/habitaciones/negotiate?negotiateVersion=1";
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(negotiate, null)).StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "jwt-invalido");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync(negotiate, null)).StatusCode);
         await LoginAsync(client, password);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(negotiate, null)).StatusCode);
 
@@ -188,7 +190,11 @@ public sealed class HabitacionesTests
         Assert.Equal(HttpStatusCode.OK, discharged.StatusCode);
         var egress = await discharged.Content.ReadFromJsonAsync<AsignacionHabitacionResponse>();
         Assert.NotNull(egress?.FechaEgreso);
+        Assert.True(egress.FechaEgreso >= egress.FechaIngreso);
         Assert.Equal("Seguimiento", egress.Observaciones);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsync(
+                $"/api/asignaciones-habitacion/{assignment.IdAsignacion}/egreso", null)).StatusCode);
         Assert.Equal("En limpieza", (await client.GetFromJsonAsync<HabitacionResponse>(
             $"/api/habitaciones/{room.IdHabitacion}"))?.Estado);
         Assert.Equal(HttpStatusCode.Conflict,
@@ -263,6 +269,15 @@ public sealed class HabitacionesTests
             new CrearHabitacionRequest { IdSucursal = 1, NumeroHabitacion = "102" });
         var room = await createdRoom.Content.ReadFromJsonAsync<HabitacionResponse>();
         Assert.NotNull(room);
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/habitaciones",
+                new CrearHabitacionRequest { IdSucursal = 999,
+                    NumeroHabitacion = "Sucursal inexistente" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/asignaciones-habitacion",
+                new CrearAsignacionHabitacionRequest { IdHabitacion = room.IdHabitacion,
+                    IdPaciente = 1, FechaIngreso = DateTimeOffset.UtcNow.AddDays(1) })).StatusCode);
 
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.PostAsJsonAsync("/api/asignaciones-habitacion",

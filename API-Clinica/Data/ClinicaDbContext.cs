@@ -960,7 +960,6 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
             {
                 table.HasCheckConstraint("CK_RecetaLinea_Cantidades", "[Orden] > 0 AND [CantidadPrescritaUnidades] > 0 AND [Dosis] > 0 AND [DuracionDias] > 0");
                 table.HasCheckConstraint("CK_RecetaLinea_Texto", "LEN(TRIM([UnidadInventario])) > 0 AND LEN(TRIM([UnidadDosis])) > 0 AND LEN(TRIM([Via])) > 0 AND LEN(TRIM([Frecuencia])) > 0");
-                table.HasCheckConstraint("CK_RecetaLinea_Equivalencia", "([ContenidoPorUnidad] IS NULL AND [UnidadContenido] IS NULL AND [FuenteEquivalencia] IS NULL AND [VersionEquivalencia] IS NULL AND [IdUsuarioValidador] IS NULL AND [FechaValidacionUtc] IS NULL) OR ([ContenidoPorUnidad] IS NOT NULL AND [ContenidoPorUnidad] > 0 AND [UnidadContenido] IS NOT NULL AND LEN(TRIM([UnidadContenido])) > 0 AND [FuenteEquivalencia] IS NOT NULL AND LEN(TRIM([FuenteEquivalencia])) > 0 AND [VersionEquivalencia] IS NOT NULL AND LEN(TRIM([VersionEquivalencia])) > 0 AND [IdUsuarioValidador] IS NOT NULL AND [FechaValidacionUtc] IS NOT NULL)");
             });
             entity.HasKey(e => e.IdRecetaLinea).HasName("PK_RecetaLinea");
             entity.Property(e => e.IdRecetaLinea).HasColumnType("int").UseIdentityColumn(1, 1);
@@ -974,13 +973,6 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
             entity.Property(e => e.Via).HasColumnType("nvarchar(40)").HasMaxLength(40);
             entity.Property(e => e.Frecuencia).HasColumnType("nvarchar(100)").HasMaxLength(100);
             entity.Property(e => e.DuracionDias).HasColumnType("smallint");
-            entity.Property(e => e.Indicaciones).HasColumnType("nvarchar(500)").HasMaxLength(500);
-            entity.Property(e => e.ContenidoPorUnidad).HasColumnType("decimal(18,6)");
-            entity.Property(e => e.UnidadContenido).HasColumnType("nvarchar(30)").HasMaxLength(30);
-            entity.Property(e => e.FuenteEquivalencia).HasColumnType("nvarchar(200)").HasMaxLength(200);
-            entity.Property(e => e.VersionEquivalencia).HasColumnType("nvarchar(50)").HasMaxLength(50);
-            entity.Property(e => e.IdUsuarioValidador).HasColumnType("int");
-            entity.Property(e => e.FechaValidacionUtc).HasColumnType("datetime2(3)");
             entity.HasAlternateKey(e => new { e.IdRecetaLinea, e.IdReceta })
                 .HasName("UQ_RecetaLinea_IdReceta");
             entity.HasAlternateKey(e => new { e.IdReceta, e.Orden })
@@ -990,8 +982,6 @@ public class ClinicaDbContext(DbContextOptions<ClinicaDbContext> options) : DbCo
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaLinea_Receta");
             entity.HasOne<Medicamento>().WithMany().HasForeignKey(e => e.IdMedicamento)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaLinea_Medicamento");
-            entity.HasOne<Usuario>().WithMany().HasForeignKey(e => e.IdUsuarioValidador)
-                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_RecetaLinea_Validador");
         });
 
         modelBuilder.Entity<Clinica>(entity =>

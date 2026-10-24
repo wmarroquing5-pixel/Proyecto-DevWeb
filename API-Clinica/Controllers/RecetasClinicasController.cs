@@ -8,12 +8,29 @@ namespace API_Clinica.Controllers;
 
 [ApiController]
 [Route("api")]
-public sealed class RecetasClinicasController(IRecetaClinicaService service) : ControllerBase
+public sealed class RecetasClinicasController(
+    IRecetaClinicaService service, IConfiguration configuration) : ControllerBase
 {
     [HttpPost("consultas/{idConsulta:int}/recetas"), PermisoRequerido("Historial", Operacion.Crear)]
     public async Task<ActionResult<RecetaClinicaDetalleDto>> Crear(
         int idConsulta, CrearRecetaClinicaRequest request, CancellationToken ct)
     {
+        // Solo una habilitación explícita del servidor permite escrituras.
+        // La autorización Historial/Crear se evalúa antes de entrar al action.
+        if (!string.Equals(configuration["Features:RecetaWriteEnabled"],
+                "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ObjectResult(new ProblemDetails
+            {
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Title = "Confirmación de recetas no disponible",
+                Detail = "La creación de recetas está temporalmente deshabilitada."
+            })
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
         if (request.IdConsulta != idConsulta)
             throw new AppValidationException("La consulta de la ruta y del cuerpo no coincide.",
                 new Dictionary<string, string[]> { ["IdConsulta"] = ["Debe coincidir con la ruta."] });

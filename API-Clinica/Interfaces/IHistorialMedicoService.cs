@@ -9,7 +9,7 @@ public interface IHistorialMedicoService
         HistorialMedicoCreateDto request, ClaimsPrincipal principal,
         CancellationToken cancellationToken);
     Task<PagedResponse<HistorialMedicoResponseDto>> ListarAsync(
-        HistorialMedicoFiltroDto filtro, CancellationToken cancellationToken);
+        HistorialMedicoFiltroDto filtro, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<HistorialMedicoResponseDto> ObtenerAsync(
-        int id, CancellationToken cancellationToken);
+        int id, ClaimsPrincipal principal, CancellationToken cancellationToken);
 }

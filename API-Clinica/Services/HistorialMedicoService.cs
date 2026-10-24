@@ -13,7 +13,8 @@ public sealed class HistorialMedicoService(
     ClinicaDbContext context,
     HistorialMedicoLecturaService lectura,
     ICommonParameterValidator parameterValidator,
-    IAccesoActualService accesoActual) : IHistorialMedicoService
+    IAccesoActualService accesoActual,
+    ConsultaLecturaScope lecturaScope) : IHistorialMedicoService
 {
     public async Task<HistorialMedicoResponseDto> CrearAsync(
         HistorialMedicoCreateDto request, ClaimsPrincipal principal, CancellationToken ct)
@@ -86,14 +87,15 @@ public sealed class HistorialMedicoService(
     }
 
     public async Task<PagedResponse<HistorialMedicoResponseDto>> ListarAsync(
-        HistorialMedicoFiltroDto filtro, CancellationToken ct)
+        HistorialMedicoFiltroDto filtro, ClaimsPrincipal principal, CancellationToken ct)
     {
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, ct);
         var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
         ValidarId(filtro.IdConsulta, nameof(filtro.IdConsulta));
         ValidarId(filtro.IdDiagnostico, nameof(filtro.IdDiagnostico));
         ValidarId(filtro.IdPaciente, nameof(filtro.IdPaciente));
 
-        var query = context.HistorialesMedicos.AsNoTracking();
+        var query = lecturaScope.HistorialesVisibles(idMedico);
         if (filtro.IdConsulta is int idConsulta)
         {
             var diagnosticos = context.Diagnosticos.AsNoTracking()
@@ -124,9 +126,11 @@ public sealed class HistorialMedicoService(
         return new(await MapearAsync(historiales, ct), filtro.Page, filtro.PageSize, total);
     }
 
-    public async Task<HistorialMedicoResponseDto> ObtenerAsync(int id, CancellationToken ct)
+    public async Task<HistorialMedicoResponseDto> ObtenerAsync(
+        int id, ClaimsPrincipal principal, CancellationToken ct)
     {
-        var historial = await context.HistorialesMedicos.AsNoTracking()
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, ct);
+        var historial = await lecturaScope.HistorialesVisibles(idMedico)
             .SingleOrDefaultAsync(h => h.IdEvolucion == id, ct)
             ?? throw new NotFoundException("Historial médico no encontrado.");
         return (await MapearAsync([historial], ct))[0];

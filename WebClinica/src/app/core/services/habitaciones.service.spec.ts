@@ -186,7 +186,7 @@ describe('HabitacionesService: recuperación y SignalR', () => {
     expect(second).toEqual(page());
   });
 
-  it('actualiza la lista con eventos consecutivos sin mutar el objeto original', () => {
+  it('reconcilia eventos consecutivos con HTTP sin mutar el objeto original', () => {
     const result = service();
     let rooms: HabitacionResponse[] = [];
     result.habitaciones$.subscribe(value => rooms = value);
@@ -194,8 +194,28 @@ describe('HabitacionesService: recuperación y SignalR', () => {
     http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`).flush(page());
     eventHandler()({ habitacionId: 7, estado: 'Ocupada' });
     eventHandler()({ habitacionId: 7, estado: 'En limpieza' });
-    expect(rooms[0].estado).toBe('En limpieza');
+    expect(rooms[0].estado).toBe('Libre');
     expect(room.estado).toBe('Libre');
+    http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`).flush(page());
+    http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`)
+      .flush(page([{ ...room, estado: 'En limpieza' }]));
+    expect(rooms[0].estado).toBe('En limpieza');
+  });
+
+  it('confirma por HTTP la baja recibida por SignalR y retira acciones de una tarjeta inactiva', () => {
+    const result = service();
+    let rooms: HabitacionResponse[] = [];
+    result.habitaciones$.subscribe(value => rooms = value);
+    result.cargarHabitaciones().subscribe();
+    http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`).flush(page());
+
+    eventHandler()({ habitacionId: 7, estado: 'Libre' });
+    expect(result.estadoSincronizacion()).toBe('sincronizando');
+    http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`)
+      .flush(page([{ ...room, activa: false }]));
+
+    expect(rooms[0].activa).toBeFalse();
+    expect(result.estadoSincronizacion()).toBe('actualizado');
   });
 
   it('no permite que una respuesta HTTP anterior a un evento sobrescriba ese evento', () => {
@@ -209,11 +229,27 @@ describe('HabitacionesService: recuperación y SignalR', () => {
     const oldRequest = http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`);
     eventHandler()({ habitacionId: 7, estado: 'Ocupada' });
     oldRequest.flush(page([{ ...room, estado: 'Libre' }]));
-    expect(rooms[0].estado).toBe('Ocupada');
+    expect(rooms[0].estado).toBe('Libre');
 
     http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`)
       .flush(page([{ ...room, estado: 'En limpieza' }]));
     expect(rooms[0].estado).toBe('En limpieza');
+    expect(result.estadoSincronizacion()).toBe('actualizado');
+  });
+
+  it('ignora el estado de un evento retrasado y conserva la respuesta HTTP vigente', () => {
+    const result = service();
+    let rooms: HabitacionResponse[] = [];
+    result.habitaciones$.subscribe(value => rooms = value);
+    result.cargarHabitaciones().subscribe();
+    http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`)
+      .flush(page([{ ...room, estado: 'Ocupada' }]));
+
+    eventHandler()({ habitacionId: 7, estado: 'Libre' });
+    expect(rooms[0].estado).toBe('Ocupada');
+    http.expectOne(`${environment.apiUrl}/habitaciones?page=1&pageSize=100`)
+      .flush(page([{ ...room, estado: 'Ocupada' }]));
+    expect(rooms[0].estado).toBe('Ocupada');
     expect(result.estadoSincronizacion()).toBe('actualizado');
   });
 

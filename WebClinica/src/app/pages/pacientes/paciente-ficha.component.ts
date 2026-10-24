@@ -5,7 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { catchError, forkJoin, map, of, Subscription, switchMap } from 'rxjs';
 import { ContactoEmergenciaResponse } from '../../core/models/contacto-emergencia.model';
-import { ConsultaListadoDto, DiagnosticoResponse, ExamenResponseDto, HistorialMedicoResponseDto, TratamientoResponseDto } from '../../core/models/historial.model';
+import { ConsultaDetalleDto, ConsultaListadoDto, DiagnosticoResponse, ExamenResponseDto, HistorialMedicoResponseDto, TratamientoResponseDto } from '../../core/models/historial.model';
 import { MODULOS_PERMISO } from '../../core/models/permiso.model';
 import { PacienteResponse } from '../../core/models/paciente.model';
 import { ApiErrorService } from '../../core/services/api-error.service';
@@ -15,19 +15,21 @@ import { PacientesService } from '../../core/services/paciente.service';
 import { EmpleadosService } from '../../core/services/empleado.service';
 import { PermisosService } from '../../core/services/permisos.service';
 import { UiStateComponent } from '../../shared/components/ui-state.component';
+import { ExamResultsComponent } from '../historial/exam-results.component';
 import { cargarCatalogoInventario, ContextoInventario, fechaInventarioValida, idInventarioValido } from '../inventario/inventario-ui';
 
 interface ResumenClinico {
-  consulta: ConsultaListadoDto;
+  consulta: ConsultaDetalleDto;
   diagnosticos: DiagnosticoResponse[];
   tratamientos: TratamientoResponseDto[];
   examenes: ExamenResponseDto[];
+  idsDiagnosticos: number[];
   evoluciones: HistorialMedicoResponseDto[];
 }
 
 @Component({
   selector: 'app-paciente-ficha',
-  imports: [CommonModule, RouterModule, UiStateComponent],
+  imports: [CommonModule, RouterModule, UiStateComponent, ExamResultsComponent],
   template: `
     <div class="page-shell">
       <header class="page-header">
@@ -135,22 +137,60 @@ interface ResumenClinico {
             @else if (errorResumen) { <app-ui-state kind="error" title="No fue posible cargar el resumen clínico" [description]="errorResumen" [compact]="true" /> }
             @else if (resumen) {
               <div class="resumen-contenido">
-                <section class="resumen-seccion" aria-labelledby="resumen-diagnosticos">
-                  <h3 id="resumen-diagnosticos"><i class="bi bi-heart-pulse" aria-hidden="true"></i> Diagnósticos</h3>
-                  <ul>@for (item of resumen.diagnosticos; track item.idDiagnostico) { <li>{{ item.descripcion }}</li> } @empty { <li>Sin diagnósticos registrados.</li> }</ul>
-                </section>
-                <section class="resumen-seccion" aria-labelledby="resumen-tratamientos">
-                  <h3 id="resumen-tratamientos"><i class="bi bi-capsule" aria-hidden="true"></i> Tratamientos</h3>
-                  <ul>@for (item of resumen.tratamientos; track item.idTratamiento) { <li>{{ item.descripcion }} @if (item.indicaciones) { — {{ item.indicaciones }} }</li> } @empty { <li>Sin tratamientos registrados.</li> }</ul>
+                <section class="resumen-seccion" aria-labelledby="resumen-evaluacion">
+                  <h3 id="resumen-evaluacion"><i class="bi bi-clipboard2-pulse" aria-hidden="true"></i> Evaluación</h3>
+                  @if (tieneEvaluacionResumen(resumen.consulta)) {
+                    <div class="resumen-datos">
+                      @if (resumen.consulta.sintomas?.trim()) { <p><strong>Síntomas:</strong> {{ resumen.consulta.sintomas }}</p> }
+                      @if (resumen.consulta.observaciones?.trim()) { <p><strong>Observaciones:</strong> {{ resumen.consulta.observaciones }}</p> }
+                      @if (resumen.consulta.pesoLb != null) { <p><strong>Peso:</strong> {{ resumen.consulta.pesoLb }} lb</p> }
+                      @if (resumen.consulta.alturaCm != null) { <p><strong>Altura:</strong> {{ resumen.consulta.alturaCm }} cm</p> }
+                      @if (resumen.consulta.presionSistolica != null && resumen.consulta.presionDiastolica != null) {
+                        <p><strong>Presión arterial:</strong> {{ resumen.consulta.presionSistolica }}/{{ resumen.consulta.presionDiastolica }} mmHg</p>
+                      } @else {
+                        @if (resumen.consulta.presionSistolica != null) { <p><strong>Presión sistólica:</strong> {{ resumen.consulta.presionSistolica }} mmHg</p> }
+                        @if (resumen.consulta.presionDiastolica != null) { <p><strong>Presión diastólica:</strong> {{ resumen.consulta.presionDiastolica }} mmHg</p> }
+                      }
+                      @if (resumen.consulta.temperaturaC != null) { <p><strong>Temperatura:</strong> {{ resumen.consulta.temperaturaC }} °C</p> }
+                      @if (resumen.consulta.frecuenciaCardiaca != null) { <p><strong>Frecuencia cardíaca:</strong> {{ resumen.consulta.frecuenciaCardiaca }} lpm</p> }
+                    </div>
+                  } @else { <p class="resumen-vacio">No hay datos de evaluación registrados.</p> }
                 </section>
                 <section class="resumen-seccion" aria-labelledby="resumen-examenes">
                   <h3 id="resumen-examenes"><i class="bi bi-file-earmark-medical" aria-hidden="true"></i> Exámenes</h3>
-                  <ul>@for (item of resumen.examenes; track item.idExamen) { <li>{{ item.nombreExamen }} · Fecha de examen: {{ item.fechaExamen | date:'dd/MM/yyyy' }} @if (item.fechaResultado) { · Fecha de resultado: {{ item.fechaResultado }} }</li> } @empty { <li>Sin exámenes asociados.</li> }</ul>
-                  <p class="resumen-aviso"><i class="bi bi-info-circle" aria-hidden="true"></i> El contrato de exámenes no proporciona contenido de resultados; una fecha de resultado no confirma un informe clínico.</p>
+                  @if (resumen.examenes.length === 0) {
+                    <p class="resumen-vacio">No hay exámenes registrados para esta consulta.</p>
+                  } @else {
+                    <div class="resumen-examenes">
+                      @for (item of resumen.examenes; track item.idExamen) {
+                        <article class="resumen-examen">
+                          <h4>{{ item.nombreExamen }}</h4>
+                          <p><strong>Fecha del examen:</strong> {{ item.fechaExamen | date:'dd/MM/yyyy' }}
+                            @if (item.prioridad) { · <strong>Prioridad:</strong> {{ item.prioridad }} }
+                            @if (item.fechaResultado) { · <strong>Fecha de resultado:</strong> {{ item.fechaResultado | date:'dd/MM/yyyy' }} }
+                          </p>
+                          <app-exam-results [exam]="item" [consultationId]="resumen.consulta.idConsulta"
+                            [patientId]="paciente.idPaciente" [allowedDiagnosisIds]="resumen.idsDiagnosticos" mode="detalle" />
+                        </article>
+                      }
+                    </div>
+                  }
+                </section>
+                <section class="resumen-seccion" aria-labelledby="resumen-diagnosticos">
+                  <h3 id="resumen-diagnosticos"><i class="bi bi-heart-pulse" aria-hidden="true"></i> Diagnóstico</h3>
+                  <ul>@for (item of resumen.diagnosticos; track item.idDiagnostico) { <li>{{ item.descripcion }}</li> } @empty { <li>Sin diagnósticos registrados.</li> }</ul>
+                </section>
+                <section class="resumen-seccion" aria-labelledby="resumen-tratamientos">
+                  <h3 id="resumen-tratamientos"><i class="bi bi-capsule" aria-hidden="true"></i> Tratamiento</h3>
+                  <ul>@for (item of resumen.tratamientos; track item.idTratamiento) { <li>{{ item.descripcion }} @if (item.indicaciones) { — {{ item.indicaciones }} } · Inicio: {{ item.fechaInicio | date:'dd/MM/yyyy' }} @if (item.fechaFin) { · Fin: {{ item.fechaFin | date:'dd/MM/yyyy' }} }</li> } @empty { <li>Sin tratamientos registrados.</li> }</ul>
                 </section>
                 <section class="resumen-seccion" aria-labelledby="resumen-evolucion">
                   <h3 id="resumen-evolucion"><i class="bi bi-graph-up" aria-hidden="true"></i> Evolución</h3>
                   <ul>@for (item of resumen.evoluciones; track item.idHistorial) { <li>{{ item.descripcion }} · {{ item.fechaHistorial | date:'dd/MM/yyyy HH:mm' }}</li> } @empty { <li>Sin evoluciones registradas.</li> }</ul>
+                </section>
+                <section class="resumen-seccion" aria-labelledby="resumen-hospitalizacion">
+                  <h3 id="resumen-hospitalizacion"><i class="bi bi-hospital" aria-hidden="true"></i> Hospitalización</h3>
+                  <p class="resumen-vacio">La consulta de hospitalizaciones requiere autorización específica.</p>
                 </section>
               </div>
             }
@@ -172,8 +212,14 @@ interface ResumenClinico {
     .resumen-seccion h3 i { color: #0d6efd; }
     .resumen-seccion ul { margin: 0; padding: 1rem 1.5rem 1rem 2.5rem; }
     .resumen-seccion li + li { margin-top: .35rem; }
-    .resumen-aviso { display: flex; gap: .75rem; margin: 0 1rem 1rem; padding: .75rem 1rem; border-radius: .4rem; background: #eaf3ff; color: #31577e; }
-    .resumen-aviso i { color: #0d6efd; flex: 0 0 auto; }
+    .resumen-datos, .resumen-vacio { margin: 0; padding: 1rem 1.5rem; }
+    .resumen-datos p { margin: 0; overflow-wrap: anywhere; }
+    .resumen-datos p + p { margin-top: .35rem; }
+    .resumen-examenes { display: grid; gap: 1rem; padding: 1rem; min-width: 0; }
+    .resumen-examen { min-width: 0; padding: 1rem; border: 1px solid var(--ui-border); border-radius: .5rem; }
+    .resumen-examen h4 { color: var(--ui-heading); font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
+    .resumen-examen p { margin: 0; overflow-wrap: anywhere; }
+    .resumen-examen app-exam-results { display: block; min-width: 0; }
   `],
 })
 export class PacienteFichaComponent implements OnInit {
@@ -203,6 +249,7 @@ export class PacienteFichaComponent implements OnInit {
   cargandoContactos = false; errorContactos = '';
   consultas: ConsultaListadoDto[] = [];
   private nombresConsultas = new Map<number, string>();
+  private detallesConsultas = new Map<number, ConsultaDetalleDto>();
   private nombresMedicos = new Map<number, string>();
   paginaConsultas = 1; paginasConsultas = 0; totalConsultas = 0; cargandoConsultas = false; errorConsultas = '';
   consultaResumen: ConsultaListadoDto | null = null;
@@ -230,6 +277,12 @@ export class PacienteFichaComponent implements OnInit {
   }
 
   dato(valor?: string | null): string { return valor?.trim() || 'No registrado'; }
+  tieneEvaluacionResumen(c: ConsultaDetalleDto): boolean {
+    return !!(c.sintomas?.trim() || c.observaciones?.trim()
+      || c.pesoLb != null || c.alturaCm != null
+      || c.presionSistolica != null || c.presionDiastolica != null
+      || c.temperaturaC != null || c.frecuenciaCardiaca != null);
+  }
   nombreConsulta(consulta: ConsultaListadoDto): string { return this.nombresConsultas.get(consulta.idConsulta) || 'Consulta sin motivo registrado'; }
   nombreMedico(consulta: ConsultaListadoDto): string { return this.nombresMedicos.get(consulta.idMedico) || 'Médico no disponible'; }
   get puedeIrAnterior(): boolean { return this.indiceActualResumen > 0; }
@@ -247,7 +300,7 @@ export class PacienteFichaComponent implements OnInit {
     this.revocarFoto(); this.cargandoFoto = false; this.errorFoto = '';
     this.contactos = []; this.cargandoContactos = false; this.errorContactos = '';
     this.consultas = []; this.paginaConsultas = 1; this.paginasConsultas = this.totalConsultas = 0; this.cargandoConsultas = false; this.errorConsultas = '';
-    this.nombresConsultas.clear(); this.nombresMedicos.clear();
+    this.nombresConsultas.clear(); this.detallesConsultas.clear(); this.nombresMedicos.clear();
     this.consultaResumen = null; this.indiceDestinoResumen = null;
     this.botonOrigenResumen = null;
     this.resumen = null; this.cargandoResumen = false; this.errorResumen = '';
@@ -369,7 +422,9 @@ export class PacienteFichaComponent implements OnInit {
         if (!this.vigente(revision, clave, idPaciente) ||
           !this.permisos.puedeConsultar(MODULOS_PERMISO.CONSULTAS) ||
           !this.consultas.some(c => c.idConsulta === consulta.idConsulta)) return;
-        if (detalle && detalle.idConsulta === consulta.idConsulta && detalle.idPaciente === idPaciente) {
+        if (detalle && detalle.idConsulta === consulta.idConsulta && detalle.idPaciente === idPaciente
+          && detalle.idMedico === consulta.idMedico) {
+          this.detallesConsultas.set(consulta.idConsulta, detalle);
           this.nombresConsultas.set(consulta.idConsulta, detalle.motivoConsulta?.trim() || 'Consulta sin motivo registrado');
         }
       }));
@@ -442,9 +497,11 @@ export class PacienteFichaComponent implements OnInit {
       (page, pageSize) => this.historialService.listarTratamientos({ idConsulta, page, pageSize }), t => t.idTratamiento);
     const evoluciones$ = cargarCatalogoInventario(
       (page, pageSize) => this.historialService.listarHistorial({ idConsulta, page, pageSize }), e => e.idHistorial ?? 0);
+    const detalle = this.detallesConsultas.get(idConsulta);
+    const consulta$ = detalle ? of(detalle) : this.historialService.obtenerConsulta(idConsulta);
     const examenesDe = (filtro: { idConsulta?: number; idDiagnostico?: number }) => cargarCatalogoInventario(
       (page: number, pageSize: number) => this.historialService.listarExamenes({ ...filtro, page, pageSize }), e => e.idExamen);
-    const lectura = forkJoin({ diagnosticos: diagnosticos$, tratamientos: tratamientos$, evoluciones: evoluciones$ }).pipe(
+    const lectura = forkJoin({ consulta: consulta$, diagnosticos: diagnosticos$, tratamientos: tratamientos$, evoluciones: evoluciones$ }).pipe(
       switchMap(datos => forkJoin([examenesDe({ idConsulta }),
         ...datos.diagnosticos.map(d => examenesDe({ idDiagnostico: d.idDiagnostico }))]).pipe(
           map(paginas => ({ ...datos, examenes: [...new Map(paginas.flat().map(e => [e.idExamen, e])).values()] })))),
@@ -456,7 +513,9 @@ export class PacienteFichaComponent implements OnInit {
           !this.permisos.puedeConsultar(MODULOS_PERMISO.HISTORIAL) ||
           !this.consultas.some(c => c.idConsulta === idConsulta && c.idPaciente === id)) return;
         const idsDiagnosticos = new Set(datos.diagnosticos.map(d => d.idDiagnostico));
-        if (datos.diagnosticos.some(d => d.idConsulta !== idConsulta) ||
+        if (datos.consulta.idConsulta !== idConsulta || datos.consulta.idPaciente !== id
+          || datos.consulta.idMedico !== consultaActual.idMedico ||
+          datos.diagnosticos.some(d => d.idConsulta !== idConsulta) ||
           datos.tratamientos.some(t => t.idConsulta !== idConsulta || t.idPaciente !== id) ||
           datos.evoluciones.some(e => e.idConsulta !== idConsulta || e.idPaciente !== id) ||
           datos.examenes.some(e => e.idPaciente !== id ||
@@ -464,7 +523,13 @@ export class PacienteFichaComponent implements OnInit {
             (e.idDiagnostico !== null && !idsDiagnosticos.has(e.idDiagnostico)) ||
             (e.idConsulta === null && e.idDiagnostico === null))) {
           this.errorResumen = 'La API devolvió información clínica ajena o contradictoria.';
-        } else this.resumen = { consulta: consultaActual, ...datos };
+        } else {
+          this.detallesConsultas.set(idConsulta, datos.consulta);
+          this.nombresConsultas.set(idConsulta, datos.consulta.motivoConsulta?.trim() || 'Consulta sin motivo registrado');
+          this.resumen = { ...datos, idsDiagnosticos: [...idsDiagnosticos], evoluciones: [...datos.evoluciones].sort((a, b) =>
+            Date.parse(a.fechaHistorial) - Date.parse(b.fechaHistorial)
+            || (a.idHistorial ?? 0) - (b.idHistorial ?? 0)) };
+        }
         this.cargandoResumen = false;
       },
       error: (err: unknown) => {

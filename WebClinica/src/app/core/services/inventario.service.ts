@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 import {
   CatalogoMedicamentoResponse,
   MedicamentoResponse,
+  FotoMedicamentoResponse,
   GuardarMedicamentoRequest,
   CatalogoFiltroDto,
   LoteMedicamentoResponse,
@@ -66,6 +67,20 @@ export class InventarioService {
 
   desactivarMedicamento(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/medicamentos/${id}`);
+  }
+
+  guardarFotoMedicamento(id: number, foto: File): Observable<FotoMedicamentoResponse> {
+    const form = new FormData();
+    form.append('foto', foto, foto.name);
+    return this.http.post<FotoMedicamentoResponse>(`${this.apiUrl}/medicamentos/${id}/foto`, form);
+  }
+
+  obtenerFotoMedicamento(id: number): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/medicamentos/${id}/foto`, { responseType: 'blob' });
+  }
+
+  eliminarFotoMedicamento(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/medicamentos/${id}/foto`);
   }
 
   // ==================== LOTES ====================

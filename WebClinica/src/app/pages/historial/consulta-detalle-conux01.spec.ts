@@ -169,11 +169,35 @@ describe('CON-UX-01 detalle de consulta', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.tab).toBe('hospitalizacion');
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('no identifican una consulta concreta');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('requiere una autorización específica');
     expect(service.obtenerConsulta).toHaveBeenCalledTimes(1);
     expect(service.crearDiagnostico).not.toHaveBeenCalled();
     expect(service.crearExamen).not.toHaveBeenCalled();
     expect(service.crearEvolucion).not.toHaveBeenCalled();
     expect(service.registrarConsumoClinico).not.toHaveBeenCalled();
+  });
+
+  it('permite registrar evolución sin diagnóstico cuando la consulta no tiene diagnósticos', () => {
+    const fixture = render();
+    const component = fixture.componentInstance;
+    component.seleccionarTab('evoluciones');
+    fixture.detectChanges();
+    const panel = (fixture.nativeElement as HTMLElement).querySelector('#panel-evoluciones')!;
+    expect(panel.querySelector('form')).not.toBeNull();
+    expect(panel.textContent).toContain('Sin diagnóstico relacionado');
+    component.nuevaEvol.descripcion = 'Evolución sintética';
+    let solicitud: object | undefined;
+    service.crearEvolucion.and.callFake(request => {
+      solicitud = { ...request };
+      return of({
+        idHistorial: 9, idConsulta: 17, idPaciente: 11, idDiagnostico: null,
+        idMedico: 7, fechaHistorial: '2026-10-23T10:00:00Z', descripcion: 'Evolución sintética',
+      });
+    });
+    component.agregarEvolucion();
+    expect(solicitud).toEqual(jasmine.objectContaining({
+      idPaciente: 11, idConsulta: 17, idDiagnostico: null, descripcion: 'Evolución sintética',
+    }));
   });
 
   it('retira nombres y acciones cuando se revocan permisos', () => {

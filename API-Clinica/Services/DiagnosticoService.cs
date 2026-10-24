@@ -13,16 +13,18 @@ namespace API_Clinica.Services;
 public sealed class DiagnosticoService(
     ClinicaDbContext context,
     IAccesoActualService accesoActual,
-    ICommonParameterValidator parameterValidator) : IDiagnosticoService
+    ICommonParameterValidator parameterValidator,
+    ConsultaLecturaScope lecturaScope) : IDiagnosticoService
 {
     public async Task<PagedResponse<DiagnosticoResponse>> ListarAsync(
-        DiagnosticoFiltroDto filtro, CancellationToken cancellationToken)
+        DiagnosticoFiltroDto filtro, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, cancellationToken);
         var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
         if (filtro.IdConsulta is <= 0)
             throw Invalid(nameof(filtro.IdConsulta), "La consulta debe ser válida.");
 
-        var query = context.Diagnosticos.AsNoTracking();
+        var query = lecturaScope.DiagnosticosVisibles(idMedico);
         if (filtro.IdConsulta is int idConsulta)
             query = query.Where(d => d.IdConsulta == idConsulta);
 
@@ -34,11 +36,14 @@ public sealed class DiagnosticoService(
     }
 
     public async Task<DiagnosticoResponse> ObtenerAsync(
-        int id, CancellationToken cancellationToken) =>
-        await ConMedico(context.Diagnosticos.AsNoTracking()
+        int id, ClaimsPrincipal principal, CancellationToken cancellationToken)
+    {
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, cancellationToken);
+        return await ConMedico(lecturaScope.DiagnosticosVisibles(idMedico)
             .Where(d => d.IdDiagnostico == id))
             .SingleOrDefaultAsync(cancellationToken)
-        ?? throw new NotFoundException("Diagnóstico no encontrado.");
+            ?? throw new NotFoundException("Diagnóstico no encontrado.");
+    }
 
     private IQueryable<DiagnosticoResponse> ConMedico(IQueryable<Diagnostico> query) =>
         query.Join(context.Consultas.AsNoTracking(), d => d.IdConsulta,

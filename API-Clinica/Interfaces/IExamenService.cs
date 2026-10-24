@@ -6,8 +6,8 @@ namespace API_Clinica.Interfaces;
 public interface IExamenService
 {
     Task<PagedResponse<ExamenResponseDto>> ListarAsync(
-        ExamenFiltroDto filtro, CancellationToken cancellationToken);
-    Task<ExamenResponseDto> ObtenerAsync(int id, CancellationToken cancellationToken);
+        ExamenFiltroDto filtro, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<ExamenResponseDto> ObtenerAsync(int id, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<ExamenResponseDto> CrearAsync(
         ExamenCreateDto request, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<ExamenResponseDto> ActualizarAsync(

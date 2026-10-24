@@ -94,20 +94,21 @@
   border-top: 1px solid #d8e4ef;
 }
 
-.indicaciones-heading {
+.receta-acciones-linea {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: .75rem;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: .25rem;
   margin-bottom: .4rem;
 }
 
-.indicaciones-heading .form-label {
-  margin: 0;
+.receta-acciones-linea .badge {
+  font-size: .8rem;
 }
 
-.indicaciones-heading .btn {
+.receta-acciones-linea .btn {
   flex-shrink: 0;
   line-height: 1.2;
   min-height: 2rem;
@@ -115,12 +116,12 @@
 }
 
 @media (max-width: 575.98px) {
-  .indicaciones-heading {
+  .receta-acciones-linea {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .indicaciones-heading button {
+  .receta-acciones-linea button {
     width: 100%;
   }
 }

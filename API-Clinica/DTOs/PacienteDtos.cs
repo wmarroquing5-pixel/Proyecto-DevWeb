@@ -40,6 +40,12 @@ public sealed class GuardarPacienteRequest
     public string? UrlFoto { get; init; }
 }
 
+public sealed class CambiarEstadoPacienteRequest
+{
+    [Required]
+    public bool? Activo { get; init; }
+}
+
 public sealed record PacienteResponse(
     int IdPaciente, string Nombres, string Apellidos, string? DPI,
     DateOnly FechaNacimiento, string? Genero, string? Telefono, string? Correo,

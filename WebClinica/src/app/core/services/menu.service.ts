@@ -14,6 +14,7 @@ const MODULO_POR_RUTA: Readonly<Record<string, string>> = {
   '/inventario/lotes': MODULOS_PERMISO.LOTES_MEDICAMENTO,
   '/habitaciones': MODULOS_PERMISO.HABITACIONES,
   '/ventas': MODULOS_PERMISO.VENTAS,
+  '/farmacia/recetas': MODULOS_PERMISO.VENTAS,
   '/facturas': MODULOS_PERMISO.FACTURAS,
   '/admin/sucursales': MODULOS_PERMISO.SUCURSALES,
   '/admin/clinicas': MODULOS_PERMISO.CLINICAS,

@@ -165,6 +165,32 @@ public sealed class FotografiasTests
     }
 
     [Fact]
+    public async Task MedicamentoNuevoUsaSuIdRealParaGuardarYConsultarFoto()
+    {
+        using var factory = new PhotoApiFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync(read: true, modify: true, create: true);
+        var created = await client.PostAsJsonAsync("/api/medicamentos", new GuardarMedicamentoRequest
+        {
+            IdCategoria = 1, IdMarca = 1, Codigo = "MED-FOTO-2",
+            Nombre = "Medicamento sintético", PrecioVenta = 10m
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var medicine = await created.Content.ReadFromJsonAsync<MedicamentoResponse>();
+        Assert.NotNull(medicine);
+        Assert.True(medicine.IdMedicamento > 1);
+
+        var photoPath = $"/api/medicamentos/{medicine.IdMedicamento}/foto";
+        Assert.Equal(HttpStatusCode.OK,
+            (await UploadAsync(client, photoPath, Png(), "image/png")).StatusCode);
+        var saved = await client.GetFromJsonAsync<MedicamentoResponse>(
+            $"/api/medicamentos/{medicine.IdMedicamento}");
+        Assert.Equal(photoPath, saved?.ImagenURL);
+        var photo = await client.GetAsync(photoPath);
+        Assert.Equal(HttpStatusCode.OK, photo.StatusCode);
+        Assert.Equal("image/webp", photo.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task MedicamentoCargaConsultaYEliminaFotoSinAlterarInventario()
     {
         using var factory = new PhotoApiFactory();
@@ -178,9 +204,17 @@ public sealed class FotografiasTests
         var downloaded = await client.GetAsync("/api/medicamentos/1/foto");
         Assert.Equal(HttpStatusCode.OK, downloaded.StatusCode);
         Assert.Equal("image/webp", downloaded.Content.Headers.ContentType?.MediaType);
+        var original = await downloaded.Content.ReadAsByteArrayAsync();
+        Assert.Equal(HttpStatusCode.OK,
+            (await UploadAsync(client, "/api/medicamentos/1/foto", Png(SKColors.Blue), "image/png")).StatusCode);
+        var replacement = await client.GetAsync("/api/medicamentos/1/foto");
+        Assert.Equal(HttpStatusCode.OK, replacement.StatusCode);
+        Assert.NotEqual(original, await replacement.Content.ReadAsByteArrayAsync());
 
         Assert.Equal(HttpStatusCode.NoContent,
             (await client.DeleteAsync("/api/medicamentos/1/foto")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/medicamentos/1/foto")).StatusCode);
         var after = await factory.GetMedicineSnapshotAsync();
         Assert.Equal(before with { ImageUrl = null }, after);
     }
@@ -196,12 +230,16 @@ public sealed class FotografiasTests
         anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "jwt-invalido");
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await anonymous.GetAsync("/api/medicamentos/1/foto")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.DeleteAsync("/api/medicamentos/1/foto")).StatusCode);
 
         using var withoutPermissions = await factory.CreateAuthenticatedClientAsync();
         Assert.Equal(HttpStatusCode.Forbidden,
             (await withoutPermissions.GetAsync("/api/pacientes/1/foto")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await UploadAsync(withoutPermissions, "/api/medicamentos/1/foto", Png(), "image/png")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await withoutPermissions.DeleteAsync("/api/medicamentos/1/foto")).StatusCode);
     }
 
     [Theory]
@@ -242,6 +280,8 @@ public sealed class FotografiasTests
             (await UploadAsync(client, "/api/pacientes/999/foto", Png(), "image/png")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await UploadAsync(client, "/api/medicamentos/999/foto", Png(), "image/png")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/medicamentos/999/foto")).StatusCode);
     }
 
     [Fact]
@@ -270,6 +310,24 @@ public sealed class FotografiasTests
             problem.RootElement.GetProperty("errors").GetProperty("Foto")[0].GetString());
         Assert.Null(await factory.GetPatientUrlAsync());
         Assert.False(factory.Storage.Contains("pacientes/1/foto.webp"));
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await UploadAsync(client, "/api/medicamentos/1/foto", [1, 2, 3], "image/png")).StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge,
+            (await UploadAsync(client, "/api/medicamentos/1/foto", new byte[5 * 1024 * 1024 + 1], "image/png")).StatusCode);
+    }
+
+    [Fact]
+    public async Task FalloDeR2NoRegistraReferenciaDeFotoDelMedicamento()
+    {
+        using var factory = new PhotoApiFactory();
+        using var client = await factory.CreateAuthenticatedClientAsync(read: true, modify: true);
+        factory.Storage.FailSave = true;
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable,
+            (await UploadAsync(client, "/api/medicamentos/1/foto", Png(), "image/png")).StatusCode);
+        Assert.Null(await factory.GetMedicineUrlAsync());
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/medicamentos/1/foto")).StatusCode);
     }
 
     [Fact]
@@ -434,7 +492,7 @@ public sealed class FotografiasTests
         }
 
         public async Task<HttpClient> CreateAuthenticatedClientAsync(
-            bool read = false, bool modify = false,
+            bool read = false, bool modify = false, bool create = false,
             bool userActive = true, bool roleActive = true)
         {
             var id = Interlocked.Increment(ref nextUserId);
@@ -467,7 +525,7 @@ public sealed class FotografiasTests
                 var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<Usuario>>();
                 user.PasswordHash = hasher.HashPassword(user, password);
                 db.Usuarios.Add(user);
-                if (read || modify)
+                if (read || modify || create)
                 {
                     db.Permisos.AddRange(
                         new Permiso
@@ -478,7 +536,7 @@ public sealed class FotografiasTests
                         new Permiso
                         {
                             IdRol = roleId, Modulo = "Medicamentos",
-                            PuedeConsultar = read, PuedeModificar = modify
+                            PuedeConsultar = read, PuedeModificar = modify, PuedeCrear = create
                         });
                 }
                 await db.SaveChangesAsync();

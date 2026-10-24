@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using API_Clinica.Data;
+using API_Clinica.Interfaces;
 using API_Clinica.Models.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
@@ -20,11 +21,26 @@ namespace API_Clinica.Tests;
 internal sealed class SqlServerTestDatabase : IAsyncDisposable
 {
     private const string LocalServer = @".\SQLEXPRESS";
-    private readonly string databaseName = "APIClinica_B4_" + Guid.NewGuid().ToString("N");
+    private const string InvVentScope = "INV-VENT-SQL-01";
+    private const string InvVentPrefix = "APIClinica_INVVENT_SQL01_";
+    private const string HabSigScope = "HAB-SIG-QA-01";
+    private const string HabSigPrefix = "APIClinica_HABSIG_QA01_";
+    private readonly bool invVentScope =
+        Environment.GetEnvironmentVariable("CLINICA_SQL_TEST_SCOPE") == InvVentScope;
+    private readonly bool habSigScope =
+        Environment.GetEnvironmentVariable("CLINICA_SQL_TEST_SCOPE") == HabSigScope;
+    private bool RestrictedScope => invVentScope || habSigScope;
+    private readonly string databaseName;
     private readonly string signingKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private bool created;
+    private int? createdDatabaseId;
+    private Guid? createdBrokerGuid;
 
-    private SqlServerTestDatabase() { }
+    private SqlServerTestDatabase()
+    {
+        databaseName = (invVentScope ? InvVentPrefix : habSigScope ? HabSigPrefix : "APIClinica_B4_") +
+            Guid.NewGuid().ToString("N");
+    }
 
     public string ConnectionString => ConnectionStringFor(databaseName);
     public int IdLote { get; private set; }
@@ -40,6 +56,14 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         if (Environment.GetEnvironmentVariable("CLINICA_SQL_INTEGRATION") != "1")
             throw SkipException.ForSkip(
                 "Prueba SQL aislada: establecer CLINICA_SQL_INTEGRATION=1 con SQLEXPRESS local disponible.");
+        if (Environment.GetEnvironmentVariable("CLINICA_SQL_TEST_SCOPE") == InvVentScope &&
+            Environment.GetEnvironmentVariable("CLINICA_INVVENT_SQL01_AUTHORIZED") != "1")
+            throw SkipException.ForSkip(
+                "INV-VENT-SQL-01 requiere autorización específica para crear y eliminar bases temporales.");
+        if (Environment.GetEnvironmentVariable("CLINICA_SQL_TEST_SCOPE") == HabSigScope &&
+            Environment.GetEnvironmentVariable("CLINICA_HABSIG_QA01_AUTHORIZED") != "1")
+            throw SkipException.ForSkip(
+                "HAB-SIG-QA-01 requiere autorización específica para crear y eliminar bases temporales.");
 
         var database = new SqlServerTestDatabase();
         try
@@ -54,8 +78,9 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         }
     }
 
-    public WebApplicationFactory<Program> CreateFactory(IInterceptor? interceptor = null) =>
-        new SqlApiFactory(ConnectionString, signingKey, interceptor);
+    public WebApplicationFactory<Program> CreateFactory(
+        IInterceptor? interceptor = null, IHabitacionEstadoNotifier? notifier = null) =>
+        new SqlApiFactory(ConnectionString, signingKey, interceptor, notifier);
 
     public ClinicaDbContext OpenContext() => new(
         new DbContextOptionsBuilder<ClinicaDbContext>()
@@ -152,6 +177,12 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         await using (var master = new SqlConnection(ConnectionStringFor("master")))
         {
             await master.OpenAsync();
+            if (RestrictedScope)
+            {
+                var before = await CheckScopedTargetAsync(master);
+                if (before.DatabaseId is not null)
+                    throw new InvalidOperationException("La base temporal ya existe; no se sobrescribirá.");
+            }
             await using var localCheck = new SqlCommand(
                 "SELECT CONVERT(nvarchar(128), SERVERPROPERTY('MachineName'))", master);
             var machine = (string?)await localCheck.ExecuteScalarAsync();
@@ -162,6 +193,14 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
             await using var create = new SqlCommand($"CREATE DATABASE [{databaseName}]", master);
             await create.ExecuteNonQueryAsync();
             created = true;
+            if (RestrictedScope)
+            {
+                var after = await CheckScopedTargetAsync(master);
+                createdDatabaseId = after.DatabaseId ??
+                    throw new InvalidOperationException("No se pudo verificar la base temporal creada.");
+                createdBrokerGuid = after.BrokerGuid ??
+                    throw new InvalidOperationException("No se pudo identificar la base temporal creada.");
+            }
         }
 
         await using var context = OpenContext();
@@ -180,14 +219,67 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (!created) return;
-        created = false;
         SqlConnection.ClearAllPools();
         await using var master = new SqlConnection(ConnectionStringFor("master"));
         await master.OpenAsync();
+        if (RestrictedScope)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                var current = await CheckScopedTargetAsync(master);
+                if (current.DatabaseId != createdDatabaseId ||
+                    current.BrokerGuid != createdBrokerGuid)
+                    throw new InvalidOperationException(
+                        "No se eliminará la base temporal: cambió su identidad.");
+                if (current.ActiveSessions == 0) break;
+                if (attempt == 9)
+                    throw new InvalidOperationException(
+                        "No se eliminará la base temporal: conserva sesiones activas.");
+                await Task.Delay(500);
+            }
+            await using var safeDrop = new SqlCommand($"DROP DATABASE [{databaseName}]", master);
+            await safeDrop.ExecuteNonQueryAsync();
+            created = false;
+            return;
+        }
         await using var drop = new SqlCommand(
             $"ALTER DATABASE [{databaseName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " +
             $"DROP DATABASE [{databaseName}]", master);
         await drop.ExecuteNonQueryAsync();
+        created = false;
+    }
+
+    private async Task<(int? DatabaseId, Guid? BrokerGuid, int ActiveSessions)>
+        CheckScopedTargetAsync(SqlConnection master)
+    {
+        var expectedPrefix = invVentScope ? InvVentPrefix : HabSigPrefix;
+        if (!RestrictedScope || !Regex.IsMatch(databaseName,
+            $@"^{expectedPrefix}[0-9a-f]{{32}}$"))
+            throw new InvalidOperationException("Nombre de base temporal no autorizado.");
+
+        const string sql = """
+            SELECT CONVERT(nvarchar(128), SERVERPROPERTY('MachineName')),
+                   CONVERT(nvarchar(128), SERVERPROPERTY('InstanceName')),
+                   CONVERT(int, SERVERPROPERTY('EngineEdition')),
+                   ORIGINAL_LOGIN(), d.database_id, d.service_broker_guid,
+                   (SELECT COUNT(*) FROM sys.dm_exec_sessions s
+                    WHERE s.database_id = d.database_id AND s.session_id <> @@SPID)
+            FROM (SELECT 1 AS marker) AS marker
+            LEFT JOIN sys.databases d ON d.name = @name;
+            """;
+        await using var check = new SqlCommand(sql, master);
+        check.Parameters.AddWithValue("@name", databaseName);
+        await using var reader = await check.ExecuteReaderAsync();
+        if (!await reader.ReadAsync() ||
+            !string.Equals(reader.GetString(0), "DESKTOP-QTDJOHF", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(reader.GetString(1), "SQLEXPRESS", StringComparison.OrdinalIgnoreCase) ||
+            reader.GetInt32(2) != 4 ||
+            !string.Equals(reader.GetString(3), @"DESKTOP-QTDJOHF\DESARROLLO", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Servidor, edición o identidad de pruebas no autorizados.");
+
+        return (reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            reader.IsDBNull(5) ? null : reader.GetGuid(5),
+            reader.IsDBNull(6) ? 0 : reader.GetInt32(6));
     }
 
     private static string ConnectionStringFor(string databaseName) =>
@@ -203,7 +295,8 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         }.ConnectionString;
 
     private sealed class SqlApiFactory(
-        string connectionString, string jwtKey, IInterceptor? interceptor)
+        string connectionString, string jwtKey, IInterceptor? interceptor,
+        IHabitacionEstadoNotifier? notifier)
         : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -229,6 +322,11 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
                     options.UseSqlServer(connectionString);
                     if (interceptor is not null) options.AddInterceptors(interceptor);
                 });
+                if (notifier is not null)
+                {
+                    services.RemoveAll<IHabitacionEstadoNotifier>();
+                    services.AddSingleton(notifier);
+                }
             });
         }
     }

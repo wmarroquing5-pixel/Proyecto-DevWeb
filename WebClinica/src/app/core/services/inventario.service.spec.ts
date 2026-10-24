@@ -84,6 +84,35 @@ describe('InventarioService', () => {
     request.flush({ items: [lote], page: 3, pageSize: 20, totalCount: 41, totalPages: 3 });
   });
 
+  it('sube la fotografía al medicamento confirmado y la consulta como blob', () => {
+    const foto = new File([new Uint8Array([137, 80, 78, 71])], 'foto.png', { type: 'image/png' });
+    service.guardarFotoMedicamento(7, foto).subscribe(response =>
+      expect(response.url).toBe('/api/medicamentos/7/foto'));
+    const post = http.expectOne(`${environment.apiUrl}/medicamentos/7/foto`);
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body instanceof FormData).toBeTrue();
+    const archivoEnviado = (post.request.body as FormData).get('foto') as File;
+    expect(archivoEnviado.name).toBe(foto.name);
+    expect(archivoEnviado.type).toBe(foto.type);
+    expect(archivoEnviado.size).toBe(foto.size);
+    expect(post.request.headers.get('Authorization')).toBe('Bearer inventario-token');
+    post.flush({ url: '/api/medicamentos/7/foto' });
+
+    service.obtenerFotoMedicamento(7).subscribe(blob => expect(blob.type).toBe('image/png'));
+    const get = http.expectOne(`${environment.apiUrl}/medicamentos/7/foto`);
+    expect(get.request.method).toBe('GET');
+    expect(get.request.responseType).toBe('blob');
+    get.flush(new Blob([new Uint8Array([137])], { type: 'image/png' }));
+  });
+
+  it('elimina la fotografía del Id real con autorización', () => {
+    service.eliminarFotoMedicamento(7).subscribe(response => expect(response).toBeNull());
+    const request = http.expectOne(`${environment.apiUrl}/medicamentos/7/foto`);
+    expect(request.request.method).toBe('DELETE');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer inventario-token');
+    request.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
   it('registra una entrada con POST y el DTO exacto', () => {
     const body: RegistrarEntradaInventarioRequest = {
       idSucursal: 2,

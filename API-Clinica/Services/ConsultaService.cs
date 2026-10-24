@@ -13,7 +13,8 @@ namespace API_Clinica.Services;
 public sealed class ConsultaService(
     ClinicaDbContext context,
     ICommonParameterValidator parameterValidator,
-    IAccesoActualService accesoActual) : IConsultaService
+    IAccesoActualService accesoActual,
+    ConsultaLecturaScope lecturaScope) : IConsultaService
 {
     private static readonly Expression<Func<Consulta, ConsultaDetalleDto>> Detalle = c =>
         new ConsultaDetalleDto(c.IdConsulta, c.IdPaciente, c.IdMedico,
@@ -30,7 +31,7 @@ public sealed class ConsultaService(
         ConsultaFiltroDto filtro, ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
-        var idMedicoAutorizado = await ObtenerMedicoParaLecturaAsync(
+        var idMedicoAutorizado = await lecturaScope.ObtenerMedicoAsync(
             principal, cancellationToken);
         var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
         ValidarFiltroId(filtro.IdPaciente, nameof(filtro.IdPaciente));
@@ -48,9 +49,7 @@ public sealed class ConsultaService(
         var puedeVerSucursales = PuedeConsultar("Sucursales");
         var puedeVerClinicas = PuedeConsultar("Clinicas");
 
-        var query = context.Consultas.AsNoTracking();
-        if (idMedicoAutorizado.HasValue)
-            query = query.Where(c => c.IdMedico == idMedicoAutorizado.Value);
+        var query = lecturaScope.ConsultasVisibles(idMedicoAutorizado);
         if (filtro.IdPaciente.HasValue)
             query = query.Where(c => c.IdPaciente == filtro.IdPaciente.Value);
         if (filtro.IdMedico.HasValue)
@@ -110,11 +109,9 @@ public sealed class ConsultaService(
     public async Task<ConsultaDetalleDto> ObtenerAsync(
         int id, ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
-        var idMedicoAutorizado = await ObtenerMedicoParaLecturaAsync(
+        var idMedicoAutorizado = await lecturaScope.ObtenerMedicoAsync(
             principal, cancellationToken);
-        var query = context.Consultas.AsNoTracking();
-        if (idMedicoAutorizado.HasValue)
-            query = query.Where(c => c.IdMedico == idMedicoAutorizado.Value);
+        var query = lecturaScope.ConsultasVisibles(idMedicoAutorizado);
 
         return await query
             .Where(c => c.IdConsulta == id)

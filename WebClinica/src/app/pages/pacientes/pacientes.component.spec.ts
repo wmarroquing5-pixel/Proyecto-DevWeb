@@ -12,7 +12,7 @@ import { AuthSessionService } from '../../core/services/auth-session.service';
 describe('PacientesComponent WEB-UX-01C1', () => {
   let fixture: ComponentFixture<PacientesComponent>;
   let listar: jasmine.Spy;
-  let eliminar: jasmine.Spy;
+  let cambiarEstado: jasmine.Spy;
   let obtenerFoto: jasmine.Spy;
   let operaciones: Set<string>;
 
@@ -26,14 +26,14 @@ describe('PacientesComponent WEB-UX-01C1', () => {
   beforeEach(async () => {
     operaciones = new Set(['Crear', 'Modificar', 'Eliminar']);
     listar = jasmine.createSpy('listar').and.returnValue(of(page([paciente])));
-    eliminar = jasmine.createSpy('eliminar').and.returnValue(of(void 0));
+    cambiarEstado = jasmine.createSpy('cambiarEstado').and.returnValue(of(void 0));
     obtenerFoto = jasmine.createSpy('obtenerFoto').and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
     await TestBed.configureTestingModule({
       imports: [PacientesComponent],
       providers: [
         provideRouter([]),
         { provide: AuthSessionService, useValue: { currentUser: () => ({ idUsuario: 1, idRol: 1 }), isAuthenticated: () => true, token: 'test-token' } },
-        { provide: PacientesService, useValue: { listar, eliminar, obtenerFoto } },
+        { provide: PacientesService, useValue: { listar, cambiarEstado, obtenerFoto } },
         { provide: PermisosService, useValue: {
           puedeCrear: () => operaciones.has('Crear'),
           puedeModificar: () => operaciones.has('Modificar'),
@@ -97,7 +97,7 @@ describe('PacientesComponent WEB-UX-01C1', () => {
     expect(element.querySelector('.pacientes-identidad img')?.getAttribute('src')).toBe('blob:paciente-42');
     expect(element.querySelector('.pacientes-identidad')?.textContent).toContain('Rosa Paz');
     expect(element.textContent).not.toContain('María López');
-    expect(eliminar).not.toHaveBeenCalled();
+    expect(cambiarEstado).not.toHaveBeenCalled();
   });
 
   it('no repite solicitudes de fotografías ausentes al volver a una página', () => {
@@ -108,7 +108,7 @@ describe('PacientesComponent WEB-UX-01C1', () => {
     fixture.componentInstance.cambiarPagina(2);
     fixture.componentInstance.cambiarPagina(1);
     expect(obtenerFoto.calls.allArgs()).toEqual([[41], [42]]);
-    expect(eliminar).not.toHaveBeenCalled();
+    expect(cambiarEstado).not.toHaveBeenCalled();
   });
 
   it('alinea Limpiar con Nombre y Estado y conserva la lógica de filtros', () => {
@@ -124,31 +124,46 @@ describe('PacientesComponent WEB-UX-01C1', () => {
     expect(fixture.componentInstance.filtroNombre).toBe('');
     expect(fixture.componentInstance.filtroActivo).toBeUndefined();
     expect(listar).toHaveBeenCalledWith(undefined, undefined, 1, 10);
-    expect(eliminar).not.toHaveBeenCalled();
+    expect(cambiarEstado).not.toHaveBeenCalled();
   });
 
   it('respeta los permisos dinámicos de acciones', () => {
-    operaciones.clear();
+    operaciones = new Set(['Eliminar']);
     const element = render();
     expect(element.textContent).not.toContain('Nuevo Paciente');
     expect(element.querySelector('[aria-label="Modificar paciente"]')).toBeNull();
     expect(element.querySelector('[aria-label="Desactivar paciente"]')).toBeNull();
+    expect(element.querySelector('[aria-label="Activar paciente"]')).toBeNull();
   });
 
   it('cancela la confirmación sin llamar a la API', () => {
     render();
-    fixture.componentInstance.solicitarDesactivacion(paciente);
-    fixture.componentInstance.cancelarDesactivacion();
-    expect(eliminar).not.toHaveBeenCalled();
+    fixture.componentInstance.solicitarCambioEstado(paciente);
+    fixture.componentInstance.cancelarCambioEstado();
+    expect(cambiarEstado).not.toHaveBeenCalled();
     expect(fixture.componentInstance.pacientePendiente).toBeNull();
   });
 
   it('confirma la desactivación con el ID real y recarga', () => {
     render();
-    fixture.componentInstance.solicitarDesactivacion(paciente);
-    fixture.componentInstance.confirmarDesactivacion();
-    expect(eliminar).toHaveBeenCalledOnceWith(41);
+    fixture.componentInstance.solicitarCambioEstado(paciente);
+    fixture.componentInstance.confirmarCambioEstado();
+    expect(cambiarEstado).toHaveBeenCalledOnceWith(41, false);
     expect(listar).toHaveBeenCalledTimes(2);
+  });
+
+  it('muestra Activar para un paciente inactivo y confirma la activación', () => {
+    const inactivo = { ...paciente, activo: false };
+    listar.and.returnValue(of(page([inactivo])));
+    const element = render();
+    expect(element.querySelector('[aria-label="Activar paciente"]')?.textContent).toContain('Activar');
+    fixture.componentInstance.solicitarCambioEstado(inactivo);
+    fixture.detectChanges();
+    expect(element.querySelector('app-confirm-dialog')?.textContent).toContain('Activar paciente');
+    expect(element.querySelector('app-confirm-dialog')?.textContent)
+      .toContain('¿Está seguro de que desea activar a este paciente?');
+    fixture.componentInstance.confirmarCambioEstado();
+    expect(cambiarEstado).toHaveBeenCalledOnceWith(41, true);
   });
 
   it('muestra los estados vacío y error', () => {

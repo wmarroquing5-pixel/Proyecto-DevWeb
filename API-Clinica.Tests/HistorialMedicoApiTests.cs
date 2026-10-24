@@ -40,14 +40,8 @@ public sealed class HistorialMedicoApiTests
             Assert.Equal(1, dto.IdMedico);
             Assert.Equal(id == 1 ? null : 1, dto.IdDiagnostico);
         }
-        var sin = await client.GetFromJsonAsync<HistorialMedicoResponseDto>(
-            "/api/historial-medico/4");
-        Assert.NotNull(sin);
-        Assert.Null(sin.IdConsulta);
-        Assert.Null(sin.IdDiagnostico);
-        Assert.Null(sin.IdPaciente);
-        Assert.Null(sin.IdMedico);
-        Assert.Equal("Sin asociación", sin.Descripcion);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/historial-medico/4")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await client.GetAsync("/api/historial-medico/999")).StatusCode);
     }
@@ -79,9 +73,10 @@ public sealed class HistorialMedicoApiTests
         var paciente = await client.GetFromJsonAsync<PagedResponse<HistorialMedicoResponseDto>>(
             "/api/historial-medico?idPaciente=2");
         Assert.NotNull(paciente);
-        Assert.Equal(2, paciente.TotalCount);
-        Assert.Equal(new[] { 5, 6 }, paciente.Items.Select(h => h.IdHistorial));
-        Assert.All(paciente.Items, h => Assert.Equal(2, h.IdMedico));
+        Assert.Equal(0, paciente.TotalCount);
+        Assert.Empty(paciente.Items);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/historial-medico/5")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/historial-medico?idConsulta=0")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
@@ -98,14 +93,15 @@ public sealed class HistorialMedicoApiTests
         await factory.MoveDiagnosticoAsync(1, 2);
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
-        Assert.Equal(HttpStatusCode.Conflict,
+        Assert.Equal(HttpStatusCode.NotFound,
             (await client.GetAsync("/api/historial-medico/3")).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict,
-            (await client.GetAsync("/api/historial-medico?idConsulta=1")).StatusCode);
+        var visible = await client.GetFromJsonAsync<PagedResponse<HistorialMedicoResponseDto>>(
+            "/api/historial-medico?idConsulta=1");
+        Assert.Equal(1, visible?.TotalCount);
     }
 
     [Fact]
-    public async Task ReferenciasHistoricasInexistentesDevuelvenConflicto()
+    public async Task ReferenciasHistoricasInexistentesNoSeExponenEnLectura()
     {
         using (var factory = new HistorialApiFactory())
         {
@@ -115,7 +111,7 @@ public sealed class HistorialMedicoApiTests
             await factory.RemoveDiagnosticoAsync(1);
             using var client = factory.CreateClient();
             await LoginAsync(client, password);
-            Assert.Equal(HttpStatusCode.Conflict,
+            Assert.Equal(HttpStatusCode.NotFound,
                 (await client.GetAsync("/api/historial-medico/2")).StatusCode);
         }
         using (var factory = new HistorialApiFactory())
@@ -126,7 +122,7 @@ public sealed class HistorialMedicoApiTests
             await factory.RemoveConsultaAsync(1);
             using var client = factory.CreateClient();
             await LoginAsync(client, password);
-            Assert.Equal(HttpStatusCode.Conflict,
+            Assert.Equal(HttpStatusCode.NotFound,
                 (await client.GetAsync("/api/historial-medico/1")).StatusCode);
         }
     }
@@ -189,6 +185,30 @@ public sealed class HistorialMedicoApiTests
                 new { Descripcion = "Cambio" })).StatusCode);
         Assert.Equal(HttpStatusCode.MethodNotAllowed,
             (await client.DeleteAsync($"/api/historial-medico/{dto.IdHistorial}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task CrearEvolucionSinDiagnosticoConservaConsultaYPaciente()
+    {
+        using var factory = new HistorialApiFactory();
+        var password = await factory.SeedAsync();
+        await factory.GrantAsync(consultar: true, crear: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var response = await client.PostAsJsonAsync("/api/historial-medico",
+            Nuevo(idDiagnostico: null));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<HistorialMedicoResponseDto>();
+        Assert.NotNull(created);
+        Assert.Equal(1, created.IdPaciente);
+        Assert.Equal(1, created.IdConsulta);
+        Assert.Null(created.IdDiagnostico);
+
+        var list = await client.GetFromJsonAsync<PagedResponse<HistorialMedicoResponseDto>>(
+            "/api/historial-medico?idConsulta=1&idPaciente=1");
+        Assert.Equal(created.IdHistorial, Assert.Single(list!.Items).IdHistorial);
+        Assert.Equal(1, await factory.CountAsync());
     }
 
     [Fact]

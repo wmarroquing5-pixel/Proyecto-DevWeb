@@ -58,6 +58,12 @@ public static class MenuCompleto
         },
         new MenuItemDto
         {
+            Label = "Recetas de farmacia",
+            Route = "/farmacia/recetas",
+            Icon = "bi bi-prescription2"
+        },
+        new MenuItemDto
+        {
             Label = "Facturación",
             Route = "/facturas",
             Icon = "fa-file-invoice-dollar"

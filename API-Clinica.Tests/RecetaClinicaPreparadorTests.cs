@@ -8,6 +8,8 @@ using API_Clinica.Exceptions;
 using API_Clinica.Models.Entities;
 using API_Clinica.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace API_Clinica.Tests;
 
@@ -29,16 +31,23 @@ public sealed class RecetaClinicaPreparadorTests
         Assert.Equal("RecetaLinea", linea.GetTableName());
         Assert.Equal("binary(32)", receta.FindProperty(nameof(RecetaClinica.HashSolicitud))!.GetColumnType());
         Assert.Equal("decimal(12,3)", linea.FindProperty(nameof(RecetaLinea.Dosis))!.GetColumnType());
+        Assert.Equal(11, linea.GetProperties().Count());
         Assert.Null(linea.FindProperty("DestinoMedicamento"));
+        foreach (var removed in new[] { "Indicaciones", "ContenidoPorUnidad", "UnidadContenido",
+            "FuenteEquivalencia", "VersionEquivalencia", "IdUsuarioValidador", "FechaValidacionUtc" })
+            Assert.Null(linea.FindProperty(removed));
         foreach (var property in new[] { nameof(RecetaLinea.UnidadInventario), nameof(RecetaLinea.Dosis),
             nameof(RecetaLinea.UnidadDosis), nameof(RecetaLinea.Via), nameof(RecetaLinea.Frecuencia),
             nameof(RecetaLinea.DuracionDias) })
             Assert.True(linea.FindProperty(property)!.IsNullable);
-        Assert.True(linea.FindProperty(nameof(RecetaLinea.ContenidoPorUnidad))!.IsNullable);
-        Assert.True(linea.FindProperty(nameof(RecetaLinea.IdUsuarioValidador))!.IsNullable);
-        Assert.Equal(3, linea.GetForeignKeys().Count());
+        Assert.Equal(2, linea.GetForeignKeys().Count());
+        var designLine = db.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(RecetaLinea))!;
+        Assert.Equal(new[] { "CK_RecetaLinea_Cantidades", "CK_RecetaLinea_Texto" },
+            designLine.GetCheckConstraints().Select(check => check.Name).OrderBy(name => name));
         Assert.Contains("[RecetaClinica]", db.RecetasClinicas.ToQueryString());
-        Assert.Contains("[RecetaLinea]", db.RecetaLineas.ToQueryString());
+        var query = db.RecetaLineas.ToQueryString();
+        Assert.Contains("[RecetaLinea]", query);
+        Assert.DoesNotContain("[ContenidoPorUnidad]", query);
     }
 
     [Fact]

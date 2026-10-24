@@ -42,10 +42,10 @@ describe('Pacientes CLOSE-07C: formularios y contexto local', () => {
     ruta = null; token = 'token-inicial';
     permisos = signal(new Set(['Consultar', 'Crear', 'Modificar', 'Eliminar']));
     usuario = signal<{ idUsuario: number; idRol: number } | null>({ idUsuario: 1, idRol: 1 });
-    api = jasmine.createSpyObj<PacientesService>('PacientesService', ['listar', 'obtener', 'crear', 'actualizar', 'eliminar', 'obtenerFoto']);
+    api = jasmine.createSpyObj<PacientesService>('PacientesService', ['listar', 'obtener', 'crear', 'actualizar', 'cambiarEstado', 'eliminar', 'obtenerFoto']);
     api.listar.and.returnValue(of(pagina())); api.obtener.and.returnValue(of(paciente));
     api.crear.and.returnValue(of(paciente)); api.actualizar.and.returnValue(of(paciente));
-    api.eliminar.and.returnValue(of(void 0));
+    api.cambiarEstado.and.returnValue(of(void 0)); api.eliminar.and.returnValue(of(void 0));
     api.obtenerFoto.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
     await TestBed.configureTestingModule({
       imports: [PacientesComponent, PacienteFormComponent],
@@ -111,57 +111,64 @@ describe('Pacientes CLOSE-07C: formularios y contexto local', () => {
     api.obtenerFoto.and.returnValue(of(new Blob(['foto'], { type: 'image/webp' })));
     spyOn(URL, 'createObjectURL').and.returnValue('blob:paciente-anterior');
     const revocarFoto = spyOn(URL, 'revokeObjectURL');
-    const c = abrirListado(); c.solicitarDesactivacion(paciente); c.filtroNombre = 'dato anterior';
+    const c = abrirListado(); c.solicitarCambioEstado(paciente); c.filtroNombre = 'dato anterior';
     usuario.set(null); listado.detectChanges();
     expect(c.pacientes).toEqual([]); expect(c.filtroNombre).toBe(''); expect(c.pacientePendiente).toBeNull();
     expect(revocarFoto).toHaveBeenCalledWith('blob:paciente-anterior');
     expect(c.fotoUrl(41)).toBeNull();
-    expect(api.eliminar).not.toHaveBeenCalled(); expect(api.listar).toHaveBeenCalledTimes(1);
+    expect(api.cambiarEstado).not.toHaveBeenCalled(); expect(api.listar).toHaveBeenCalledTimes(1);
   });
   it('cancela el listado pendiente al destruir la vista', () => {
     const respuesta = new Subject<PagedResponse<PacienteListadoResponse>>(); api.listar.and.returnValue(respuesta);
     abrirListado(); listado.destroy(); expect(respuesta.observed).toBeFalse();
   });
-  for (const invalido of [{ ...paciente, idPaciente: 0 }, { ...paciente, idPaciente: 99 }, { ...paciente, activo: false }]) {
-    it(`no abre una baja para ID ${invalido.idPaciente}, activo ${invalido.activo}`, () => {
-      const c = abrirListado(); c.solicitarDesactivacion(invalido);
-      expect(c.pacientePendiente).toBeNull(); expect(api.eliminar).not.toHaveBeenCalled();
+  for (const invalido of [{ ...paciente, idPaciente: 0 }, { ...paciente, idPaciente: 99 }]) {
+    it(`no abre un cambio de estado para ID ${invalido.idPaciente}`, () => {
+      const c = abrirListado(); c.solicitarCambioEstado(invalido);
+      expect(c.pacientePendiente).toBeNull(); expect(api.cambiarEstado).not.toHaveBeenCalled();
     });
   }
-  it('revalida Eliminar después de abrir el diálogo, sin esperar un render', () => {
-    const c = abrirListado(); c.solicitarDesactivacion(paciente); revocar('Eliminar'); c.confirmarDesactivacion();
-    expect(api.eliminar).not.toHaveBeenCalled(); expect(c.pacientePendiente).toBeNull(); expect(c.errorOperacion).toContain('cambiaron');
+  it('revalida Modificar después de abrir el diálogo, sin esperar un render', () => {
+    const c = abrirListado(); c.solicitarCambioEstado(paciente); revocar('Modificar'); c.confirmarCambioEstado();
+    expect(api.cambiarEstado).not.toHaveBeenCalled(); expect(c.pacientePendiente).toBeNull(); expect(c.errorOperacion).toContain('cambiaron');
   });
-  it('rechaza confirmar una baja si el paciente ya no está en la página', () => {
-    const c = abrirListado(); c.solicitarDesactivacion(paciente); c.pacientes = []; c.confirmarDesactivacion();
-    expect(api.eliminar).not.toHaveBeenCalled();
+  it('rechaza confirmar un cambio si el paciente ya no está en la página', () => {
+    const c = abrirListado(); c.solicitarCambioEstado(paciente); c.pacientes = []; c.confirmarCambioEstado();
+    expect(api.cambiarEstado).not.toHaveBeenCalled();
   });
   it('rechaza una confirmación vinculada al token anterior', () => {
-    const c = abrirListado(); c.solicitarDesactivacion(paciente); token = 'otro-token'; c.confirmarDesactivacion();
-    expect(api.eliminar).not.toHaveBeenCalled();
+    const c = abrirListado(); c.solicitarCambioEstado(paciente); token = 'otro-token'; c.confirmarCambioEstado();
+    expect(api.cambiarEstado).not.toHaveBeenCalled();
   });
-  it('envía una sola baja, bloquea las demás y recarga exclusivamente al confirmar la API', () => {
-    const respuesta = new Subject<void>(); api.eliminar.and.returnValue(respuesta);
-    const c = abrirListado(); c.solicitarDesactivacion(paciente); c.confirmarDesactivacion(); c.confirmarDesactivacion();
+  it('envía un solo cambio, bloquea los demás y recarga exclusivamente al confirmar la API', () => {
+    const respuesta = new Subject<void>(); api.cambiarEstado.and.returnValue(respuesta);
+    const c = abrirListado(); c.solicitarCambioEstado(paciente); c.confirmarCambioEstado(); c.confirmarCambioEstado();
     listado.detectChanges();
-    expect(api.eliminar).toHaveBeenCalledOnceWith(41); expect(api.listar).toHaveBeenCalledTimes(1);
+    expect(api.cambiarEstado).toHaveBeenCalledOnceWith(41, false); expect(api.listar).toHaveBeenCalledTimes(1);
     expect((listado.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[aria-label="Desactivar paciente"]')!.disabled).toBeTrue();
-    c.cancelarDesactivacion(); expect(c.pacientePendiente).not.toBeNull();
+    c.cancelarCambioEstado(); expect(c.pacientePendiente).not.toBeNull();
     respuesta.next(); expect(api.listar).toHaveBeenCalledTimes(2); expect(c.pacientePendiente).toBeNull();
   });
   for (const status of [400, 401, 403, 404, 409, 500]) {
-    it(`presenta error ${status} en baja sin esconder las filas ni fingir éxito`, () => {
-      api.eliminar.and.returnValue(throwError(() => problema(status)));
-      const c = abrirListado(); c.solicitarDesactivacion(paciente); c.confirmarDesactivacion(); listado.detectChanges();
+    it(`presenta error ${status} al cambiar estado sin esconder las filas ni fingir éxito`, () => {
+      api.cambiarEstado.and.returnValue(throwError(() => problema(status)));
+      const c = abrirListado(); c.solicitarCambioEstado(paciente); c.confirmarCambioEstado(); listado.detectChanges();
       expect(c.errorOperacion).toBe(mensaje(status, 'No se pudo desactivar el paciente.'));
       expect(c.error).toBe(''); expect(c.pacientes).toEqual([paciente]); expect(api.listar).toHaveBeenCalledTimes(1);
       expect((listado.nativeElement as HTMLElement).querySelector('tbody')?.textContent).toContain('María');
     });
   }
-  it('una baja tardía del contexto anterior no provoca una recarga', () => {
-    const respuesta = new Subject<void>(); api.eliminar.and.returnValue(respuesta);
-    const c = abrirListado(); c.solicitarDesactivacion(paciente); c.confirmarDesactivacion();
+  it('un cambio tardío del contexto anterior no provoca una recarga', () => {
+    const respuesta = new Subject<void>(); api.cambiarEstado.and.returnValue(respuesta);
+    const c = abrirListado(); c.solicitarCambioEstado(paciente); c.confirmarCambioEstado();
     token = 'renovado'; respuesta.next(); expect(api.listar).toHaveBeenCalledTimes(1);
+  });
+
+  it('activa un paciente inactivo con Pacientes/Modificar', () => {
+    const inactivo = { ...paciente, activo: false };
+    api.listar.and.returnValue(of(pagina([inactivo])));
+    const c = abrirListado(); c.solicitarCambioEstado(inactivo); c.confirmarCambioEstado();
+    expect(api.cambiarEstado).toHaveBeenCalledOnceWith(41, true);
   });
 
   it('crea con DTO independiente, nombres normalizados y campos vacíos nulos', () => {
@@ -321,12 +328,16 @@ describe('Pacientes CLOSE-07C: contrato HTTP simulado con interceptor real', () 
       expect(req.request.params.get('activo')).toBe(activo === undefined ? null : String(activo)); req.flush(pagina());
     });
   }
-  it('mantiene POST, PUT y DELETE existentes con ID real y Bearer sin red externa', () => {
+  it('mantiene POST, PUT y DELETE y agrega PATCH de estado con ID real y Bearer', () => {
     service.crear(dto).subscribe(); const post = http.expectOne(url);
     expect(post.request.method).toBe('POST'); expect(post.request.body).toEqual(dto);
     expect(post.request.headers.get('Authorization')).toBe('Bearer token-simulado'); post.flush(paciente);
     service.actualizar(41, dto).subscribe(); const put = http.expectOne(`${url}/41`);
     expect(put.request.method).toBe('PUT'); expect(put.request.body).toEqual(dto); put.flush(paciente);
+    service.cambiarEstado(41, true).subscribe(); const patch = http.expectOne(`${url}/41/estado`);
+    expect(patch.request.method).toBe('PATCH'); expect(patch.request.body).toEqual({ activo: true });
+    expect(patch.request.headers.get('Authorization')).toBe('Bearer token-simulado');
+    patch.flush(null, { status: 204, statusText: 'No Content' });
     service.eliminar(41).subscribe(); const baja = http.expectOne(`${url}/41`);
     expect(baja.request.method).toBe('DELETE'); baja.flush(null, { status: 204, statusText: 'No Content' });
   });

@@ -119,6 +119,22 @@ public sealed class TratamientosTests
     }
 
     [Fact]
+    public async Task UsuarioSinMedicoResponsableNoPuedeCrearTratamiento()
+    {
+        using var factory = new TratamientoApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: null);
+        await factory.GrantAsync(crear: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/tratamientos", Nuevo())).StatusCode);
+        Assert.Equal(0, await factory.CountAsync());
+        Assert.Equal(50, await factory.StockAsync());
+        Assert.Equal(0, await factory.MovimientosAsync());
+    }
+
+    [Fact]
     public async Task ListadoFiltraPaginaYObtieneDetalle()
     {
         using var factory = new TratamientoApiFactory();
@@ -143,6 +159,47 @@ public sealed class TratamientosTests
             (await client.GetAsync("/api/tratamientos?idConsulta=0")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/tratamientos?pageSize=101")).StatusCode);
+    }
+
+    [Fact]
+    public async Task LecturaFiltraPorMedicoAntesDePaginarYOcultaDetalleAjeno()
+    {
+        using var factory = new TratamientoApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: 1);
+        await factory.SeedTratamientosAsync();
+        await factory.GrantAsync(consultar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+
+        var page = await client.GetFromJsonAsync<PagedResponse<TratamientoResponseDto>>(
+            "/api/tratamientos?page=2&pageSize=1");
+        Assert.NotNull(page);
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(2, Assert.Single(page.Items).IdTratamiento);
+        var foreign = await client.GetFromJsonAsync<PagedResponse<TratamientoResponseDto>>(
+            "/api/tratamientos?idConsulta=2");
+        Assert.NotNull(foreign);
+        Assert.Equal(0, foreign.TotalCount);
+        Assert.Empty(foreign.Items);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/tratamientos/3")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.GetAsync("/api/tratamientos/1")).StatusCode);
+    }
+
+    [Fact]
+    public async Task UsuarioSinMedicoVinculadoNoObtieneLecturaGlobal()
+    {
+        using var factory = new TratamientoApiFactory();
+        var password = await factory.SeedAsync(idEmpleadoUsuario: null);
+        await factory.SeedTratamientosAsync();
+        await factory.GrantAsync(consultar: true);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/tratamientos")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/tratamientos/1")).StatusCode);
     }
 
     [Fact]

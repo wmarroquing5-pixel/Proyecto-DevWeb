@@ -12,15 +12,17 @@ namespace API_Clinica.Services;
 public sealed class TratamientoService(
     ClinicaDbContext context,
     ICommonParameterValidator parameterValidator,
-    IAccesoActualService accesoActual) : ITratamientoService
+    IAccesoActualService accesoActual,
+    ConsultaLecturaScope lecturaScope) : ITratamientoService
 {
     public async Task<PagedResponse<TratamientoResponseDto>> ListarAsync(
-        TratamientoFiltroDto filtro, CancellationToken ct)
+        TratamientoFiltroDto filtro, ClaimsPrincipal principal, CancellationToken ct)
     {
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, ct);
         var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
         if (filtro.IdConsulta is <= 0)
             throw Invalid(nameof(filtro.IdConsulta), "La consulta debe ser válida.");
-        var query = context.Tratamientos.AsNoTracking();
+        var query = lecturaScope.TratamientosVisibles(idMedico);
         if (filtro.IdConsulta is int idConsulta)
             query = query.Where(t => t.IdConsulta == idConsulta);
 
@@ -30,10 +32,15 @@ public sealed class TratamientoService(
         return new(items, filtro.Page, filtro.PageSize, total);
     }
 
-    public async Task<TratamientoResponseDto> ObtenerAsync(int id, CancellationToken ct) =>
-        await ConConsulta(context.Tratamientos.AsNoTracking()
-            .Where(t => t.IdTratamiento == id)).SingleOrDefaultAsync(ct)
-        ?? throw new NotFoundException("Tratamiento no encontrado.");
+    public async Task<TratamientoResponseDto> ObtenerAsync(
+        int id, ClaimsPrincipal principal, CancellationToken ct)
+    {
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, ct);
+        return await ConConsulta(lecturaScope.TratamientosVisibles(idMedico)
+            .Where(t => t.IdTratamiento == id))
+            .SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Tratamiento no encontrado.");
+    }
 
     private IQueryable<TratamientoResponseDto> ConConsulta(IQueryable<Tratamiento> query) =>
         query.Join(context.Consultas.AsNoTracking(), t => t.IdConsulta,
@@ -63,7 +70,9 @@ public sealed class TratamientoService(
         };
         context.Tratamientos.Add(tratamiento);
         await GuardarAsync(ct);
-        return await ObtenerAsync(tratamiento.IdTratamiento, ct);
+        return await ConConsulta(context.Tratamientos.AsNoTracking()
+            .Where(t => t.IdTratamiento == tratamiento.IdTratamiento))
+            .SingleAsync(ct);
     }
 
     public async Task<TratamientoResponseDto> ActualizarAsync(
@@ -87,7 +96,8 @@ public sealed class TratamientoService(
         tratamiento.IdLote = request.IdLote;
         tratamiento.Cantidad = datos.Cantidad;
         await GuardarAsync(ct);
-        return await ObtenerAsync(id, ct);
+        return await ConConsulta(context.Tratamientos.AsNoTracking()
+            .Where(t => t.IdTratamiento == id)).SingleAsync(ct);
     }
 
     private async Task<Usuario> ObtenerUsuarioAsync(ClaimsPrincipal principal, CancellationToken ct) =>
@@ -107,11 +117,8 @@ public sealed class TratamientoService(
             e.IdEmpleado == consulta.IdMedico && e.Activo && e.TipoEmpleado == "Medico", ct))
             throw Invalid("IdMedico", "El médico de la consulta debe existir, estar activo y ser de tipo Medico.");
 
-        if (usuario.IdEmpleado is int idEmpleado &&
-            await context.Empleados.AsNoTracking().AnyAsync(e =>
-                e.IdEmpleado == idEmpleado && e.TipoEmpleado == "Medico", ct) &&
-            idEmpleado != consulta.IdMedico)
-            throw new ForbiddenException("No puede registrar un tratamiento para otro médico.");
+        if (usuario.IdEmpleado != consulta.IdMedico)
+            throw new ForbiddenException("Solo el médico responsable puede registrar este tratamiento.");
     }
 
     private async Task ValidarLoteAsync(int? idLote, CancellationToken ct)

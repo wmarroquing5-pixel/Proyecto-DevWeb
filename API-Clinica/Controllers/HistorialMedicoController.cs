@@ -20,10 +20,10 @@ public sealed class HistorialMedicoController(IHistorialMedicoService service) :
     [HttpGet, PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<HistorialMedicoResponseDto>>> Listar(
         [FromQuery] HistorialMedicoFiltroDto filtro, CancellationToken ct) =>
-        Ok(await service.ListarAsync(filtro, ct));
+        Ok(await service.ListarAsync(filtro, User, ct));
 
     [HttpGet("{id:int}"), PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<HistorialMedicoResponseDto>> Obtener(
         int id, CancellationToken ct) =>
-        Ok(await service.ObtenerAsync(id, ct));
+        Ok(await service.ObtenerAsync(id, User, ct));
 }

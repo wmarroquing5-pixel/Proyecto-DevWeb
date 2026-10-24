@@ -12,12 +12,12 @@ public sealed class DiagnosticosController(IDiagnosticoService service) : Contro
     [HttpGet, PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<PagedResponse<DiagnosticoResponse>>> Listar(
         [FromQuery] DiagnosticoFiltroDto filtro, CancellationToken cancellationToken) =>
-        Ok(await service.ListarAsync(filtro, cancellationToken));
+        Ok(await service.ListarAsync(filtro, User, cancellationToken));
 
     [HttpGet("{id:int}"), PermisoRequerido("Historial", Operacion.Consultar)]
     public async Task<ActionResult<DiagnosticoResponse>> Obtener(
         int id, CancellationToken cancellationToken) =>
-        Ok(await service.ObtenerAsync(id, cancellationToken));
+        Ok(await service.ObtenerAsync(id, User, cancellationToken));
 
     [HttpPost, PermisoRequerido("Historial", Operacion.Crear)]
     [ProducesResponseType(typeof(DiagnosticoResponse), StatusCodes.Status201Created)]

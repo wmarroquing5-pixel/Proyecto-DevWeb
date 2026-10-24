@@ -231,8 +231,10 @@ public sealed class DiagnosticosTests
         var other = await client.GetFromJsonAsync<PagedResponse<DiagnosticoResponse>>(
             "/api/diagnosticos?idConsulta=2");
         Assert.NotNull(other);
-        Assert.Equal(1, other.TotalCount);
-        Assert.Equal(3, Assert.Single(other.Items).IdDiagnostico);
+        Assert.Equal(0, other.TotalCount);
+        Assert.Empty(other.Items);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/diagnosticos/3")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/diagnosticos?idConsulta=0")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,

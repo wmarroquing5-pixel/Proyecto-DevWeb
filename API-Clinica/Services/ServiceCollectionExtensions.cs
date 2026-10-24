@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITurnoService, TurnoService>();
         services.AddScoped<IContactoEmergenciaService, ContactoEmergenciaService>();
         services.AddScoped<IConsultaService, ConsultaService>();
+        services.AddScoped<ConsultaLecturaScope>();
         services.AddScoped<IEspecialidadService, EspecialidadService>();
         services.AddScoped<HabitacionTransactionCoordinator>();
         services.AddSingleton<IHabitacionEstadoNotifier, HabitacionEstadoNotifier>();
@@ -38,6 +39,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITratamientoService, TratamientoService>();
         services.AddSingleton<IRecetaClinicaPreparador, RecetaClinicaPreparador>();
         services.AddScoped<IRecetaClinicaService, RecetaClinicaService>();
+        services.AddScoped<IRecetaFarmaciaService, RecetaFarmaciaService>();
         services.AddScoped<IConsumoClinicoService, ConsumoClinicoService>();
         services.AddScoped<HistorialMedicoLecturaService>();
         services.AddScoped<IHistorialMedicoService, HistorialMedicoService>();

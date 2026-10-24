@@ -101,9 +101,14 @@ import { ContextoInventario, idInventarioValido } from '../inventario/inventario
                           <i class="bi bi-pencil" aria-hidden="true"></i> Modificar
                         </a>
                       }
-                      @if (permisos.puedeEliminar(MODULOS_PERMISO.PACIENTES)) {
-                        <button type="button" (click)="solicitarDesactivacion(paciente)" class="btn btn-sm btn-outline-danger" [disabled]="!paciente.activo || eliminandoId !== null" aria-label="Desactivar paciente" title="Desactivar paciente">
-                          <i class="bi bi-trash" aria-hidden="true"></i> Desactivar
+                      @if (permisos.puedeModificar(MODULOS_PERMISO.PACIENTES)) {
+                        <button type="button" (click)="solicitarCambioEstado(paciente)" class="btn btn-sm"
+                          [class.btn-outline-danger]="paciente.activo" [class.btn-outline-success]="!paciente.activo"
+                          [disabled]="cambiandoEstadoId !== null"
+                          [attr.aria-label]="paciente.activo ? 'Desactivar paciente' : 'Activar paciente'"
+                          [title]="paciente.activo ? 'Desactivar paciente' : 'Activar paciente'">
+                          <i [class]="paciente.activo ? 'bi bi-trash' : 'bi bi-arrow-counterclockwise'" aria-hidden="true"></i>
+                          {{ paciente.activo ? 'Desactivar' : 'Activar' }}
                         </button>
                       }
                     </div>
@@ -130,11 +135,16 @@ import { ContextoInventario, idInventarioValido } from '../inventario/inventario
       }
 
       @if (pacientePendiente) {
-        <app-confirm-dialog title="Desactivar paciente"
-          [description]="'¿Deseas desactivar a ' + pacientePendiente.nombres + ' ' + pacientePendiente.apellidos + '?'"
-          consequence="El paciente quedará inactivo, pero su historial clínico se conservará."
-          confirmLabel="Desactivar" [busy]="eliminandoId === pacientePendiente.idPaciente"
-          (confirmed)="confirmarDesactivacion()" (cancelled)="cancelarDesactivacion()" />
+        <app-confirm-dialog [title]="pacientePendiente.activo ? 'Desactivar paciente' : 'Activar paciente'"
+          [description]="pacientePendiente.activo
+            ? '¿Está seguro de que desea desactivar a este paciente?'
+            : '¿Está seguro de que desea activar a este paciente?'"
+          [consequence]="pacientePendiente.activo ? 'El paciente quedará inactivo, pero su historial clínico se conservará.' : ''"
+          [confirmLabel]="pacientePendiente.activo ? 'Desactivar' : 'Activar'"
+          [busyLabel]="pacientePendiente.activo ? 'Desactivando…' : 'Activando…'"
+          [intent]="pacientePendiente.activo ? 'destructive' : 'primary'"
+          [busy]="cambiandoEstadoId === pacientePendiente.idPaciente"
+          (confirmed)="confirmarCambioEstado()" (cancelled)="cancelarCambioEstado()" />
       }
     </div>
   `,
@@ -174,7 +184,7 @@ export class PacientesComponent implements OnInit {
   cargando = false;
   error = '';
   pacientePendiente: PacienteListadoResponse | null = null;
-  eliminandoId: number | null = null;
+  cambiandoEstadoId: number | null = null;
 
   filtroNombre = '';
   filtroActivo: boolean | undefined = undefined;
@@ -184,7 +194,7 @@ export class PacientesComponent implements OnInit {
     this.contexto.observar(() => {
       this.limpiarFotos();
       this.contextoListado = this.contexto.clave();
-      this.contextoConfirmacion = null; this.pacientePendiente = null; this.eliminandoId = null;
+      this.contextoConfirmacion = null; this.pacientePendiente = null; this.cambiandoEstadoId = null;
       this.pacientes = []; this.errorOperacion = ''; this.total = this.totalPages = 0;
       this.limpiarFiltros();
     });
@@ -291,40 +301,43 @@ export class PacientesComponent implements OnInit {
     }
   }
 
-  solicitarDesactivacion(paciente: PacienteListadoResponse): void {
-    if (this.eliminandoId !== null || !this.contexto.vigente(this.contextoListado) || !idInventarioValido(paciente.idPaciente) ||
-      !paciente.activo || !this.pacientes.some(p => p.idPaciente === paciente.idPaciente && p.activo) ||
-      !this.permisos.puedeEliminar(MODULOS_PERMISO.PACIENTES)) return;
+  solicitarCambioEstado(paciente: PacienteListadoResponse): void {
+    if (this.cambiandoEstadoId !== null || !this.contexto.vigente(this.contextoListado) || !idInventarioValido(paciente.idPaciente) ||
+      !this.pacientes.some(p => p.idPaciente === paciente.idPaciente && p.activo === paciente.activo) ||
+      !this.permisos.puedeModificar(MODULOS_PERMISO.PACIENTES)) return;
     this.contextoConfirmacion = this.contextoListado;
     this.errorOperacion = '';
     this.pacientePendiente = paciente;
   }
 
-  cancelarDesactivacion(): void {
-    if (this.eliminandoId === null) this.pacientePendiente = null;
+  cancelarCambioEstado(): void {
+    if (this.cambiandoEstadoId === null) this.pacientePendiente = null;
   }
 
-  confirmarDesactivacion(): void {
+  confirmarCambioEstado(): void {
     const paciente = this.pacientePendiente;
-    if (!paciente || this.eliminandoId !== null) return;
+    if (!paciente || this.cambiandoEstadoId !== null) return;
     if (!this.contextoConfirmacion || !this.contexto.vigente(this.contextoConfirmacion) ||
-      !this.permisos.puedeEliminar('Pacientes') || !this.pacientes.some(p => p.idPaciente === paciente.idPaciente && p.activo)) {
+      !this.permisos.puedeModificar('Pacientes') ||
+      !this.pacientes.some(p => p.idPaciente === paciente.idPaciente && p.activo === paciente.activo)) {
       this.pacientePendiente = null; this.errorOperacion = 'La sesión, el permiso o el paciente cambiaron. Revise la operación.'; return;
     }
     const clave = this.contextoConfirmacion;
-    this.eliminandoId = paciente.idPaciente;
-    this.contexto.agregar(this.service.eliminar(paciente.idPaciente).subscribe({
+    const nuevoEstado = !paciente.activo;
+    this.cambiandoEstadoId = paciente.idPaciente;
+    this.contexto.agregar(this.service.cambiarEstado(paciente.idPaciente, nuevoEstado).subscribe({
       next: () => {
         if (!this.contexto.vigente(clave)) return;
-        this.eliminandoId = null;
+        this.cambiandoEstadoId = null;
         this.pacientePendiente = null;
         this.cargarPacientes();
       },
       error: err => {
         if (!this.contexto.vigente(clave)) return;
-        this.eliminandoId = null;
+        this.cambiandoEstadoId = null;
         this.pacientePendiente = null;
-        this.errorOperacion = this.apiErrors.messageFor(err, 'No se pudo desactivar el paciente.');
+        this.errorOperacion = this.apiErrors.messageFor(err,
+          nuevoEstado ? 'No se pudo activar el paciente.' : 'No se pudo desactivar el paciente.');
       },
     }));
   }

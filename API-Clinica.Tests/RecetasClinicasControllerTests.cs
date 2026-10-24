@@ -5,6 +5,7 @@ using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 
 namespace API_Clinica.Tests;
 
@@ -55,7 +56,29 @@ public sealed class RecetasClinicasControllerTests
         Assert.Equal(21, servicio.UltimoDetalle);
     }
 
-    private static RecetasClinicasController CrearController(ServicioFalso servicio) => new(servicio)
+    [Fact]
+    public async Task EscrituraCerradaPorDefectoNoInvocaElServicioYNoBloqueaLecturas()
+    {
+        var servicio = new ServicioFalso();
+        var controller = CrearController(servicio, habilitada: false);
+        var respuesta = await controller.Crear(17,
+            new CrearRecetaClinicaRequest { IdConsulta = 17 }, CancellationToken.None);
+        var bloqueada = Assert.IsType<ObjectResult>(respuesta.Result);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, bloqueada.StatusCode);
+        Assert.Contains("application/problem+json", bloqueada.ContentTypes);
+        Assert.Equal(0, servicio.Creaciones);
+        Assert.IsType<OkObjectResult>((await controller.Listar(
+            17, 1, 20, CancellationToken.None)).Result);
+        Assert.IsType<OkObjectResult>((await controller.Obtener(
+            21, CancellationToken.None)).Result);
+    }
+
+    private static RecetasClinicasController CrearController(
+        ServicioFalso servicio, bool habilitada = true) => new(servicio,
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Features:RecetaWriteEnabled"] = habilitada ? "true" : "false"
+        }).Build())
     {
         ControllerContext = new ControllerContext
         {

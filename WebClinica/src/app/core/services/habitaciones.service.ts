@@ -115,8 +115,12 @@ export class HabitacionesService implements OnDestroy {
       if (this.sincronizacionEnCurso) {
         this.resincronizarAlFinalizar = true;
         this.estadoSincronizacionState.set('desactualizado');
+      } else {
+        // El evento no tiene versión y solo incluye estado: puede llegar retrasado
+        // y una baja también cambia `activa`. HTTP confirma la tarjeta completa.
+        this.estadoSincronizacionState.set('desactualizado');
+        this.sincronizarAutomaticamente();
       }
-      this.actualizarHabitacionEnLista(data.habitacionId, data.estado);
     });
 
     connection.onreconnecting(() => {
@@ -229,14 +233,6 @@ export class HabitacionesService implements OnDestroy {
     this.estadoSincronizacionState.set('sin-datos');
     this.ultimaSincronizacionState.set(null);
     this.errorSincronizacionState.set(null);
-  }
-
-  private actualizarHabitacionEnLista(idHabitacion: number, nuevoEstado: string): void {
-    const current = this.habitacionesSubject.value;
-    if (current.some(h => h.idHabitacion === idHabitacion)) {
-      this.habitacionesSubject.next(current.map(h =>
-        h.idHabitacion === idHabitacion ? { ...h, estado: nuevoEstado } : h));
-    }
   }
 
   // ==================== HABITACIONES ====================

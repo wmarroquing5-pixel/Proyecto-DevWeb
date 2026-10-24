@@ -12,15 +12,17 @@ namespace API_Clinica.Services;
 public sealed class ExamenService(
     ClinicaDbContext context,
     ICommonParameterValidator parameterValidator,
-    IAccesoActualService accesoActual) : IExamenService
+    IAccesoActualService accesoActual,
+    ConsultaLecturaScope lecturaScope) : IExamenService
 {
     public async Task<PagedResponse<ExamenResponseDto>> ListarAsync(
-        ExamenFiltroDto filtro, CancellationToken ct)
+        ExamenFiltroDto filtro, ClaimsPrincipal principal, CancellationToken ct)
     {
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, ct);
         var pagination = parameterValidator.ValidatePagination(filtro.Page, filtro.PageSize);
         ValidarId(filtro.IdConsulta, nameof(filtro.IdConsulta));
         ValidarId(filtro.IdDiagnostico, nameof(filtro.IdDiagnostico));
-        var query = context.Examenes.AsNoTracking();
+        var query = lecturaScope.ExamenesVisibles(idMedico);
         if (filtro.IdConsulta is int idConsulta)
             query = query.Where(e => e.IdConsulta == idConsulta);
         if (filtro.IdDiagnostico is int idDiagnostico)
@@ -32,9 +34,11 @@ public sealed class ExamenService(
         return new(await MapearAsync(examenes, ct), filtro.Page, filtro.PageSize, total);
     }
 
-    public async Task<ExamenResponseDto> ObtenerAsync(int id, CancellationToken ct)
+    public async Task<ExamenResponseDto> ObtenerAsync(
+        int id, ClaimsPrincipal principal, CancellationToken ct)
     {
-        var examen = await context.Examenes.AsNoTracking()
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(principal, ct);
+        var examen = await lecturaScope.ExamenesVisibles(idMedico)
             .SingleOrDefaultAsync(e => e.IdExamen == id, ct)
             ?? throw new NotFoundException("Examen no encontrado.");
         return (await MapearAsync([examen], ct))[0];

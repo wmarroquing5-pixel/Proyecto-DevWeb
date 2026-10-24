@@ -2,11 +2,13 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
+using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Text;
 using System.Text.Json;
 using API_Clinica.Common;
 using API_Clinica.DTOs;
+using API_Clinica.Interfaces;
 using API_Clinica.Models.Entities;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -84,6 +86,133 @@ public sealed class SqlServerTransaccionesTests
         var movement = Assert.Single(await db.MovimientosInventario.AsNoTracking().ToListAsync());
         Assert.Equal(database.IdLote, movement.IdLote);
         Assert.Equal(2, movement.Cantidad);
+    }
+
+    [Fact]
+    public async Task DosVentasConcurrentesUsanLotesDiferentesSinDuplicarMovimientos()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync();
+        using var factory = database.CreateFactory();
+        await database.SeedAsync(factory.Services, initialStock: 2);
+        int segundoMedicamento;
+        int segundoLote;
+        await using (var seed = database.OpenContext())
+        {
+            var categoria = await seed.Categorias.Select(c => c.IdCategoria).SingleAsync();
+            var marca = await seed.Marcas.Select(m => m.IdMarca).SingleAsync();
+            var medicine = new Medicamento
+            {
+                IdCategoria = categoria, IdMarca = marca, Codigo = "MED-CONCURRENT-2",
+                Nombre = "Medicamento concurrente sintético", PrecioVenta = 7.25m, Activo = true
+            };
+            seed.Medicamentos.Add(medicine);
+            await seed.SaveChangesAsync();
+            segundoMedicamento = medicine.IdMedicamento;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var lot = new LoteMedicamento
+            {
+                IdMedicamento = segundoMedicamento, NumeroLote = "LOT-CONCURRENT-2",
+                FechaIngreso = today.AddDays(-3), FechaVencimiento = today.AddDays(20),
+                CantidadDisponible = 2
+            };
+            seed.LoteMedicamentos.Add(lot);
+            await seed.SaveChangesAsync();
+            segundoLote = lot.IdLote;
+        }
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await LoginAsync(firstClient, database);
+        await LoginAsync(secondClient, database);
+
+        using var gate = new ManualResetEventSlim(false);
+        var first = Task.Run(async () =>
+        {
+            gate.Wait();
+            return await firstClient.PostAsJsonAsync("/api/ventas", Venta(database, 2));
+        });
+        var second = Task.Run(async () =>
+        {
+            gate.Wait();
+            return await secondClient.PostAsJsonAsync("/api/ventas", new CrearVentaRequest
+            {
+                IdSucursal = database.IdSucursal,
+                Items = [new CrearVentaItemRequest
+                {
+                    IdMedicamento = segundoMedicamento, Cantidad = 2
+                }]
+            });
+        });
+        gate.Set();
+        var responses = await Task.WhenAll(first, second);
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.Created, response.StatusCode));
+
+        await using var db = database.OpenContext();
+        Assert.Equal(2, await db.Ventas.CountAsync());
+        Assert.Equal(2, await db.VentaDetalles.CountAsync());
+        Assert.Equal(0, await db.LoteMedicamentos.SumAsync(l => l.CantidadDisponible));
+        var movements = await db.MovimientosInventario.AsNoTracking().ToListAsync();
+        Assert.Equal(2, movements.Count);
+        Assert.Equal(new[] { database.IdLote, segundoLote },
+            movements.Select(m => m.IdLote).Order().ToArray());
+        Assert.All(movements, movement => Assert.Equal(2, movement.Cantidad));
+    }
+
+    [Fact]
+    public async Task VentaDeDosMedicamentosConservaTotalStockYMovimientos()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync();
+        using var factory = database.CreateFactory();
+        await database.SeedAsync(factory.Services, initialStock: 3);
+        int segundoMedicamento;
+        int segundoLote;
+        await using (var seed = database.OpenContext())
+        {
+            var categoria = await seed.Categorias.Select(c => c.IdCategoria).SingleAsync();
+            var marca = await seed.Marcas.Select(m => m.IdMarca).SingleAsync();
+            var medicine = new Medicamento
+            {
+                IdCategoria = categoria, IdMarca = marca, Codigo = "MED-SQL-2",
+                Nombre = "Segundo medicamento sintético", PrecioVenta = 7.25m, Activo = true
+            };
+            seed.Medicamentos.Add(medicine);
+            await seed.SaveChangesAsync();
+            segundoMedicamento = medicine.IdMedicamento;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var lot = new LoteMedicamento
+            {
+                IdMedicamento = segundoMedicamento, NumeroLote = "LOT-SQL-2",
+                FechaIngreso = today.AddDays(-2), FechaVencimiento = today.AddDays(15),
+                CantidadDisponible = 4
+            };
+            seed.LoteMedicamentos.Add(lot);
+            await seed.SaveChangesAsync();
+            segundoLote = lot.IdLote;
+        }
+
+        using var client = factory.CreateClient();
+        await LoginAsync(client, database);
+        var response = await client.PostAsJsonAsync("/api/ventas", new CrearVentaRequest
+        {
+            IdSucursal = database.IdSucursal,
+            Items =
+            [
+                new CrearVentaItemRequest { IdMedicamento = database.IdMedicamento, Cantidad = 2 },
+                new CrearVentaItemRequest { IdMedicamento = segundoMedicamento, Cantidad = 3 }
+            ]
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var sale = await response.Content.ReadFromJsonAsync<VentaResponse>();
+        Assert.NotNull(sale);
+        Assert.Equal(46.75m, sale.Total);
+        Assert.Equal(2, sale.Detalles.Count);
+        Assert.Equal(new[] { database.IdLote, segundoLote }, sale.Detalles.Select(d => d.IdLote));
+
+        await using var db = database.OpenContext();
+        Assert.Equal(1, await db.Ventas.CountAsync());
+        Assert.Equal(2, await db.VentaDetalles.CountAsync());
+        Assert.Equal(2, await db.MovimientosInventario.CountAsync());
+        Assert.Equal(1, (await db.LoteMedicamentos.SingleAsync(l => l.IdLote == database.IdLote)).CantidadDisponible);
+        Assert.Equal(1, (await db.LoteMedicamentos.SingleAsync(l => l.IdLote == segundoLote)).CantidadDisponible);
     }
 
     [Fact]
@@ -287,6 +416,157 @@ public sealed class SqlServerTransaccionesTests
     }
 
     [Fact]
+    public async Task DosEgresosConcurrentesConfirmanUnaSolaTransicion()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync();
+        using var factory = database.CreateFactory();
+        await database.SeedAsync(factory.Services);
+        int roomId;
+        await using (var seed = database.OpenContext())
+        {
+            var roleId = await seed.Usuarios.Where(u => u.IdUsuario == database.IdUsuario)
+                .Select(u => u.IdRol).SingleAsync();
+            seed.Permisos.AddRange(
+                new Permiso { IdRol = roleId, Modulo = "Habitaciones", PuedeConsultar = true },
+                new Permiso { IdRol = roleId, Modulo = "AsignacionesHabitacion",
+                    PuedeCrear = true, PuedeModificar = true });
+            var room = new Habitacion { IdSucursal = database.IdSucursal,
+                NumeroHabitacion = "SQL-EGRESO", Estado = EstadoHabitacion.Libre, Activa = true };
+            seed.Habitaciones.Add(room);
+            await seed.SaveChangesAsync();
+            roomId = room.IdHabitacion;
+        }
+
+        using var first = factory.CreateClient();
+        using var second = factory.CreateClient();
+        await LoginAsync(first, database);
+        await LoginAsync(second, database);
+        var created = await first.PostAsJsonAsync("/api/asignaciones-habitacion",
+            new CrearAsignacionHabitacionRequest { IdHabitacion = roomId,
+                IdPaciente = database.IdPaciente });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var assignment = await created.Content.ReadFromJsonAsync<AsignacionHabitacionResponse>();
+        Assert.NotNull(assignment);
+
+        using var gate = new ManualResetEventSlim(false);
+        async Task<HttpResponseMessage> EgressAsync(HttpClient client) => await Task.Run(async () =>
+        {
+            gate.Wait();
+            return await client.PostAsync(
+                $"/api/asignaciones-habitacion/{assignment.IdAsignacion}/egreso", null);
+        });
+        var one = EgressAsync(first);
+        var two = EgressAsync(second);
+        gate.Set();
+        var responses = await Task.WhenAll(one, two);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
+
+        await using var verify = database.OpenContext();
+        var saved = await verify.AsignacionesHabitacion.AsNoTracking()
+            .SingleAsync(a => a.IdAsignacion == assignment.IdAsignacion);
+        Assert.NotNull(saved.FechaEgreso);
+        Assert.True(saved.FechaEgreso >= saved.FechaIngreso);
+        Assert.Equal(EstadoHabitacion.EnLimpieza,
+            (await verify.Habitaciones.AsNoTracking()
+                .SingleAsync(h => h.IdHabitacion == roomId)).Estado);
+        Assert.Equal(0, await verify.AsignacionesHabitacion.AsNoTracking()
+            .CountAsync(a => a.IdHabitacion == roomId && a.FechaEgreso == null));
+    }
+
+    [Fact]
+    public async Task UnPacienteNoRecibeDosHabitacionesEnSolicitudesConcurrentes()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync();
+        using var factory = database.CreateFactory();
+        await database.SeedAsync(factory.Services);
+        int firstRoomId;
+        int secondRoomId;
+        await using (var seed = database.OpenContext())
+        {
+            var roleId = await seed.Usuarios.Where(u => u.IdUsuario == database.IdUsuario)
+                .Select(u => u.IdRol).SingleAsync();
+            seed.Permisos.Add(new Permiso { IdRol = roleId,
+                Modulo = "AsignacionesHabitacion", PuedeCrear = true });
+            var firstRoom = new Habitacion { IdSucursal = database.IdSucursal,
+                NumeroHabitacion = "SQL-PAC-1", Estado = EstadoHabitacion.Libre, Activa = true };
+            var secondRoom = new Habitacion { IdSucursal = database.IdSucursal,
+                NumeroHabitacion = "SQL-PAC-2", Estado = EstadoHabitacion.Libre, Activa = true };
+            seed.Habitaciones.AddRange(firstRoom, secondRoom);
+            await seed.SaveChangesAsync();
+            firstRoomId = firstRoom.IdHabitacion;
+            secondRoomId = secondRoom.IdHabitacion;
+        }
+
+        using var first = factory.CreateClient();
+        using var second = factory.CreateClient();
+        await LoginAsync(first, database);
+        await LoginAsync(second, database);
+        using var gate = new ManualResetEventSlim(false);
+        async Task<HttpResponseMessage> AssignAsync(HttpClient client, int roomId) => await Task.Run(async () =>
+        {
+            gate.Wait();
+            return await client.PostAsJsonAsync("/api/asignaciones-habitacion",
+                new CrearAsignacionHabitacionRequest { IdHabitacion = roomId,
+                    IdPaciente = database.IdPaciente });
+        });
+        var one = AssignAsync(first, firstRoomId);
+        var two = AssignAsync(second, secondRoomId);
+        gate.Set();
+        var responses = await Task.WhenAll(one, two);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
+
+        await using var verify = database.OpenContext();
+        Assert.Equal(1, await verify.AsignacionesHabitacion.AsNoTracking()
+            .CountAsync(a => a.IdPaciente == database.IdPaciente && a.FechaEgreso == null));
+        Assert.Equal(1, await verify.Habitaciones.AsNoTracking()
+            .CountAsync(h => (h.IdHabitacion == firstRoomId || h.IdHabitacion == secondRoomId)
+                && h.Estado == EstadoHabitacion.Ocupada));
+    }
+
+    [Fact]
+    public async Task FalloAntesDeCommitRevierteAsignacionYNoPublicaEstado()
+    {
+        await using var database = await SqlServerTestDatabase.CreateAsync();
+        using (var seedFactory = database.CreateFactory())
+            await database.SeedAsync(seedFactory.Services);
+        int roomId;
+        await using (var seed = database.OpenContext())
+        {
+            var roleId = await seed.Usuarios.Where(u => u.IdUsuario == database.IdUsuario)
+                .Select(u => u.IdRol).SingleAsync();
+            seed.Permisos.Add(new Permiso { IdRol = roleId,
+                Modulo = "AsignacionesHabitacion", PuedeCrear = true });
+            var room = new Habitacion { IdSucursal = database.IdSucursal,
+                NumeroHabitacion = "SQL-ROLLBACK", Estado = EstadoHabitacion.Libre,
+                Activa = true };
+            seed.Habitaciones.Add(room);
+            await seed.SaveChangesAsync();
+            roomId = room.IdHabitacion;
+        }
+
+        var interceptor = new FailBeforeCommitInterceptor { Enabled = true };
+        var notifier = new RecordingHabitacionNotifier();
+        using var factory = database.CreateFactory(interceptor, notifier);
+        using var client = factory.CreateClient();
+        await LoginAsync(client, database);
+        var response = await client.PostAsJsonAsync("/api/asignaciones-habitacion",
+            new CrearAsignacionHabitacionRequest { IdHabitacion = roomId,
+                IdPaciente = database.IdPaciente });
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.True(interceptor.Triggered);
+        Assert.Empty(notifier.Events);
+
+        await using var verify = database.OpenContext();
+        Assert.Empty(await verify.AsignacionesHabitacion.AsNoTracking()
+            .Where(a => a.IdHabitacion == roomId).ToListAsync());
+        Assert.Equal(EstadoHabitacion.Libre,
+            (await verify.Habitaciones.AsNoTracking()
+                .SingleAsync(h => h.IdHabitacion == roomId)).Estado);
+    }
+
+    [Fact]
     public async Task ReintentoIdenticoDeFacturaCreaOtraFacturaSinClaveDeIdempotencia()
     {
         await using var database = await SqlServerTestDatabase.CreateAsync();
@@ -423,6 +703,17 @@ public sealed class SqlServerTransaccionesTests
                 throw new InvalidOperationException("Fallo sintético antes del commit.");
             }
             return base.TransactionCommittingAsync(transaction, eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class RecordingHabitacionNotifier : IHabitacionEstadoNotifier
+    {
+        public ConcurrentQueue<(int HabitacionId, string Estado)> Events { get; } = new();
+
+        public Task PublicarAsync(int habitacionId, string estado)
+        {
+            Events.Enqueue((habitacionId, estado));
+            return Task.CompletedTask;
         }
     }
 

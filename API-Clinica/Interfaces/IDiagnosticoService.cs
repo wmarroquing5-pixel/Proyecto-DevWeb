@@ -6,8 +6,8 @@ namespace API_Clinica.Interfaces;
 public interface IDiagnosticoService
 {
     Task<PagedResponse<DiagnosticoResponse>> ListarAsync(
-        DiagnosticoFiltroDto filtro, CancellationToken cancellationToken);
-    Task<DiagnosticoResponse> ObtenerAsync(int id, CancellationToken cancellationToken);
+        DiagnosticoFiltroDto filtro, ClaimsPrincipal principal, CancellationToken cancellationToken);
+    Task<DiagnosticoResponse> ObtenerAsync(int id, ClaimsPrincipal principal, CancellationToken cancellationToken);
     Task<DiagnosticoResponse> CrearAsync(
         CrearDiagnosticoRequest request, ClaimsPrincipal principal,
         CancellationToken cancellationToken);

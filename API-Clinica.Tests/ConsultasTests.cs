@@ -95,6 +95,7 @@ public sealed class ConsultasTests
             first.Headers.Location?.AbsolutePath);
         Assert.Equal(HttpStatusCode.Conflict,
             (await client.PostAsJsonAsync(url, new { sintomas = "Sobrescribir" })).StatusCode);
+        await factory.LinkUserToMedicoAsync(1);
         var detail = await client.GetFromJsonAsync<ConsultaDetalleDto>(
             $"/api/consultas/{opened.IdConsulta}");
         Assert.NotNull(detail);
@@ -355,6 +356,7 @@ public sealed class ConsultasTests
         Assert.NotNull(result);
         Assert.Equal(36.7m, result.TemperaturaC);
         Assert.Equal((short)72, result.FrecuenciaCardiaca);
+        await factory.LinkUserToMedicoAsync(1);
         var detail = await client.GetFromJsonAsync<ConsultaDetalleDto>(
             $"/api/consultas/{result.IdConsulta}");
         Assert.Equal(result.TemperaturaC, detail?.TemperaturaC);
@@ -646,13 +648,14 @@ public sealed class ConsultasTests
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         await factory.SeedConsultasAsync();
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
         var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
             "/api/consultas?page=2&pageSize=1");
         Assert.NotNull(page);
-        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(2, page.TotalCount);
         Assert.Equal(2, Assert.Single(page.Items).IdConsulta);
         var filtered = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
             "/api/consultas?idPaciente=1&idMedico=1&idSucursal=1&idClinica=1" +
@@ -670,6 +673,8 @@ public sealed class ConsultasTests
         Assert.Equal("Motivo", detail.MotivoConsulta);
         Assert.Equal(HttpStatusCode.NotFound,
             (await client.GetAsync("/api/consultas/9999")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/consultas/3")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.GetAsync("/api/consultas?page=0")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest,
@@ -684,6 +689,7 @@ public sealed class ConsultasTests
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         await factory.SeedConsultasAsync();
         using (var scope = factory.Services.CreateScope())
         {
@@ -697,7 +703,7 @@ public sealed class ConsultasTests
         var pagina = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
             "/api/consultas?page=1&pageSize=2");
         Assert.NotNull(pagina);
-        Assert.Equal(3, pagina.TotalCount);
+        Assert.Equal(2, pagina.TotalCount);
         Assert.Equal("En seguimiento", pagina.Items[0].EstadoConsulta);
         Assert.Null(pagina.Items[1].EstadoConsulta);
 
@@ -736,6 +742,7 @@ public sealed class ConsultasTests
         var nueva = await created.Content.ReadFromJsonAsync<ConsultaDetalleDto>();
         Assert.NotNull(nueva);
         Assert.Equal("Abierta", nueva.EstadoConsulta);
+        await factory.LinkUserToMedicoAsync(1);
         var detalle = await client.GetFromJsonAsync<ConsultaDetalleDto>(
             $"/api/consultas/{nueva.IdConsulta}");
         Assert.Equal("Abierta", detalle?.EstadoConsulta);
@@ -764,6 +771,7 @@ public sealed class ConsultasTests
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         await factory.GrantRelatedReadAsync(1, "Pacientes", "Empleados", "Sucursales", "Clinicas");
         await factory.SeedConsultasAsync();
         using var client = factory.CreateClient();
@@ -771,7 +779,7 @@ public sealed class ConsultasTests
 
         var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>("/api/consultas");
         Assert.NotNull(page);
-        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(2, page.TotalCount);
         var primera = page.Items[0];
         Assert.Equal("Motivo", primera.MotivoConsulta);
         Assert.Equal("Paciente Uno", primera.NombrePaciente);
@@ -795,6 +803,7 @@ public sealed class ConsultasTests
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         await factory.GrantRelatedReadAsync(1, "Pacientes", "Sucursales");
         await factory.SeedConsultasAsync();
         using var client = factory.CreateClient();
@@ -824,6 +833,7 @@ public sealed class ConsultasTests
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         await factory.GrantRelatedReadAsync(1, modulo);
         await factory.SeedConsultasAsync();
         using var client = factory.CreateClient();
@@ -844,30 +854,30 @@ public sealed class ConsultasTests
         using var factory = new ConsultaApiFactory();
         var password = await factory.SeedAsync();
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         await factory.GrantRelatedReadAsync(1, "Pacientes", "Empleados", "Sucursales", "Clinicas");
         await factory.SeedConsultasAsync();
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ClinicaDbContext>();
             db.Pacientes.Remove(await db.Pacientes.SingleAsync(p => p.IdPaciente == 1));
-            db.Empleados.Remove(await db.Empleados.SingleAsync(e => e.IdEmpleado == 2));
-            db.Sucursales.Remove(await db.Sucursales.SingleAsync(s => s.IdSucursal == 2));
-            db.Clinicas.Remove(await db.Clinicas.SingleAsync(c => c.IdClinica == 2));
+            db.Sucursales.Remove(await db.Sucursales.SingleAsync(s => s.IdSucursal == 1));
+            db.Clinicas.Remove(await db.Clinicas.SingleAsync(c => c.IdClinica == 1));
             await db.SaveChangesAsync();
         }
         using var client = factory.CreateClient();
         await LoginAsync(client, password);
 
         var page = await client.GetFromJsonAsync<PagedResponse<ConsultaListadoDto>>(
-            "/api/consultas?page=3&pageSize=1");
+            "/api/consultas?page=1&pageSize=1");
         Assert.NotNull(page);
-        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(2, page.TotalCount);
         var item = Assert.Single(page.Items);
-        Assert.Equal(3, item.IdConsulta);
+        Assert.Equal(1, item.IdConsulta);
         Assert.Equal(1, item.IdPaciente);
-        Assert.Equal(2, item.IdClinica);
+        Assert.Equal(1, item.IdClinica);
         Assert.Null(item.NombrePaciente);
-        Assert.Null(item.NombreMedico);
+        Assert.Equal("Médico Uno", item.NombreMedico);
         Assert.Null(item.NombreSucursal);
         Assert.Null(item.NombreClinica);
     }
@@ -1171,6 +1181,7 @@ public sealed class ConsultasTests
         Assert.Equal(HttpStatusCode.Forbidden,
             (await client.GetAsync("/api/consultas")).StatusCode);
         await factory.GrantReadAsync();
+        await factory.LinkUserToMedicoAsync(1);
         Assert.Equal(HttpStatusCode.OK,
             (await client.GetAsync("/api/consultas")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,

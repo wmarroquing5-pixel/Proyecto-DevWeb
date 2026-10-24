@@ -285,6 +285,43 @@ public sealed class PacientesTests
     }
 
     [Fact]
+    public async Task CambiarEstadoDesactivaYReactivaSinSobrescribirDatos()
+    {
+        using var factory = new PacienteApiFactory();
+        var password = await factory.SeedUserAsync();
+        await factory.GrantAllAsync();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, password);
+        var creado = await client.PostAsJsonAsync("/api/pacientes", NuevoPaciente());
+        var paciente = await creado.Content.ReadFromJsonAsync<PacienteResponse>();
+        Assert.NotNull(paciente);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PatchAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}/estado",
+                new { activo = false })).StatusCode);
+        Assert.False((await client.GetFromJsonAsync<PacienteResponse>(
+            $"/api/pacientes/{paciente.IdPaciente}"))!.Activo);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PatchAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}/estado",
+                new { activo = true })).StatusCode);
+        var reactivado = await client.GetFromJsonAsync<PacienteResponse>(
+            $"/api/pacientes/{paciente.IdPaciente}");
+        Assert.NotNull(reactivado);
+        Assert.True(reactivado.Activo);
+        Assert.Equal(paciente.Nombres, reactivado.Nombres);
+        Assert.Equal(paciente.Apellidos, reactivado.Apellidos);
+        Assert.Equal(paciente.FechaRegistro, reactivado.FechaRegistro);
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PatchAsJsonAsync("/api/pacientes/9999/estado",
+                new { activo = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PatchAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}/estado",
+                new { })).StatusCode);
+    }
+
+    [Fact]
     public async Task RequiereJwtYPermisoActualPorOperacion()
     {
         using var factory = new PacienteApiFactory();
@@ -296,6 +333,8 @@ public sealed class PacientesTests
             (await client.PostAsJsonAsync("/api/pacientes", NuevoPaciente())).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.PutAsJsonAsync("/api/pacientes/1", NuevoPaciente())).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PatchAsJsonAsync("/api/pacientes/1/estado", new { activo = false })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.DeleteAsync("/api/pacientes/1")).StatusCode);
         await LoginAsync(client, password);
@@ -321,6 +360,9 @@ public sealed class PacientesTests
         Assert.Equal(HttpStatusCode.Forbidden,
             (await client.PutAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}", NuevoPaciente())).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PatchAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}/estado",
+                new { activo = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
             (await client.DeleteAsync($"/api/pacientes/{paciente.IdPaciente}")).StatusCode);
 
         using (var scope = factory.Services.CreateScope())
@@ -333,6 +375,9 @@ public sealed class PacientesTests
         }
         Assert.Equal(HttpStatusCode.OK,
             (await client.PutAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}", NuevoPaciente())).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PatchAsJsonAsync($"/api/pacientes/{paciente.IdPaciente}/estado",
+                new { activo = false })).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent,
             (await client.DeleteAsync($"/api/pacientes/{paciente.IdPaciente}")).StatusCode);
     }

@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { ContactoEmergenciaResponse } from '../../core/models/contacto-emergencia.model';
-import { ConsultaDetalleDto, ConsultaListadoDto, DiagnosticoResponse, ExamenResponseDto, HistorialMedicoResponseDto, TratamientoResponseDto } from '../../core/models/historial.model';
+import { ConsultaDetalleDto, ConsultaListadoDto, DiagnosticoResponse, ExamenResponseDto, ExamResultFileDto, HistorialMedicoResponseDto, TratamientoResponseDto } from '../../core/models/historial.model';
 import { PacienteResponse } from '../../core/models/paciente.model';
 import { AuthSessionService } from '../../core/services/auth-session.service';
 import { ContactosEmergenciaService } from '../../core/services/contacto-emergencia.service';
@@ -53,7 +53,7 @@ describe('WEB-PAC-04 ficha médica de solo lectura', () => {
     contactos = jasmine.createSpyObj<ContactosEmergenciaService>('ContactosEmergenciaService', ['listar', 'crear', 'actualizar', 'eliminar']);
     contactos.listar.and.returnValue(of(pagina([], 1, 100)));
     historial = jasmine.createSpyObj<HistorialService>('HistorialService', ['listarConsultas', 'obtenerConsulta', 'listarDiagnosticos', 'listarTratamientos',
-      'listarExamenes', 'listarHistorial', 'crearConsulta', 'actualizarConsulta', 'crearDiagnostico', 'crearTratamiento', 'crearExamen', 'crearEvolucion']);
+      'listarExamenes', 'listarArchivosExamen', 'descargarArchivoExamen', 'listarHistorial', 'crearConsulta', 'actualizarConsulta', 'crearDiagnostico', 'crearTratamiento', 'crearExamen', 'crearEvolucion']);
     historial.listarConsultas.and.returnValue(of(pagina([])));
     historial.obtenerConsulta.and.returnValue(of({ ...consulta(7), motivoConsulta: 'Consulta general' } as ConsultaDetalleDto));
     empleados = jasmine.createSpyObj<EmpleadosService>('EmpleadosService', ['obtener']);
@@ -62,6 +62,8 @@ describe('WEB-PAC-04 ficha médica de solo lectura', () => {
     historial.listarDiagnosticos.and.returnValue(of(pagina([], 1, 100)));
     historial.listarTratamientos.and.returnValue(of(pagina([], 1, 100)));
     historial.listarExamenes.and.returnValue(of(pagina([], 1, 100)));
+    historial.listarArchivosExamen.and.returnValue(of([]));
+    historial.descargarArchivoExamen.and.returnValue(of(new Blob(['file'], { type: 'application/pdf' })));
     historial.listarHistorial.and.returnValue(of(pagina([], 1, 100)));
     spyOn(URL, 'createObjectURL').and.returnValue('blob:foto-protegida');
     spyOn(URL, 'revokeObjectURL');
@@ -271,10 +273,68 @@ describe('WEB-PAC-04 ficha médica de solo lectura', () => {
     expect(ficha.resumen?.diagnosticos).toEqual([diagnostico]); expect(ficha.resumen?.tratamientos).toEqual([tratamiento]);
     expect(ficha.resumen?.examenes).toEqual([examen]); expect(ficha.resumen?.evoluciones).toEqual([evolucion]);
     expect(texto()).toContain('Diagnóstico real'); expect(texto()).toContain('Tratamiento real');
-    expect(texto()).toContain('El contrato de exámenes no proporciona contenido de resultados');
+    expect(texto()).toContain('No hay archivos de resultados registrados.');
   });
 
-  it('muestra el resumen descriptivo, sus cuatro secciones y cierra a la ficha', () => {
+  it('muestra resultados de varios exámenes de la consulta con sus archivos y acciones de lectura', () => {
+    historial.listarConsultas.and.returnValue(of(pagina([consulta(7)])));
+    const examen = (idExamen: number, nombreExamen: string): ExamenResponseDto => ({
+      idExamen, idConsulta: 7, idDiagnostico: null, idTurno: null, idPaciente: 41, idMedico: 5,
+      nombreExamen, fechaExamen: '2026-10-22T10:00:00Z', fechaResultado: idExamen === 5 ? '2026-10-23' : null,
+      prioridad: idExamen === 5 ? 'Alta' : null,
+    });
+    const archivo = (archivoId: string, nombreOriginal: string): ExamResultFileDto => ({
+      archivoId, nombreOriginal, tipoContenido: 'application/pdf', tamanoBytes: 4,
+      fechaCargaUtc: '2026-10-23T12:30:00Z', idUsuarioCarga: 1,
+    });
+    historial.listarExamenes.and.returnValue(of(pagina([examen(5, 'Hemograma'), examen(6, 'Radiografía')], 1, 100)));
+    historial.listarArchivosExamen.and.callFake(id => of(id === 5
+      ? [archivo('a'.repeat(32), 'uno.pdf'), archivo('b'.repeat(32), 'dos.pdf')]
+      : [archivo('c'.repeat(32), 'tres.pdf')]));
+    const ficha = abrir(); ficha.verResumen(ficha.consultas[0]); fixture.detectChanges();
+    const panel = fixture.nativeElement as HTMLElement;
+    const examenes = panel.querySelectorAll<HTMLElement>('.resumen-examen');
+    expect(examenes.length).toBe(2);
+    expect(examenes[0].textContent).toContain('Hemograma');
+    expect(examenes[0].textContent).toContain('Alta');
+    expect(examenes[0].textContent).toContain('Fecha de resultado');
+    expect(examenes[0].textContent).toContain('uno.pdf');
+    expect(examenes[0].textContent).toContain('dos.pdf');
+    expect(examenes[0].textContent).not.toContain('tres.pdf');
+    expect(examenes[1].textContent).toContain('tres.pdf');
+    expect([...examenes[0].querySelectorAll('th')].map(th => th.textContent?.trim()))
+      .toEqual(['Archivo', 'Fecha de carga', 'Acciones']);
+    expect(examenes[0].querySelectorAll('button').length).toBe(4);
+    spyOn(HTMLAnchorElement.prototype, 'click');
+    examenes[0].querySelectorAll<HTMLButtonElement>('button')[0].click();
+    fixture.detectChanges();
+    expect(historial.descargarArchivoExamen).toHaveBeenCalledWith(5, 'a'.repeat(32));
+    expect(examenes[0].querySelector('iframe[title="Vista previa del resultado PDF"]')).not.toBeNull();
+    examenes[0].querySelectorAll<HTMLButtonElement>('button')[1].click();
+    expect(historial.descargarArchivoExamen).toHaveBeenCalledTimes(2);
+    expect(historial.listarArchivosExamen).toHaveBeenCalledWith(5);
+    expect(historial.listarArchivosExamen).toHaveBeenCalledWith(6);
+    expect(ficha.resumen?.examenes.length).toBe(2);
+  });
+
+  it('distingue resumen sin exámenes, examen sin archivos y fallo al consultar archivos', () => {
+    historial.listarConsultas.and.returnValue(of(pagina([consulta(7)])));
+    const ficha = abrir(); ficha.verResumen(ficha.consultas[0]);
+    expect(texto()).toContain('No hay exámenes registrados para esta consulta.');
+    expect(historial.listarArchivosExamen).not.toHaveBeenCalled();
+    const examen: ExamenResponseDto = { idExamen: 5, idConsulta: 7, idDiagnostico: null, idTurno: null,
+      idPaciente: 41, idMedico: 5, nombreExamen: 'Hemograma', fechaExamen: '2026-10-22',
+      fechaResultado: '2026-10-23', prioridad: null };
+    historial.listarExamenes.and.returnValue(of(pagina([examen], 1, 100)));
+    ficha.verResumen(ficha.consultas[0]);
+    expect(texto()).toContain('No hay archivos de resultados registrados.');
+    historial.listarArchivosExamen.and.returnValue(throwError(() => errorHttp(503)));
+    ficha.verResumen(ficha.consultas[0]);
+    expect(texto()).toContain('Los archivos del examen no pudieron cargarse.');
+    expect(texto()).not.toContain('No hay archivos de resultados registrados.');
+  });
+
+  it('muestra el resumen descriptivo, sus seis secciones en el orden clínico y cierra a la ficha', () => {
     historial.listarConsultas.and.returnValue(of(pagina([consulta(7)])));
     const ficha = abrir(); ficha.verResumen(ficha.consultas[0]);
     const host = fixture.nativeElement as HTMLElement;
@@ -282,13 +342,61 @@ describe('WEB-PAC-04 ficha médica de solo lectura', () => {
     expect(texto()).toContain('Consulta general');
     expect(texto()).toContain('Ana López');
     expect(texto()).not.toContain('Resumen de consulta ID');
-    for (const titulo of ['Diagnósticos', 'Tratamientos', 'Exámenes', 'Evolución']) {
-      expect(host.querySelector('.resumen-contenido')?.textContent).toContain(titulo);
-    }
+    expect([...host.querySelectorAll('.resumen-contenido .resumen-seccion h3')]
+      .map(titulo => titulo.textContent?.trim())).toEqual([
+        'Evaluación', 'Exámenes', 'Diagnóstico', 'Tratamiento', 'Evolución', 'Hospitalización',
+      ]);
+    expect(texto()).toContain('No hay datos de evaluación registrados.');
+    expect(texto()).toContain('La consulta de hospitalizaciones requiere autorización específica.');
+    expect(texto()).not.toContain('Sin hospitalizaciones');
     expect(host.querySelector<HTMLButtonElement>('.resumen-header button')?.disabled).toBeTrue();
     host.querySelector<HTMLButtonElement>('.resumen-header button:last-child')?.click();
     expect(ficha.consultaResumen).toBeNull();
     expect(texto()).toContain('Ficha Médica del Paciente');
+  });
+
+  it('presenta únicamente los datos reales de evaluación de la consulta seleccionada', () => {
+    historial.listarConsultas.and.returnValue(of(pagina([consulta(7)])));
+    historial.obtenerConsulta.and.returnValue(of({ ...consulta(7), motivoConsulta: 'Consulta general',
+      sintomas: 'Tos', observaciones: 'Dolor leve', pesoLb: 150, alturaCm: 170,
+      presionSistolica: 120, presionDiastolica: 80, temperaturaC: 37.1, frecuenciaCardiaca: 90,
+    } as ConsultaDetalleDto));
+    const ficha = abrir(); ficha.verResumen(ficha.consultas[0]);
+    fixture.detectChanges();
+    const evaluacion = (fixture.nativeElement as HTMLElement).querySelector('#resumen-evaluacion')?.parentElement;
+    expect(evaluacion?.textContent).toContain('Tos');
+    expect(evaluacion?.textContent).toContain('Dolor leve');
+    expect(evaluacion?.textContent).toContain('150 lb');
+    expect(evaluacion?.textContent).toContain('170 cm');
+    expect(evaluacion?.textContent).toContain('120/80 mmHg');
+    expect(evaluacion?.textContent).toContain('37.1 °C');
+    expect(evaluacion?.textContent).toContain('90 lpm');
+    expect(historial.obtenerConsulta).toHaveBeenCalledTimes(1);
+  });
+
+  it('ordena cronológicamente evoluciones con y sin diagnóstico', () => {
+    historial.listarConsultas.and.returnValue(of(pagina([consulta(7)])));
+    historial.listarHistorial.and.returnValue(of(pagina([
+      { idHistorial: 9, idConsulta: 7, idPaciente: 41, idMedico: 5, idDiagnostico: 2,
+        descripcion: 'Evolución posterior', fechaHistorial: '2026-03-03T10:00:00Z' },
+      { idHistorial: 8, idConsulta: 7, idPaciente: 41, idMedico: 5, idDiagnostico: null,
+        descripcion: 'Evolución inicial', fechaHistorial: '2026-03-01T10:00:00Z' },
+    ], 1, 100)));
+    const ficha = abrir(); ficha.verResumen(ficha.consultas[0]);
+    fixture.detectChanges();
+    expect([...(fixture.nativeElement as HTMLElement).querySelectorAll('#resumen-evolucion + ul li')]
+      .map(item => item.textContent?.trim())).toEqual([
+        jasmine.stringMatching(/^Evolución inicial/), jasmine.stringMatching(/^Evolución posterior/),
+      ]);
+  });
+
+  it('descarta la evaluación devuelta para otro paciente', () => {
+    historial.listarConsultas.and.returnValue(of(pagina([consulta(7)])));
+    historial.obtenerConsulta.and.returnValue(of({ ...consulta(7, 99), sintomas: 'Dato ajeno' } as ConsultaDetalleDto));
+    const ficha = abrir(); ficha.verResumen(ficha.consultas[0]);
+    expect(ficha.resumen).toBeNull();
+    expect(ficha.errorResumen).toContain('ajena');
+    expect(texto()).not.toContain('Dato ajeno');
   });
 
   it('abre un único panel debajo del historial sin cambiar ruta y devuelve el foco al cerrar', async () => {
@@ -339,19 +447,25 @@ describe('WEB-PAC-04 ficha médica de solo lectura', () => {
 
   it('al navegar sustituye los datos clínicos del resumen anterior', () => {
     historial.listarConsultas.and.returnValue(of(pagina([consulta(7), consulta(8)])));
+    historial.obtenerConsulta.and.callFake(id => of({ ...consulta(id), motivoConsulta: `Consulta ${id}`,
+      sintomas: `Síntoma consulta ${id}` } as ConsultaDetalleDto));
     historial.listarDiagnosticos.and.callFake(filtro => of(pagina([{
       idDiagnostico: filtro.idConsulta!, idConsulta: filtro.idConsulta!, idMedico: 5,
       descripcion: `Diagnóstico consulta ${filtro.idConsulta}`, fechaRegistro: '2026-03-01T10:00:00Z',
     }], 1, 100)));
     const ficha = abrir(); ficha.verResumen(ficha.consultas[0]);
     expect(texto()).toContain('Diagnóstico consulta 7');
+    expect(texto()).toContain('Síntoma consulta 7');
     ficha.navegarResumen(1);
     expect(texto()).toContain('Diagnóstico consulta 8');
     expect(texto()).not.toContain('Diagnóstico consulta 7');
+    expect(texto()).toContain('Síntoma consulta 8');
+    expect(texto()).not.toContain('Síntoma consulta 7');
   });
 
   it('descarta una respuesta clínica anterior al seleccionar otra consulta', () => {
     historial.listarConsultas.and.returnValue(of(pagina([consulta(7), consulta(8)])));
+    historial.obtenerConsulta.and.callFake(id => of({ ...consulta(id), motivoConsulta: `Consulta ${id}` } as ConsultaDetalleDto));
     const anterior = new Subject<ReturnType<typeof pagina<DiagnosticoResponse>>>();
     const actual = new Subject<ReturnType<typeof pagina<DiagnosticoResponse>>>();
     historial.listarDiagnosticos.and.callFake(filtro => filtro.idConsulta === 7 ? anterior : actual);

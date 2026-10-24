@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text;
-using API_Clinica.Data;
 using API_Clinica.DTOs;
 using API_Clinica.Exceptions;
 using API_Clinica.Interfaces;
@@ -10,11 +9,11 @@ using SkiaSharp;
 namespace API_Clinica.Services;
 
 public sealed class ExamResultService(
-    ClinicaDbContext context,
     IAccesoActualService access,
     IExamResultStorage storage,
     ILogger<ExamResultService> logger,
-    TimeProvider clock) : IExamResultService
+    TimeProvider clock,
+    ConsultaLecturaScope lecturaScope) : IExamResultService
 {
     // Coordina las cargas de esta instancia; R2 conserva claves únicas y escrituras condicionales.
     private static readonly SemaphoreSlim UploadGate = new(1, 1);
@@ -117,45 +116,10 @@ public sealed class ExamResultService(
         if (examId <= 0) throw new NotFoundException("Examen no encontrado.");
         var user = await access.ObtenerUsuarioActivoAsync(principal, ct)
             ?? throw new ForbiddenException("Acceso denegado.");
-        var exam = await context.Examenes.AsNoTracking()
-            .Where(item => item.IdExamen == examId)
-            .Select(item => new { item.IdConsulta, item.IdDiagnostico })
-            .SingleOrDefaultAsync(ct)
-            ?? throw new NotFoundException("Examen no encontrado.");
-        int? fromDiagnosis = null;
-        if (exam.IdDiagnostico is int diagnosisId)
-            fromDiagnosis = await context.Diagnosticos.AsNoTracking()
-                .Where(item => item.IdDiagnostico == diagnosisId)
-                .Select(item => (int?)item.IdConsulta).SingleOrDefaultAsync(ct)
-                ?? throw new ConflictException("El diagnóstico del examen no existe.");
-        if (exam.IdConsulta is int direct && fromDiagnosis is int derived && direct != derived)
-            throw new ConflictException("La consulta y el diagnóstico del examen no corresponden.");
-        var consultationId = exam.IdConsulta ?? fromDiagnosis
-            ?? throw new ConflictException("El examen no está asociado a una consulta clínica.");
-        var doctorId = await context.Consultas.AsNoTracking()
-            .Where(item => item.IdConsulta == consultationId)
-            .Select(item => (int?)item.IdMedico).SingleOrDefaultAsync(ct)
-            ?? throw new ConflictException("La consulta del examen no existe.");
-
-        var role = await context.Roles.AsNoTracking()
-            .Where(item => item.IdRol == user.IdRol && item.Activo)
-            .Select(item => item.Nombre).SingleOrDefaultAsync(ct)
-            ?? throw new ForbiddenException("El rol actual no se encuentra activo.");
-        if (string.Equals(role, "MEDICO", StringComparison.Ordinal) && !user.IdEmpleado.HasValue)
-            throw new ForbiddenException("El usuario médico no tiene empleado vinculado.");
-        if (user.IdEmpleado is int employeeId)
-        {
-            var employee = await context.Empleados.AsNoTracking()
-                .Where(item => item.IdEmpleado == employeeId)
-                .Select(item => new { item.TipoEmpleado, item.Activo })
-                .SingleOrDefaultAsync(ct);
-            if (string.Equals(role, "MEDICO", StringComparison.Ordinal)
-                && (employee is null || !employee.Activo || employee.TipoEmpleado != "Medico"))
-                throw new ForbiddenException("El médico vinculado no se encuentra activo.");
-            if (employee?.TipoEmpleado == "Medico"
-                && (!employee.Activo || employeeId != doctorId))
-                throw new ForbiddenException("No puede acceder a resultados de otro médico.");
-        }
+        var idMedico = await lecturaScope.ObtenerMedicoAsync(user, ct);
+        if (!await lecturaScope.ExamenesVisibles(idMedico)
+            .AnyAsync(item => item.IdExamen == examId, ct))
+            throw new NotFoundException("Examen no encontrado.");
         return user.IdUsuario;
     }
 

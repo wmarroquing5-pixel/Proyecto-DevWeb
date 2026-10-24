@@ -36,6 +36,14 @@ public sealed class PacientesController(
         int id, GuardarPacienteRequest request, CancellationToken ct) =>
         Ok(await service.ActualizarAsync(id, request, ct));
 
+    [HttpPatch("{id:int}/estado"), PermisoRequerido("Pacientes", Operacion.Modificar)]
+    public async Task<IActionResult> CambiarEstado(
+        int id, CambiarEstadoPacienteRequest request, CancellationToken ct)
+    {
+        await service.CambiarEstadoAsync(id, request.Activo!.Value, ct);
+        return NoContent();
+    }
+
     [HttpDelete("{id:int}"), PermisoRequerido("Pacientes", Operacion.Eliminar)]
     public async Task<IActionResult> Eliminar(int id, CancellationToken ct)
     {

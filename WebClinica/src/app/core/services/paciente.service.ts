@@ -56,6 +56,13 @@ export class PacientesService {
   }
 
   /**
+   * PATCH /api/pacientes/{id}/estado
+   */
+  cambiarEstado(id: number, activo: boolean): Observable<void> {
+    return this.http.patch<void>(`${this.apiUrl}/${id}/estado`, { activo });
+  }
+
+  /**
    * DELETE /api/pacientes/{id}
    */
   eliminar(id: number): Observable<void> {

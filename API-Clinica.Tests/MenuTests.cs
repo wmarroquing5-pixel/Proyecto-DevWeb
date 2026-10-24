@@ -59,7 +59,7 @@ public sealed class MenuTests
         Assert.Equal(new[]
         {
             "/dashboard", "/pacientes", "/consultas", "/medicamentos",
-            "/inventario/lotes", "/habitaciones", "/ventas",
+            "/inventario/lotes", "/habitaciones", "/ventas", "/farmacia/recetas",
             "/facturas",
             "/admin/sucursales", "/admin/clinicas", "/admin/especialidades",
             "/admin/turnos", "/admin/servicios", "/admin/categorias",
@@ -90,7 +90,9 @@ public sealed class MenuTests
         var menu = await new MenuService(acceso).ObtenerMenuAsync(Principal, default);
         var rutas = Aplanar(menu).Select(item => item.Route).ToArray();
 
-        Assert.Equal(new[] { "/dashboard", ruta }, rutas);
+        Assert.Equal(modulo == "Ventas"
+            ? new[] { "/dashboard", "/ventas", "/farmacia/recetas" }
+            : new[] { "/dashboard", ruta }, rutas);
     }
 
     [Fact]
@@ -317,7 +319,7 @@ public sealed class MenuTests
         Assert.DoesNotContain("\"Label\"", body, StringComparison.Ordinal);
         var rutas = Aplanar((await response.Content.ReadFromJsonAsync<List<MenuItemDto>>())!)
             .Select(item => item.Route).ToArray();
-        Assert.Equal(new[] { "/dashboard", "/ventas" }, rutas);
+        Assert.Equal(new[] { "/dashboard", "/ventas", "/farmacia/recetas" }, rutas);
     }
 
     private static PermisoActualResponse Permiso(int id, string modulo, bool consultar) =>

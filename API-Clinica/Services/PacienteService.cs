@@ -76,6 +76,18 @@ public sealed class PacienteService(
         return ToResponse(paciente);
     }
 
+    public async Task CambiarEstadoAsync(
+        int id, bool activo, CancellationToken cancellationToken)
+    {
+        var paciente = await context.Pacientes.SingleOrDefaultAsync(
+            p => p.IdPaciente == id, cancellationToken)
+            ?? throw new NotFoundException("Paciente no encontrado.");
+        if (paciente.Activo == activo) return;
+
+        paciente.Activo = activo;
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task DesactivarAsync(int id, CancellationToken cancellationToken)
     {
         var paciente = await context.Pacientes.SingleOrDefaultAsync(
